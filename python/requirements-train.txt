@@ -1,0 +1,6 @@
+# Offline move-classifier training (python/pose/train_classifier.py).
+# Not needed to run the pose service or the game -- only to train on recordings
+# captured with `pose_server.py --record`.
+numpy>=1.24
+scikit-learn>=1.3
+joblib>=1.3

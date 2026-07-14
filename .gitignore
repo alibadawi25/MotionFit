@@ -1,0 +1,32 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Dev tool output (screenshots + run logs)
+/tools/shots/*
+!/tools/shots/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Large ML data & model artifacts — not source. Regenerate or download these:
+#  - datasets/            raw exercise videos used to train pose classifiers
+#  - *.task               MediaPipe pose model (see README "Motion input")
+#  - pose recordings      captured landmark streams produced by recording.py
+/datasets/
+*.task
+/python/pose/recordings/*
+!/python/pose/recordings/.gitkeep
+
+# Local tooling / editor settings
+.claude/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*~

@@ -1,0 +1,2 @@
+# Captured training recordings (pose_server.py --record) land here.
+# The .jsonl files are data, not source -- keep the folder, ignore its contents.

@@ -1,0 +1,88 @@
+[gd_scene format=3 uid="uid://b0gs7lpyb48ho"]
+
+[ext_resource type="Script" uid="uid://rv8h6jlq031i" path="res://scenes/open-world/player.gd" id="1_numat"]
+[ext_resource type="Script" uid="uid://ww5gd0i3wy4b" path="res://scenes/open-world/camera_controller.gd" id="2_camctl"]
+[ext_resource type="Script" path="res://scenes/open-world/open_world.gd" id="3_game"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_slbg3"]
+size = Vector3(20, 0.1, 20)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_qwm0u"]
+size = Vector3(20, 0.1, 20)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_slbg3"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_slbg3"]
+
+[sub_resource type="Environment" id="Environment_y5iem"]
+background_mode = 1
+background_color = Color(0.41568628, 0.56078434, 0.70980394, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_slbg3"]
+radius = 0.2
+height = 0.4
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_slbg3"]
+radius = 0.2
+
+[node name="OpenWorld" type="Node3D" unique_id=1018446823]
+script = ExtResource("3_game")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=580515697]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D" unique_id=1413065947]
+mesh = SubResource("BoxMesh_slbg3")
+skeleton = NodePath("../..")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StaticBody3D" unique_id=1612171534]
+shape = SubResource("BoxShape3D_qwm0u")
+
+[node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1879209576]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1017296, 0)
+script = ExtResource("1_numat")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CharacterBody3D" unique_id=1481935569]
+mesh = SubResource("CapsuleMesh_slbg3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D" unique_id=1628264062]
+shape = SubResource("CapsuleShape3D_slbg3")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=607993938]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6017294, 6)
+current = true
+fov = 70.0
+script = ExtResource("2_camctl")
+target_path = NodePath("../CharacterBody3D")
+
+[node name="Light3D" type="DirectionalLight3D" parent="." unique_id=1496572831]
+light_energy = 1.2
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=227136867]
+environment = SubResource("Environment_y5iem")
+
+[node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=110277008]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0257804, 1.6682919, -3.2686121)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D" unique_id=104027853]
+mesh = SubResource("SphereMesh_slbg3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D" unique_id=407641047]
+shape = SubResource("SphereShape3D_slbg3")
+
+[node name="RigidBody3D2" type="RigidBody3D" parent="." unique_id=2022608468]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.8117073, 1.6682919, 3.4517045)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D2" unique_id=1533105115]
+mesh = SubResource("SphereMesh_slbg3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D2" unique_id=541751177]
+shape = SubResource("SphereShape3D_slbg3")
+
+[node name="RigidBody3D3" type="RigidBody3D" parent="." unique_id=804681304]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.0674784, 1.6682919, 0.89212847)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D3" unique_id=1624387160]
+mesh = SubResource("SphereMesh_slbg3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D3" unique_id=525770932]
+shape = SubResource("SphereShape3D_slbg3")

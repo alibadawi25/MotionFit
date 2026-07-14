@@ -1,0 +1,4 @@
+# Optional BLE heart-rate ingestion (python/heart_rate/ble_heart_rate.py).
+# Only needed for `pose_server.py --heart-rate`; the pose service runs fine
+# without it (hr stays 0 and Godot falls back to the motion-based estimate).
+bleak>=0.21
