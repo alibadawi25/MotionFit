@@ -15,6 +15,11 @@ signal scene_changing(target_path: String)
 ## Emitted after [method change_scene] has requested the new scene.
 signal scene_changed(target_path: String)
 
+## Whether the player has picked "who's playing" this app launch. Reset to false
+## every process start (autoloads re-initialise), so the profile picker shows once
+## per launch on a shared device, then the menu proceeds with the chosen profile.
+var profile_chosen_this_session: bool = false
+
 # --- Core UI / flow scenes -------------------------------------------------
 const MAIN_MENU: String = "res://scenes/menus/main_menu.tscn"
 const GAME_SELECT: String = "res://scenes/menus/game_select.tscn"
@@ -24,8 +29,11 @@ const RESULTS: String = "res://scenes/menus/results_screen.tscn"
 const LOADING: String = "res://scenes/menus/loading_screen.tscn"
 const COUNTDOWN: String = "res://scenes/menus/countdown_screen.tscn"
 const PROFILE_SETUP: String = "res://scenes/menus/profile_setup.tscn"
+const PROFILE_PICKER: String = "res://scenes/menus/profile_picker.tscn"
+const CALIBRATION_SETUP: String = "res://scenes/menus/calibration_setup.tscn"
 const PROFILE: String = "res://scenes/menus/profile_screen.tscn"
 const FITNESS: String = "res://scenes/menus/fitness_screen.tscn"
+const CAMERA_TEST: String = "res://scenes/menus/camera_test.tscn"
 
 # --- Mini-game scenes ------------------------------------------------------
 # Every game registered in GameManager references one of these constants.
@@ -66,12 +74,24 @@ func load_profile_setup() -> void:
 	change_scene(PROFILE_SETUP)
 
 
+func load_profile_picker() -> void:
+	change_scene(PROFILE_PICKER)
+
+
+func load_calibration_setup() -> void:
+	change_scene(CALIBRATION_SETUP)
+
+
 func load_profile() -> void:
 	change_scene(PROFILE)
 
 
 func load_fitness() -> void:
 	change_scene(FITNESS)
+
+
+func load_camera_test() -> void:
+	change_scene(CAMERA_TEST)
 
 
 func load_countdown() -> void:

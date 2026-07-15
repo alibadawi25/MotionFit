@@ -20,7 +20,31 @@ func _ready() -> void:
 			SettingsManager.set_sfx_volume)
 
 	box.add_child(HSeparator.new())
+	# Camera check-up lives here now (it used to crowd the main menu) — it's a
+	# setup/diagnostics task, so Settings is its natural home.
+	_add_action_row(box, "Camera", "TEST CAMERA", SceneManager.load_camera_test)
+
+	box.add_child(HSeparator.new())
 	box.add_child(_build_back())
+
+
+## A labelled row whose control is a single action button (mirrors the slider
+## rows' label + control layout), used for one-shot actions like opening the
+## camera test.
+func _add_action_row(box: VBoxContainer, label_text: String, button_text: String,
+		action: Callable) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	row.add_child(_row_label(label_text))
+
+	var button := Button.new()
+	button.text = button_text
+	button.custom_minimum_size = Vector2(0, 44)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.pressed.connect(action)
+	row.add_child(button)
+
+	box.add_child(row)
 
 
 ## Adds a labelled 0-100% volume slider with a live percentage readout. The

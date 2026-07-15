@@ -25,10 +25,54 @@ const XP_PER_SCORE: float = 1.0
 var _score: int = 0
 var _elapsed_sec: float = 0.0
 var _running: bool = false
+# The world nodes frozen while the intro overlay runs, restored at begin().
+var _frozen_children: Array[Node] = []
+
+## Runs the shared setup → countdown intro (if launched through the platform),
+## then starts the game. Games should NOT override _ready; put game-specific
+## setup in [method _start_game], which begin() calls once the count finishes.
+func _ready() -> void:
+	if GameManager.take_intro_pending():
+		_run_intro()
+	else:
+		# Opened directly (e.g. from the editor): skip the intro and just play.
+		begin()
+
 
 func _process(delta: float) -> void:
 	if _running:
 		_elapsed_sec += delta
+
+
+## Shows the [GameIntro] overlay on top of this (already-loaded) game scene, with
+## the world frozen on its first frame behind it, and begins gameplay once the
+## player has signalled ready and the count has run.
+func _run_intro() -> void:
+	_freeze_world(true)
+	var intro := GameIntro.new()
+	add_child(intro)
+	intro.intro_finished.connect(_on_intro_finished)
+
+
+func _on_intro_finished() -> void:
+	_freeze_world(false)
+	begin()
+
+
+## Freezes (or restores) every world node so the game holds still on its first
+## frame while the intro plays. Rendering is unaffected — only processing/input
+## are paused — so the countdown shows the real, static game behind it. The
+## intro overlay is added afterwards, so it keeps running.
+func _freeze_world(frozen: bool) -> void:
+	if frozen:
+		_frozen_children = get_children()
+		for child in _frozen_children:
+			child.process_mode = Node.PROCESS_MODE_DISABLED
+	else:
+		for child in _frozen_children:
+			if is_instance_valid(child):
+				child.process_mode = Node.PROCESS_MODE_INHERIT
+		_frozen_children.clear()
 
 
 ## Starts the game. Called by the platform (e.g. after the countdown). Do not
@@ -39,6 +83,10 @@ func begin() -> void:
 	_running = true
 	# Zero the movement stats so calories/steps count only this game's activity.
 	MotionManager.reset_session_stats()
+	# Show the in-game corner camera + live coaching, so the player can keep an eye
+	# on their framing (it hides itself when no camera is streaming). Reusable, so
+	# every game gets it without any per-game code.
+	add_child(GameCameraHUD.new())
 	_start_game()
 	started.emit()
 
@@ -53,12 +101,19 @@ func finish(calories: float = -1.0) -> void:
 	_running = false
 	if calories < 0.0:
 		calories = MotionManager.get_session_calories()
+	# Bundle the session's fitness stats alongside score so the results screen can
+	# show a full workout summary — all measured for free by the motion pipeline.
 	var result: Dictionary = {
 		"game_id": get_game_id(),
 		"score": _score,
 		"duration_sec": _elapsed_sec,
 		"calories": calories,
 		"xp_earned": int(round(_score * XP_PER_SCORE)),
+		"steps": MotionManager.get_session_steps(),
+		"avg_cadence": MotionManager.get_session_avg_cadence(),
+		"avg_met": MotionManager.get_session_avg_met(),
+		"avg_heart_rate": MotionManager.get_session_avg_heart_rate(),
+		"peak_heart_rate": MotionManager.get_session_peak_heart_rate(),
 	}
 	finished_with_result.emit(result)
 	GameManager.finish_game(result)

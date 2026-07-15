@@ -7,8 +7,13 @@ control + fitness values that it streams to Godot over a local UDP socket:
     turn    : -1.0 .. 1.0  torso yaw (rotate your body to steer)
     jump    : bool         true on the frame you launch into a jump
     crouch  : 0.0 .. 1.0   how deep you are squatting (0 = upright)
+    hands_up: bool         the "ready" gesture -- both hands raised above the head
     steps   : int          cumulative steps since the service started
     cadence : float        current pace in steps per minute
+
+It also streams a small JPEG mirror of the webcam on a second UDP port so Godot's
+setup/countdown screen can show the player framing themselves (Godot never
+touches the camera itself -- see CONTEXT.md 9).
 
 All computer-vision logic lives here (see CONTEXT.md: "Godot contains NO AI
 logic"). Godot's MotionManager only receives the processed JSON packets.
@@ -34,7 +39,9 @@ import argparse
 import json
 import math
 import socket
+import statistics
 import sys
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -47,16 +54,53 @@ import recording  # sibling module: JSONL recorder, metronome, label + feature s
 # --- Network -----------------------------------------------------------------
 UDP_HOST = "127.0.0.1"
 UDP_PORT = 9990  # must match MotionManager.PORT in Godot
+# The setup/countdown screen in Godot shows a live mirror of the camera so the
+# player can frame themselves before playing. Godot does NO computer vision
+# (CONTEXT.md 9), so Python owns the camera and simply ships a small JPEG of each
+# frame on a SECOND port (kept separate from the control packets above so the
+# realtime-control datagrams are never delayed behind a fat image). Godot's
+# CameraPreview autoload binds this and blits it to a texture.
+PREVIEW_PORT = 9991  # must match CameraPreview.PORT in Godot
+PREVIEW_WIDTH = 320   # downscaled: the preview only needs to read as a mirror,
+PREVIEW_HEIGHT = 240  # and this keeps each JPEG comfortably inside one datagram
+PREVIEW_FPS = 15      # a smooth-enough mirror at a fraction of the encode cost
+PREVIEW_QUALITY = 50  # JPEG quality; 320x240@50 is ~10-20 KB (< the UDP limit)
+# Godot -> Python control channel. Every other port in this file streams OUT to
+# Godot; this is the one port Godot streams back IN on, carrying tiny JSON
+# commands {"cmd": "camera_on"} / {"cmd": "camera_off"} so the game can power the
+# webcam up only while you're actually playing (the LED stays dark in menus).
+# Honoured ONLY in --game (managed) mode; a standalone test session ignores it.
+COMMAND_PORT = 9992  # must match MotionManager.COMMAND_PORT in Godot
 
 # --- Camera ------------------------------------------------------------------
 CAM_INDEX = 0
+# Ask the webcam for this format explicitly. 640x480 is all the pose model needs
+# (it downscales internally anyway); letting a camera default to 1080p just adds
+# capture + colour-conversion cost and drags the whole loop's latency up.
+CAM_WIDTH = 640
+CAM_HEIGHT = 480
+CAM_FPS = 30
 
 # --- Pose model ----------------------------------------------------------------
 # This build of mediapipe (0.10.x on Windows/Python 3.12) ships only the newer
 # Tasks API (mediapipe.tasks.vision.PoseLandmarker) -- the legacy
 # mp.solutions.pose API used in older tutorials isn't bundled, so we drive
-# pose detection through a downloaded model bundle instead.
-MODEL_PATH = Path(__file__).resolve().parent / "models" / "pose_landmarker_full.task"
+# pose detection through a downloaded model bundle instead. Three sizes exist:
+# lite (fastest -- pick it if the preview reports a low fps), full (the default
+# accuracy/speed balance), heavy (most accurate, usually too slow for realtime).
+MODEL_VARIANTS = ("lite", "full", "heavy")
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+    "pose_landmarker_{variant}/float16/latest/pose_landmarker_{variant}.task"
+)
+
+
+def _model_path(variant: str) -> Path:
+    return Path(__file__).resolve().parent / "models" / f"pose_landmarker_{variant}.task"
+
+
+# Kept as a module constant because the offline tools import it directly.
+MODEL_PATH = _model_path("full")
 
 # --- Tuning (safe to tweak) --------------------------------------------------
 # Forward (how fast you're moving) is fused from several body "channels" at once
@@ -73,8 +117,11 @@ MODEL_PATH = Path(__file__).resolve().parent / "models" / "pose_landmarker_full.
 #                              (visible below the hem) still carry the signal.
 # The per-channel speeds are averaged with confidence weighting, so uncorrelated
 # noise cancels (~sqrt of the channel count) and no single bad joint dominates.
-FORWARD_THRESHOLD = 0.15  # fused channel speed below this counts as standing still
-FORWARD_GAIN = 1.0        # scales the fused speed up toward 1.0
+FORWARD_THRESHOLD = 0.12  # fused channel speed below this counts as standing still
+FORWARD_GAIN = 2.5        # scales the fused speed up toward 1.0. A comfortable
+                          # march in place is only ~0.4-0.6 torso-lengths/sec, so
+                          # at gain 1.0 you never got near full speed and the
+                          # character crawled; 2.5 lets a steady march reach ~1.0.
 ARM_WEIGHT = 0.5          # wrists count for less than legs (arm swing is secondary)
 
 # Band-pass = keep only motion in the stepping band, dropping slow drift
@@ -85,10 +132,28 @@ BAND_FAST_HZ = 5.0        # discard motion faster than this (jitter)
 
 # Turn = torso yaw, from the depth (z) offset between the shoulders in metric
 # world space -- i.e. actually rotating your body to steer, not leaning.
-TURN_DEADZONE = 0.08     # yaw below this is ignored (no accidental turns)
-TURN_GAIN = 2.2          # scales yaw into the -1..1 turn range
-INVERT_TURN = False      # flip if turning your body steers the wrong way
+TURN_DEADZONE = 0.10     # yaw below this is ignored (no accidental turns)
+TURN_GAIN = 1.5          # scales yaw into the -1..1 turn range (lower = calmer,
+                         # less twitchy steering — tuned down from 2.2 which
+                         # oversteered on small torso rotations)
+INVERT_TURN = True       # turning your body left must steer left (was mirrored)
 MIN_VISIBILITY = 0.5     # ignore landmarks the model is unsure about
+
+# --- Tracking-loss handling ----------------------------------------------------
+# Landmark visibility flickers frame to frame; treating every dip as "person
+# gone" resets all the filters and makes the character stutter. Instead:
+#   * a channel (knee/ankle/wrist) that goes below MIN_VISIBILITY keeps its
+#     filter state for CHANNEL_GRACE_SEC (it just stops contributing), and only
+#     resets after a real absence. VIS_EXIT < MIN_VISIBILITY adds hysteresis so
+#     a joint hovering right at the threshold doesn't flap in and out.
+#   * losing the whole pose (or the valid stance) coasts the outputs down gently
+#     for LOSS_GRACE_SEC before anything is reset, so a one-frame detection miss
+#     is invisible in game.
+VIS_EXIT = 0.35           # a tracked channel stays active until it drops below this
+CHANNEL_GRACE_SEC = 0.5   # keep a hidden channel's filter state this long
+LOSS_GRACE_SEC = 0.4      # coast (don't reset) through pose losses shorter than this
+HOLD_DECAY_SEC = 0.5      # decay time-constant while coasting through the grace window
+DROP_DECAY_SEC = 0.15     # decay time-constant once the pose is genuinely lost
 
 # --- Position validity -------------------------------------------------------
 # Before measuring anything we check the person is actually set up to march --
@@ -97,7 +162,25 @@ MIN_VISIBILITY = 0.5     # ignore landmarks the model is unsure about
 # junk, so we pause and show an on-screen instruction instead.
 POSE_MAX_TILT = 40.0     # torso may lean at most this many degrees from vertical
 POSE_MIN_LEG_DROP = 0.6  # the planted knee must sit this far below the hips
-                         # (in torso lengths) -- i.e. standing, not sitting
+                         # (in torso lengths) to ACQUIRE tracking -- i.e. you
+                         # start from standing, not sitting/reclining.
+POSE_SQUAT_LEG_DROP = -0.3  # ...but once you're already being tracked, the knee
+                         # may rise this far ABOVE the hips without dropping out,
+                         # so squatting (which folds the knee up to hip level and
+                         # beyond in a deep squat) keeps registering as a crouch
+                         # instead of being rejected as "STAND UP". Reclining
+                         # toward the camera lifts the knees far higher than this,
+                         # so it's still caught.
+# Distance / framing: the torso's apparent height (as a fraction of the frame) is
+# a stable proxy for how close the player stands -- stable because, unlike whole
+# body height, it barely changes while marching. Too small = too far away to
+# track the legs cleanly; too large = so close the feet fall out of frame. These
+# keep the player in the zone the tracker measures best, and drive the setup
+# screen's "get closer / step back" coaching. Reasoned starting values -- worth a
+# live-webcam tuning pass.
+POSE_MIN_TORSO_FRAC = 0.16  # torso shorter than this => "GET CLOSER"
+POSE_MAX_TORSO_FRAC = 0.42  # torso taller than this  => "STEP BACK"
+POSE_FEET_EDGE_Y = 0.99     # a planted foot past this (bottom edge) => framed too low
 
 # --- Jump & crouch -----------------------------------------------------------
 # Jump: a vertical launch shows up as the hip springing above its recent resting
@@ -124,6 +207,59 @@ CROUCH_STAND_HZ = 0.05    # how slowly the standing reference drifts back down.
                           # instead of the reference chasing it down to zero.
 CROUCH_START = 0.12       # leg-extension drop (torso fraction) where crouch begins
 CROUCH_FULL = 0.45        # ...and where it reaches a full (1.0) crouch
+# ...but these fixed drops assume an "average" squat. People squat to very
+# different depths (flexibility, limb proportions), so a fixed CROUCH_FULL makes a
+# shallow squatter never reach 1.0 and a deep one saturate early. A ~10s
+# calibration (see Calibrator) captures THIS player's standing and deepest-squat
+# leg extension and maps crouch across their real range instead: crouch starts
+# once they're this fraction of the way down and hits 1.0 at this fraction, so a
+# full squat reads 1.0 for everyone. Falls back to the fixed drops above when
+# uncalibrated. Calibration also SEEDS the standing reference (no slow warm-up)
+# and the hip resting height, replacing the self-calibrating baselines that were
+# shown today to drift and get contaminated.
+CROUCH_START_FRAC = 0.15  # crouch begins this fraction into the player's squat range
+CROUCH_FULL_FRAC = 0.85   # ...and reaches 1.0 at this fraction (near, not at, the floor)
+CALIB_MIN_RANGE = 0.15    # a squat must fold the leg at least this much (torso frac) to
+                          # calibrate -- guards against a too-shallow/failed capture
+
+# --- Calibration capture (the ~10s setup) ------------------------------------
+CALIB_STILL_SEC = 1.5     # hold a still stand this long to capture the standing pose
+CALIB_STILL_SPEED = 0.10  # fused body speed below this counts as "standing still"
+CALIB_SQUAT_SEC = 4.0     # window to perform one deep squat; deepest point is captured
+CALIB_PATH = Path(__file__).resolve().parent / "calibration.json"
+
+# A jump (or a knee-tuck at the top of one) lifts BOTH feet toward the hip, which
+# shortens the hip->planted-foot distance exactly the way a squat does -- so
+# without a guard a jump reads as a deep crouch. Distinguishing the two from a
+# CONTINUOUS "feet up" level proved unreliable on real recordings: a foot-vs-floor
+# measure fires on foot-landmark glitches, and a hip-vs-baseline level fires on
+# every squat's (fast, controlled) stand-up. The one signal that stays clean is
+# the speed-gated jump EDGE (`jumped` below): its up-speed requirement rejects a
+# squat ascent but catches an explosive launch. So we blank crouch (and block the
+# march) for a hold window around each detected jump -- the flight and its landing
+# knee-bend, plus the next hop in a repeated bout. Kept short so a genuine squat
+# begun soon after a jump still registers.
+JUMP_CROUCH_HOLD = 0.7    # blank crouch / block march for this long after a jump edge
+
+# Squat vs march: a squat's down-and-up sweep moves the legs relative to the hip
+# just like a march does, so it leaks into `forward` and the step counter. You
+# can't march and squat at the same time, and a squat's large hip drop makes
+# `crouch` by far the more reliable read -- so whenever we're crouching we treat
+# it as a squat and suppress the march signal (with a short hold so the rising
+# half of the rep is covered too, not just the deep bottom).
+CROUCH_MARCH_GATE = 0.15  # crouch depth above which motion is read as squatting
+SQUAT_MARCH_HOLD = 0.4    # keep suppressing the march this long after crouch eases
+# The mirror of the above: a march's hip-bob folds the planted leg enough to fake
+# a crouch, so while clearly marching we suppress crouch. It's stable against the
+# squat rule because a real squat has its forward gated to ~0 (crouch blocks the
+# march), so only genuine locomotion trips this and a squat keeps its crouch.
+CROUCH_FORWARD_GATE = 0.20  # forward above which we're marching (crouch suppressed)
+MARCH_CROUCH_HOLD = 0.3     # keep suppressing crouch this long after marching -- a
+                            # march's crouch spikes fall in the between-step dips
+                            # where forward momentarily drops, so a hold bridges them.
+                            # 0.3 is the knee of the tradeoff on the recorded clips:
+                            # it nearly halves the march->crouch leak (33%->19%) for
+                            # only a ~4pt dip in a real squat's crouch (45%->41%).
 
 # One Euro filter (Casiez et al.): adaptive smoothing that removes jitter when
 # you hold a pose but stays responsive when you move quickly -- the standard for
@@ -141,11 +277,20 @@ TURN_BETA = 0.5
 # fallback. If no leg is visible, cadence pauses rather than guessing.
 STEP_SWING_MIN = 0.02     # min band-passed height swing (torso fraction) per step
 STEP_MIN_INTERVAL = 0.20  # ignore steps closer than this (debounce, seconds)
+STEP_SIDE_MIN_INTERVAL = 0.35  # per-leg debounce: one leg can't step twice this
+                          # fast, so a bouncy single-leg oscillation (noise, or a
+                          # heel tap) can't double-count -- alternation still fits
 STEP_FORWARD_GATE = 0.05  # only count steps while actually moving forward -- a
                           # slow waist turn drifts the legs enough to fake a
                           # foot plant, but it doesn't raise `forward`, so gating
                           # on forward motion rejects turning-in-place as steps
-CADENCE_WINDOW_SEC = 5.0  # rolling window for the steps-per-minute estimate
+
+# Cadence comes from the actual intervals between recent steps (a pedometer's
+# method) rather than counting steps in a fixed window: it locks on after two
+# steps instead of five seconds, doesn't quantise to 12-per-minute jumps, and
+# winds down smoothly when you stop.
+CADENCE_SMOOTH_STEPS = 4  # median over this many recent step intervals
+CADENCE_RESET_SEC = 1.5   # no step for this long (and 3x the interval) = stopped
 
 # --- Effort (energy expenditure) ---------------------------------------------
 # We emit a MET estimate (metabolic equivalent of task) computed from motion
@@ -155,19 +300,30 @@ CADENCE_WINDOW_SEC = 5.0  # rolling window for the steps-per-minute estimate
 # kg / 200). A heart-rate reading, when a wearable is present, fuses in on the
 # Godot side later; until then this motion estimate is the fallback.
 #
-# The mapping below is a physiologically REASONABLE starting point (marching in
-# place ~4-5 MET, high-knee / jumping work ~8+), NOT a validated one. Real
-# accuracy needs calibrating it against a reference (heart rate, or ideally
-# indirect calorimetry) -- that's a later phase, and needs the recording harness.
+# The cadence->MET leg is anchored to published measurements (the CADENCE-Adults
+# study, Tudor-Locke et al.: ~100 steps/min = 3 METs, then about +1 MET per
+# +10 steps/min -- 110->4, 120->5, 130->6). Marching in place tracks walking
+# closely at matched cadence, so this is the best-evidenced anchor available
+# without per-user calibration. The other terms (whole-body vigour, squat work,
+# jumps) remain reasoned estimates pending a calibration pass against heart rate.
 REST_MET = 1.2               # standing in frame but not moving
-CADENCE_MET_SLOPE = 0.028    # +MET per step/min  (~100 spm -> ~4 MET, moderate)
+CADENCE_MODERATE_SPM = 100.0 # cadence at which effort reaches MET_MODERATE
+MET_MODERATE = 3.0           # METs at CADENCE_MODERATE_SPM (moderate intensity)
+MET_PER_SPM_ABOVE = 0.1      # +MET per step/min beyond the moderate anchor
 FORWARD_MET_SPAN = 7.0       # forward 0..1 -> +0..7 MET (whole-body vigour)
+SQUAT_MET_GAIN = 8.0         # MET per unit of leg-fold speed (torso-lengths/s):
+                             # steady squatting cycles ~0.3-0.4 -> ~4-5 MET, in
+                             # line with moderate-to-vigorous calisthenics. This
+                             # is what makes slow squats count at all -- they sit
+                             # below the stepping band so cadence/forward miss them
 JUMP_MET_PER_MIN = 0.12      # +MET per jump/min (plyometric burn, on top)
 MET_MAX = 14.0               # clamp (sprint / burpee territory)
 EFFORT_WINDOW_SEC = 5.0      # rolling window for the jump-rate term
 EFFORT_SMOOTH_HZ = 0.4       # low-pass MET so the calorie counter reads steadily
+SQUAT_SPEED_SMOOTH_HZ = 0.3  # low-pass on the leg-fold speed feeding SQUAT_MET_GAIN
 
 # MediaPipe Pose landmark indices we use.
+NOSE = 0
 L_SHOULDER, R_SHOULDER = 11, 12
 L_WRIST, R_WRIST = 15, 16
 L_HIP, R_HIP = 23, 24
@@ -273,6 +429,77 @@ class OneEuroFilter:
         self._prev = None
 
 
+class _Camera:
+    """Threaded webcam reader that always serves the newest frame.
+
+    cap.read() blocks for up to a whole frame interval, so doing it inline
+    serialises capture and pose inference and caps the loop at half the camera
+    rate. Reading on a daemon thread lets the two overlap, and latest-frame-wins
+    (stale frames are simply never processed) keeps control latency at a single
+    frame however slow inference runs on a given machine.
+    """
+
+    def __init__(self, index: int, width: int = CAM_WIDTH,
+                 height: int = CAM_HEIGHT, fps: int = CAM_FPS) -> None:
+        # DirectShow opens far faster and more reliably than the default MSMF
+        # backend on Windows; elsewhere let OpenCV pick.
+        if sys.platform == "win32":
+            self._cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            if not self._cap.isOpened():
+                self._cap = cv2.VideoCapture(index)
+        else:
+            self._cap = cv2.VideoCapture(index)
+        if self._cap.isOpened():
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            self._cap.set(cv2.CAP_PROP_FPS, fps)
+            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # don't queue stale frames
+        self._lock = threading.Lock()
+        self._frame = None
+        self._seq = 0  # bumps per captured frame so callers never reprocess one
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    @property
+    def opened(self) -> bool:
+        return self._cap.isOpened()
+
+    def start(self) -> None:
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while self._running:
+            ok, frame = self._cap.read()
+            if not ok:
+                time.sleep(0.005)
+                continue
+            with self._lock:
+                self._frame = frame
+                self._seq += 1
+
+    def read_latest(self, last_seq: int, timeout: float = 1.0):
+        """Blocks briefly for a frame newer than last_seq.
+
+        Returns (seq, frame) -- or (last_seq, None) if the camera produced
+        nothing new within the timeout (unplugged / stalled).
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self._lock:
+                if self._seq != last_seq and self._frame is not None:
+                    return self._seq, self._frame
+            time.sleep(0.002)
+        return last_seq, None
+
+    def release(self) -> None:
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+        self._cap.release()
+
+
 class _Oscillator:
     """One fused body channel: band-passes a joint's height and reports motion.
 
@@ -333,7 +560,18 @@ class _VerticalMotion:
         self._rest = _LowPass()                # slow baseline of hip height (up+)
         self._prev_hip_up: float | None = None
         self._stand_ext: float | None = None   # peak-followed standing leg extension
+        # Crouch mapping (leg-fold drop, torso frac). Defaults to the fixed
+        # constants; apply_calibration() personalises them to the player's range.
+        self._crouch_start = CROUCH_START
+        self._crouch_full = CROUCH_FULL
+        self._calib_stand_ext: float | None = None  # calibrated standing seed (survives reset)
+        self._last_air_time = -1000.0          # last airborne/jump instant (crouch hold)
+        self._work = _LowPass()                # smoothed |leg-fold speed| (effort)
+        self._prev_leg_ext: float | None = None
         self.crouch = 0.0
+        self.rise = 0.0        # hip height above its resting baseline (torso frac)
+        self.in_jump = False   # within the hold window of a detected jump -- blocks the march
+        self.work_speed = 0.0  # torso-lengths/s of leg folding -- squat effort
         self.last_jump_time = -1000.0
 
     def update(self, hip_up: float, leg_ext: float, torso_len: float,
@@ -347,6 +585,7 @@ class _VerticalMotion:
         # --- Jump: hip springs above its slow resting baseline ----------------
         rest = self._rest(hip_up, _BandPass._alpha(JUMP_BASELINE_HZ, dt))
         rise = (hip_up - rest) / torso_len
+        self.rise = rise  # diagnostic / airborne source
         up_speed = 0.0
         if self._prev_hip_up is not None:
             up_speed = (hip_up - self._prev_hip_up) / dt / torso_len
@@ -368,15 +607,67 @@ class _VerticalMotion:
             )  # ...but sink back only slowly, so a squat still reads as a drop
         drop = self._stand_ext - leg_ext
         self.crouch = _clamp(
-            (drop - CROUCH_START) / (CROUCH_FULL - CROUCH_START), 0.0, 1.0
+            (drop - self._crouch_start) / (self._crouch_full - self._crouch_start), 0.0, 1.0
         )
+
+        # --- Jump window: blank crouch & mark in_jump around a detected jump ---
+        # Driven by the speed-gated `jumped` edge (the only jump signal that a
+        # squat's stand-up doesn't fake). The hold spans the flight, the landing
+        # knee-bend, and the next hop in a repeated bout -- so a knee-tuck jump
+        # never reads as a crouch, and the caller can block the march too via
+        # `in_jump` (a jump mustn't read as walking any more than a squat does). A
+        # squat clear of a jump is untouched: its ascent doesn't fire `jumped`.
+        if jumped:
+            self._last_air_time = now
+        self.in_jump = (now - self._last_air_time) < JUMP_CROUCH_HOLD
+        if self.in_jump:
+            self.crouch = 0.0
+
+        # --- Vertical work: how fast the legs are folding/unfolding -----------
+        # Slow, deep squats sit below the stepping band, so cadence and forward
+        # both read ~0 for them; the smoothed |d(leg_ext)/dt| captures that work
+        # for the effort estimate. Clipped so a landmark glitch can't spike it.
+        if self._prev_leg_ext is not None:
+            fold_speed = min(abs(leg_ext - self._prev_leg_ext) / dt, 3.0)
+            self.work_speed = self._work(
+                fold_speed, _BandPass._alpha(SQUAT_SPEED_SMOOTH_HZ, dt)
+            )
+        self._prev_leg_ext = leg_ext
         return jumped
 
     def reset(self) -> None:
         self._rest.reset()
         self._prev_hip_up = None
-        self._stand_ext = None
+        # Re-seed the standing reference from calibration if we have one, so a
+        # tracking blink / camera re-open doesn't force a slow re-acquire; only an
+        # uncalibrated session starts the peak-follower from scratch.
+        self._stand_ext = self._calib_stand_ext
+        self._last_air_time = -1000.0
+        self._work.reset()
+        self._prev_leg_ext = None
         self.crouch = 0.0
+        self.rise = 0.0
+        self.in_jump = False
+        self.work_speed = 0.0
+
+    def apply_calibration(self, standing_ext: float, squat_ext: float) -> None:
+        """Personalise crouch to this player's measured range and seed the standing
+        reference. standing_ext / squat_ext are torso-normalised hip->foot leg
+        extensions at a full stand and the deepest squat (so distance-invariant)."""
+        rng = standing_ext - squat_ext
+        if rng < CALIB_MIN_RANGE:
+            return  # too shallow to trust; keep the fixed defaults
+        self._crouch_start = CROUCH_START_FRAC * rng
+        self._crouch_full = CROUCH_FULL_FRAC * rng
+        self._calib_stand_ext = standing_ext
+        self._stand_ext = standing_ext  # correct crouch from the first frame
+
+    def clear_calibration(self) -> None:
+        """Drops a personalised calibration, reverting to the fixed default crouch
+        map and the self-calibrating standing reference."""
+        self._crouch_start = CROUCH_START
+        self._crouch_full = CROUCH_FULL
+        self._calib_stand_ext = None
 
 
 class ControlState:
@@ -385,7 +676,19 @@ class ControlState:
     def __init__(self) -> None:
         self.osc = {name: _Oscillator() for name, *_ in FORWARD_CHANNELS}
         self.vertical = _VerticalMotion()  # jump/crouch from hip & leg height
+        # While this is in the future the player is squatting (or just was), so the
+        # march signal is suppressed -- a squat's leg sweep mustn't read as walking.
+        self.squat_active_until = -1e9
+        # ...and its mirror: while marching (or just were), crouch is suppressed so
+        # the march's hip-bob doesn't fake a squat.
+        self.march_active_until = -1e9
         self.active_label = "none"  # which channel groups are tracking, for the HUD
+        # Per-channel dropout bookkeeping: when a joint was last confidently seen
+        # and whether it is currently contributing. A channel that dips below the
+        # visibility threshold keeps its filter state for CHANNEL_GRACE_SEC (see
+        # the tracking-loss constants) instead of resetting on every flicker.
+        self.last_seen = {name: -1e9 for name, *_ in FORWARD_CHANNELS}
+        self.channel_active = {name: False for name, *_ in FORWARD_CHANNELS}
         # Snapshot of this frame's features for the recording harness (empty when
         # not recording / no valid pose). Populated by _compute_controls.
         self.feature_snapshot: dict = {}
@@ -394,29 +697,192 @@ class ControlState:
         for osc in self.osc.values():
             osc.reset()
         self.vertical.reset()
+        self.squat_active_until = -1e9
+        self.march_active_until = -1e9
         self.active_label = "none"
+        self.last_seen = {name: -1e9 for name in self.last_seen}
+        self.channel_active = {name: False for name in self.channel_active}
         self.feature_snapshot = {}
 
 
+class Calibration:
+    """A player's captured body reference, persisted between sessions.
+
+    Everything here is torso-normalised (so it's distance/camera invariant) except
+    the timestamp. `standing_ext` / `squat_ext` are the hip->foot leg extension at
+    a full stand and the deepest squat; the gap between them is the player's squat
+    range, which personalises the crouch mapping (see _VerticalMotion)."""
+
+    def __init__(self, standing_ext: float, squat_ext: float, created: float) -> None:
+        self.standing_ext = standing_ext
+        self.squat_ext = squat_ext
+        self.created = created
+
+    @property
+    def valid(self) -> bool:
+        return (self.standing_ext - self.squat_ext) >= CALIB_MIN_RANGE
+
+    def to_dict(self) -> dict:
+        return {"standing_ext": round(self.standing_ext, 5),
+                "squat_ext": round(self.squat_ext, 5), "created": self.created}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Calibration | None":
+        try:
+            return cls(float(d["standing_ext"]), float(d["squat_ext"]),
+                       float(d.get("created", 0.0)))
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def save(self, path: Path = CALIB_PATH) -> None:
+        path.write_text(json.dumps(self.to_dict()), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: Path = CALIB_PATH) -> "Calibration | None":
+        if not path.exists():
+            return None
+        try:
+            prof = cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except (ValueError, OSError):
+            return None
+        return prof if (prof and prof.valid) else None
+
+
+class Calibrator:
+    """Runs the ~10s setup that captures a [Calibration].
+
+    A tiny state machine driven one frame at a time. It replaces the live server's
+    slow self-calibrating baselines (which today were shown to drift and get
+    contaminated by squats/jumps) with an explicit, robust, one-off measurement:
+
+        STILL  -- stand naturally still; the median standing leg extension is
+                  captured once you've held it for CALIB_STILL_SEC.
+        SQUAT  -- squat down once and hold near the bottom; the deepest (smallest)
+                  leg extension over CALIB_SQUAT_SEC is captured.
+        DONE   -- a Calibration is produced (and saved). FAILED if the squat was
+                  too shallow to trust, so the UI can ask for a retry.
+
+    `status`/`prompt`/`progress` drive the setup screen (or the OpenCV HUD). It is
+    fed torso-normalised leg extension and the fused body speed each frame, so the
+    capture is distance-invariant and can tell "standing still" from moving.
+    """
+
+    IDLE, STILL, SQUAT, DONE, FAILED = "idle", "still", "squat", "done", "failed"
+
+    def __init__(self) -> None:
+        self.state = self.IDLE
+        self._still_accum = 0.0        # seconds of continuous stillness so far
+        self._stand_samples: list[float] = []
+        self._squat_elapsed = 0.0
+        self._squat_min = 1e9
+        self._standing_ext = 0.0
+        self.result: "Calibration | None" = None
+
+    @property
+    def active(self) -> bool:
+        return self.state in (self.STILL, self.SQUAT)
+
+    def start(self) -> None:
+        self.state = self.STILL
+        self._still_accum = 0.0
+        self._stand_samples = []
+        self._squat_elapsed = 0.0
+        self._squat_min = 1e9
+        self.result = None
+
+    def update(self, leg_ext: float, fused_speed: float, dt: float) -> None:
+        if self.state == self.STILL:
+            if fused_speed < CALIB_STILL_SPEED:
+                self._still_accum += dt
+                self._stand_samples.append(leg_ext)
+            else:
+                self._still_accum = 0.0   # moved -> restart the hold
+                self._stand_samples = []
+            if self._still_accum >= CALIB_STILL_SEC and self._stand_samples:
+                self._standing_ext = statistics.median(self._stand_samples)
+                self.state = self.SQUAT
+                self._squat_elapsed = 0.0
+                self._squat_min = self._standing_ext
+        elif self.state == self.SQUAT:
+            self._squat_elapsed += dt
+            self._squat_min = min(self._squat_min, leg_ext)
+            if self._squat_elapsed >= CALIB_SQUAT_SEC:
+                prof = Calibration(self._standing_ext, self._squat_min, time.time())
+                if prof.valid:
+                    self.result = prof
+                    self.state = self.DONE
+                else:
+                    self.state = self.FAILED
+
+    @property
+    def progress(self) -> float:
+        if self.state == self.STILL:
+            return _clamp(self._still_accum / CALIB_STILL_SEC, 0.0, 1.0)
+        if self.state == self.SQUAT:
+            return _clamp(self._squat_elapsed / CALIB_SQUAT_SEC, 0.0, 1.0)
+        return 1.0 if self.state == self.DONE else 0.0
+
+    @property
+    def prompt(self) -> str:
+        return {
+            self.STILL: "CALIBRATING - stand still",
+            self.SQUAT: "NOW SQUAT DOWN and hold",
+            self.DONE: "CALIBRATED",
+            self.FAILED: "SQUAT TOO SHALLOW - try again",
+        }.get(self.state, "")
+
+
 class StepCounter:
-    """Tallies steps and derives a live cadence (steps per minute)."""
+    """Tallies steps and derives a live cadence (steps per minute).
+
+    Cadence is 60 / median(recent step intervals) -- the pedometer method. It
+    reads correctly from the second step (a windowed count needs the window to
+    fill), gives a continuous value instead of quantised jumps, and winds down
+    smoothly when stepping stops (the growing silence acts as the interval).
+    """
 
     def __init__(self) -> None:
         self.steps = 0
         self.last_step_time = -1000.0
-        self._times: deque[float] = deque()  # recent step timestamps
+        self._last_side_time = {"l": -1000.0, "r": -1000.0}
+        self._intervals: deque[float] = deque(maxlen=CADENCE_SMOOTH_STEPS)
 
-    def add(self, now: float) -> None:
+    def side_ready(self, side: str, now: float) -> bool:
+        """True when this leg is past its per-leg debounce window."""
+        return now - self._last_side_time.get(side, -1000.0) >= STEP_SIDE_MIN_INTERVAL
+
+    def add(self, now: float, side: str | None = None) -> None:
+        gap = now - self.last_step_time
+        if 0.0 < gap < 2.0:  # gaps beyond ~2s are a fresh start, not a stride
+            self._intervals.append(gap)
         self.steps += 1
         self.last_step_time = now
-        self._times.append(now)
+        if side is not None:
+            self._last_side_time[side] = now
 
     def cadence(self, now: float) -> float:
-        """Steps per minute over the last CADENCE_WINDOW_SEC."""
-        cutoff = now - CADENCE_WINDOW_SEC
-        while self._times and self._times[0] < cutoff:
-            self._times.popleft()
-        return len(self._times) * (60.0 / CADENCE_WINDOW_SEC)
+        """Current pace in steps per minute; 0 once stepping has stopped."""
+        if not self._intervals:
+            return 0.0
+        interval = statistics.median(self._intervals)
+        silence = now - self.last_step_time
+        if silence > max(3.0 * interval, CADENCE_RESET_SEC):
+            self._intervals.clear()  # stopped: next steps start a fresh estimate
+            return 0.0
+        # A silence longer than the stride means we're slowing -- read it as the
+        # current interval so the value tapers instead of holding then snapping.
+        return 60.0 / max(interval, silence)
+
+
+def _met_from_cadence(cadence: float) -> float:
+    """Cadence (steps/min) -> METs, anchored to the CADENCE-Adults measurements:
+    ~100 steps/min = 3 METs (moderate), then ~+1 MET per +10 steps/min (110->4,
+    130->6). Below the anchor we interpolate down to the standing rest value."""
+    if cadence <= 0.0:
+        return REST_MET
+    if cadence < CADENCE_MODERATE_SPM:
+        return REST_MET + (MET_MODERATE - REST_MET) * (cadence / CADENCE_MODERATE_SPM)
+    return MET_MODERATE + MET_PER_SPM_ABOVE * (cadence - CADENCE_MODERATE_SPM)
 
 
 class _EffortEstimator:
@@ -424,10 +890,10 @@ class _EffortEstimator:
 
     MET (metabolic equivalent) is normalised by body mass, so no player profile
     is needed here -- Godot multiplies by the player's weight to get calories.
-    Effort is taken as the strongest of two intensity reads (stepping cadence
-    and overall marching vigour) plus a bonus for jump activity, then smoothed so
-    the calorie counter doesn't flicker. Constants are reasoned starting points
-    that want calibration against a reference -- see the module-level notes.
+    Effort is the strongest of three intensity reads -- stepping cadence
+    (evidence-anchored, see _met_from_cadence), overall marching vigour, and
+    vertical squat work (which the other two can't see) -- plus a bonus for jump
+    activity, then smoothed so the calorie counter doesn't flicker.
     """
 
     def __init__(self) -> None:
@@ -436,7 +902,7 @@ class _EffortEstimator:
         self.met = REST_MET
 
     def update(self, forward: float, cadence: float, jumped: bool,
-               now: float, dt: float) -> float:
+               vertical_work: float, now: float, dt: float) -> float:
         if jumped:
             self._jumps.append(now)
         cutoff = now - EFFORT_WINDOW_SEC
@@ -444,12 +910,15 @@ class _EffortEstimator:
             self._jumps.popleft()
         jumps_per_min = len(self._jumps) * (60.0 / EFFORT_WINDOW_SEC)
 
-        # Cadence and forward are two windows on the same effort; take whichever
-        # reads higher (arm-only work lifts forward but not cadence, and vice
-        # versa), then add the jump term on top as it is extra vertical work.
-        met_cadence = REST_MET + CADENCE_MET_SLOPE * cadence
+        # Cadence, forward and squat work are three windows on the same effort;
+        # take whichever reads highest (arm-only work lifts forward but not
+        # cadence; slow squats lift neither), then add the jump term on top as
+        # it is extra vertical work.
+        met_cadence = _met_from_cadence(cadence)
         met_forward = REST_MET + FORWARD_MET_SPAN * forward
-        raw = max(met_cadence, met_forward) + JUMP_MET_PER_MIN * jumps_per_min
+        met_squat = REST_MET + SQUAT_MET_GAIN * vertical_work
+        raw = max(met_cadence, met_forward, met_squat) \
+            + JUMP_MET_PER_MIN * jumps_per_min
         raw = _clamp(raw, REST_MET, MET_MAX)
         self.met = self._smooth(raw, _BandPass._alpha(EFFORT_SMOOTH_HZ, dt))
         return self.met
@@ -460,19 +929,42 @@ class _EffortEstimator:
         self.met = REST_MET
 
 
-def _create_landmarker():
+def _ensure_model(variant: str) -> Path:
+    """Returns the model bundle path, downloading it on first use.
+
+    The ~5-30 MB .task bundles aren't committed to the repo, so a fresh clone
+    (or picking a new --model size) fetches the official file automatically
+    instead of dying with a manual-download instruction.
+    """
+    path = _model_path(variant)
+    if path.exists():
+        return path
+    url = MODEL_URL.format(variant=variant)
+    print(f"Pose model '{variant}' not found locally; downloading {url} ...")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import urllib.request
+    tmp = path.with_suffix(".task.part")
+    try:
+        urllib.request.urlretrieve(url, tmp)
+        tmp.replace(path)
+    except Exception as exc:
+        tmp.unlink(missing_ok=True)
+        raise SystemExit(
+            f"Could not download the pose model ({exc}). "
+            f"Fetch it manually from {url} and save it as {path}."
+        )
+    print(f"Saved {path.name} ({path.stat().st_size / 1e6:.1f} MB).")
+    return path
+
+
+def _create_landmarker(variant: str = "full"):
     """Builds the MediaPipe PoseLandmarker (VIDEO mode). Shared by the live
     service and the offline video_to_features converter, so both extract
     landmarks identically."""
-    if not MODEL_PATH.exists():
-        raise SystemExit(
-            f"Pose model not found at {MODEL_PATH}. Download pose_landmarker_full.task "
-            "from https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-            "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
-        )
+    model_path = _ensure_model(variant)
     return mp.tasks.vision.PoseLandmarker.create_from_options(
         mp.tasks.vision.PoseLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(model_asset_path=str(MODEL_PATH)),
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO,
             num_poses=1,
             min_pose_detection_confidence=0.5,
@@ -490,6 +982,12 @@ def _parse_args() -> argparse.Namespace:
         help=f"Webcam index (default {CAM_INDEX}).",
     )
     parser.add_argument(
+        "--model", choices=MODEL_VARIANTS, default="full",
+        help="Pose model size: lite = fastest (use if the HUD fps reads low), "
+             "full = balanced default, heavy = most accurate but slow. "
+             "Downloads automatically on first use.",
+    )
+    parser.add_argument(
         "--record", nargs="?", const="__auto__", default=None, metavar="PATH",
         help="Record a labelled JSONL dataset for training (see train_classifier.py). "
              "Optional PATH; defaults to an auto-named file under python/pose/recordings/. "
@@ -505,6 +1003,24 @@ def _parse_args() -> argparse.Namespace:
         help="Metronome shows a visual beat only, without the audible tick.",
     )
     parser.add_argument(
+        "--no-preview", action="store_true",
+        help=f"Don't stream the webcam preview to Godot (udp {PREVIEW_PORT}). The "
+             "setup/countdown screen's live mirror goes dark, but pose control is "
+             "unaffected. Use if you want to spend every cycle on pose inference.",
+    )
+    parser.add_argument(
+        "--game", action="store_true",
+        help="Managed mode, for launch from the game: hide the OpenCV preview "
+             "window and let Godot switch the camera on/off (udp %d) instead of "
+             "opening it immediately, so the webcam LED stays dark in menus. A "
+             "camera that won't open reports its status to Godot instead of "
+             "exiting. Run WITHOUT this flag to test the pose service alone." % COMMAND_PORT,
+    )
+    parser.add_argument(
+        "--window", action="store_true",
+        help="Force the OpenCV preview window even in --game mode (for debugging).",
+    )
+    parser.add_argument(
         "--heart-rate", action="store_true",
         help="Read heart rate from a BLE monitor (standard GATT HRS) and send it in "
              "the packet's hr field. Requires bleak (python/requirements-hr.txt).",
@@ -516,32 +1032,136 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _open_camera(index: int) -> "_Camera | None":
+    """Open the webcam and start its reader thread; None if it won't open.
+
+    Used both at startup (standalone) and on a camera_on command (managed), so a
+    webcam that's blocked or in use elsewhere is a recoverable state Godot can be
+    told about, not a hard crash.
+    """
+    cam = _Camera(index)
+    if not cam.opened:
+        cam.release()
+        return None
+    cam.start()
+    return cam
+
+
+def _drain_commands(cmd_sock: socket.socket) -> tuple[str | None, bool, tuple | None]:
+    """Drain Godot's command queue; return (last_camera_cmd, calibrate_requested,
+    calib_cmd). Camera commands ("camera_on"/"camera_off") are keepalive-repeated,
+    so only the most recent matters. "calibrate" starts a fresh capture. Godot also
+    pushes the ACTIVE PROFILE's stored calibration so Python applies the right
+    body: `{"cmd":"set_calibration","standing":x,"squat":y}` -> ("set", x, y), or
+    `{"cmd":"clear_calibration"}` -> ("clear",). These are keepalive-repeated too;
+    only the last is kept."""
+    last: str | None = None
+    calibrate = False
+    calib_cmd: tuple | None = None
+    while True:
+        try:
+            data, _ = cmd_sock.recvfrom(1024)
+        except (BlockingIOError, OSError):
+            break  # nothing queued (non-blocking) or the socket isn't bound
+        try:
+            msg = json.loads(data.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            continue
+        cmd = msg.get("cmd")
+        if cmd in ("camera_on", "camera_off"):
+            last = cmd
+        elif cmd == "calibrate":
+            calibrate = True
+        elif cmd == "set_calibration":
+            try:
+                calib_cmd = ("set", float(msg["standing"]), float(msg["squat"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+        elif cmd == "clear_calibration":
+            calib_cmd = ("clear",)
+    return last, calibrate, calib_cmd
+
+
+def _idle_packet(steps: int, status: str) -> dict:
+    """A zeroed control packet carrying just the service status (camera off /
+    opening / error). Sent as a heartbeat while the webcam isn't streaming so
+    Godot's is_receiving() stays true and it can show the right loading /
+    permission state instead of assuming the whole service is dead."""
+    return _build_packet(0.0, 0.0, False, 0.0, False, steps, 0.0, 0.0, 0.0,
+                         status=status)
+
+
 def main(args: argparse.Namespace | None = None) -> None:
     if args is None:
         args = _parse_args()
+    # Managed mode = launched by the game (run.bat passes --game): no OpenCV
+    # window, and the camera is switched on/off by Godot (COMMAND_PORT) rather
+    # than opening immediately, so the webcam LED is dark in menus.
+    managed = args.game
+    show_window = (not managed) or args.window
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     dest = (UDP_HOST, UDP_PORT)
+    preview_dest = (UDP_HOST, PREVIEW_PORT)
+    send_preview = not args.no_preview
+    preview_interval = 1.0 / PREVIEW_FPS
+    last_preview = 0.0
 
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        raise SystemExit(
-            f"Could not open camera index {args.camera}. "
-            "Close other apps using the webcam, or pass --camera with another index."
-        )
+    # Godot -> Python commands (camera on/off). Non-blocking so it never stalls
+    # the control loop; only acted on in managed mode (a standalone session
+    # ignores stray commands so it isn't bossed around while you're testing).
+    cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    cmd_sock.setblocking(False)
+    try:
+        cmd_sock.bind((UDP_HOST, COMMAND_PORT))
+    except OSError as exc:
+        print(f"Camera command channel unavailable on udp {COMMAND_PORT} ({exc}); "
+              "on/off control from the game is disabled.")
 
-    landmarker = _create_landmarker()
+    landmarker = _create_landmarker(args.model)
+
+    # Standalone: open the camera now (window + LED on, as before). Managed:
+    # start idle and wait for Godot's camera_on so menus keep the webcam dark.
+    cap: "_Camera | None" = None
+    status = "idle"
+    if not managed:
+        cap = _open_camera(args.camera)
+        if cap is None:
+            raise SystemExit(
+                f"Could not open camera index {args.camera}. "
+                "Close other apps using the webcam, or pass --camera with another index."
+            )
+        status = "ready"
 
     forward_filter = OneEuroFilter(FORWARD_MIN_CUTOFF, FORWARD_BETA)
     turn_filter = OneEuroFilter(TURN_MIN_CUTOFF, TURN_BETA)
     state = ControlState()
     steps = StepCounter()
     effort = _EffortEstimator()
+    # Per-user calibration: load a saved profile (personalises crouch depth + seeds
+    # the standing reference) and keep a Calibrator ready to (re)capture on demand
+    # -- 'c' in the preview window, or a {"cmd":"calibrate"} packet from Godot.
+    calibrator = Calibrator()
+    # Standalone owns calibration.json; in --game (managed) mode Godot is the source
+    # of truth (per-profile) and pushes it via set_calibration, so don't auto-load.
+    calibration = None if managed else Calibration.load()
+    if calibration is not None:
+        state.vertical.apply_calibration(calibration.standing_ext, calibration.squat_ext)
+        print(f"Loaded calibration (squat range "
+              f"{calibration.standing_ext - calibration.squat_ext:.2f} torso).")
     forward = 0.0
     turn = 0.0
     crouch = 0.0
     met = 0.0
     start_time = time.time()
     prev_ts = 0.0
+    frame_seq = 0          # last camera frame we processed (latest-frame-wins)
+    last_valid = -1000.0   # when a full valid pose was last measured
+    lost_reset_done = True # filters start clean; nothing to reset until tracked
+    fps_avg = 0.0          # smoothed loop rate + inference time for the HUD --
+    infer_ms_avg = 0.0     # the first thing to check if control feels laggy
+    last_heartbeat = 0.0   # throttles the idle status packet to ~10 Hz
+    HEARTBEAT_SEC = 0.1
 
     # --- Optional recording / metronome / heart-rate ---------------------------
     recorder = None
@@ -558,59 +1178,161 @@ def main(args: argparse.Namespace | None = None) -> None:
     hr_monitor = _start_heart_rate(args) if args.heart_rate else None
     current_label = recording.DEFAULT_LABEL
 
-    print(f"MotionFit pose service -> udp://{UDP_HOST}:{UDP_PORT}. Press 'q' to quit.")
+    if managed:
+        print(f"MotionFit pose service (managed) -> udp://{UDP_HOST}:{UDP_PORT}. "
+              f"Camera on/off driven by the game on udp {COMMAND_PORT}.")
+    else:
+        print(f"MotionFit pose service -> udp://{UDP_HOST}:{UDP_PORT}. Press 'q' to quit.")
     try:
         while True:
-            ok, frame = cap.read()
-            if not ok:
+            # --- Godot camera commands (managed mode only) --------------------
+            cam_cmd, calibrate_req, calib_cmd = _drain_commands(cmd_sock)
+            if calibrate_req:
+                calibrator.start()  # Godot asked to (re)calibrate
+            if calib_cmd is not None:  # Godot pushed the active profile's calibration
+                if calib_cmd[0] == "set":
+                    state.vertical.apply_calibration(calib_cmd[1], calib_cmd[2])
+                elif calib_cmd[0] == "clear":
+                    state.vertical.clear_calibration()
+            if managed and cam_cmd == "camera_on" and cap is None:
+                # Tell Godot we're warming up BEFORE the (blocking) open, so the
+                # setup screen can show "starting camera" while it happens.
+                status = "opening"
+                _send(sock, dest, _idle_packet(steps.steps, status))
+                cap = _open_camera(args.camera)
+                if cap is None:
+                    status = "error"  # in use, or camera access blocked by the OS
+                    print("camera_on: could not open the webcam (in use or blocked).")
+                else:
+                    status = "ready"
+                    # Fresh session: clear filters so a re-open doesn't inherit
+                    # stale motion, and reset the dt bookkeeping.
+                    state.reset()
+                    forward_filter.reset()
+                    turn_filter.reset()
+                    effort.reset()
+                    forward = turn = crouch = met = 0.0
+                    last_valid = -1000.0
+                    lost_reset_done = True
+                    prev_ts = 0.0
+                    print("camera_on: webcam opened.")
+            elif managed and cam_cmd == "camera_off" and cap is not None:
+                cap.release()  # releases the device -> the webcam LED goes dark
+                cap = None
+                status = "idle"
+                if show_window:
+                    cv2.destroyAllWindows()
+                print("camera_off: webcam released.")
+
+            # --- No camera (idle/opening/error): heartbeat status, then wait ---
+            if cap is None:
+                now = time.time()
+                if now - last_heartbeat >= HEARTBEAT_SEC:
+                    _send(sock, dest, _idle_packet(steps.steps, status))
+                    last_heartbeat = now
+                time.sleep(0.03)  # don't spin the CPU while the camera is off
                 continue
+
+            # --- Camera running: capture + pose + control ---------------------
+            frame_seq, frame = cap.read_latest(frame_seq)
+            if frame is None:
+                continue  # camera stalled; Godot's own timeout keeps things safe
             frame = cv2.flip(frame, 1)  # mirror, so screen matches your movements
+            # Ship the CLEAN mirror to Godot's setup screen before any skeleton/HUD
+            # is drawn on `frame` -- the in-game preview is a plain mirror by design.
+            if send_preview and time.time() - last_preview >= preview_interval:
+                _send_preview(sock, preview_dest, frame)
+                last_preview = time.time()
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             now = time.time()
             dt = (now - prev_ts) if prev_ts else (1.0 / 30.0)
             prev_ts = now
             timestamp_ms = int((now - start_time) * 1000)
+            infer_start = time.perf_counter()
             result = landmarker.detect_for_video(mp_image, timestamp_ms)
+            infer_ms = (time.perf_counter() - infer_start) * 1000.0
+            fps_avg += ((1.0 / dt if dt > 0 else 0.0) - fps_avg) * 0.1
+            infer_ms_avg += (infer_ms - infer_ms_avg) * 0.1
 
             detected = bool(result.pose_landmarks)
             pose_ok = False
+            pose_msg = ""
             jumped = False
+            hands_up = False
             lm = None
             wlm = None
             if detected:
                 lm = result.pose_landmarks[0]
                 wlm = result.pose_world_landmarks[0] if result.pose_world_landmarks else None
-                _draw_pose(frame, lm)
-                pose_ok, pose_msg = _assess_pose(lm)
-                if pose_ok:
-                    forward, turn, jumped, crouch = _compute_controls(
-                        lm, wlm, state, forward_filter, turn_filter, steps, now, dt
-                    )
-                    status_text, status_color = "TRACKING", (0, 220, 0)
-                else:
-                    # Seen, but not in a valid position: pause measurement and
-                    # tell the user how to fix their stance.
-                    forward *= 0.5
-                    turn *= 0.5
-                    crouch *= 0.5
+                if show_window:
+                    _draw_pose(frame, lm)
+                # Once we're already tracking a valid stance, relax the leg-drop
+                # gate so squatting down (knees fold up to the hips) stays valid
+                # and reads as a crouch rather than dropping out with "STAND UP".
+                standing = (now - last_valid) <= LOSS_GRACE_SEC
+                pose_ok, pose_msg = _assess_pose(lm, standing)
+                # The "ready" gesture is checked independently of the marching
+                # stance -- you raise your hands to start BEFORE getting into
+                # position, so it must not require pose_ok (which wants legs).
+                hands_up = _detect_hands_up(lm)
+
+            if detected and pose_ok:
+                forward, turn, jumped, crouch = _compute_controls(
+                    lm, wlm, state, forward_filter, turn_filter, steps, now, dt
+                )
+                status_text, status_color = "TRACKING", (0, 220, 0)
+                last_valid = now
+                lost_reset_done = False
+                # Feed the calibrator when it's running -- leg_ext and fused_speed
+                # are already in this frame's snapshot (both torso-normalised, so
+                # the capture is distance-invariant). On completion, personalise
+                # crouch + seed the standing reference, and persist for next time.
+                if calibrator.active:
+                    snap = state.feature_snapshot
+                    calibrator.update(snap.get("leg_ext", 0.0),
+                                      snap.get("fused_speed", 0.0), dt)
+                    if calibrator.state == Calibrator.DONE and calibrator.result:
+                        calibration = calibrator.result
+                        state.vertical.apply_calibration(calibration.standing_ext,
+                                                         calibration.squat_ext)
+                        # Standalone persists to calibration.json; in managed mode
+                        # Godot saves the captured values per-profile (from the packet).
+                        if not managed:
+                            calibration.save()
+                        print(f"Calibrated: squat range "
+                              f"{calibration.standing_ext - calibration.squat_ext:.2f} torso"
+                              + (f" -> saved {CALIB_PATH.name}." if not managed else "."))
+            else:
+                # Tracking dropped this frame. Detection blinks for a frame or
+                # two all the time, so short losses are coasted through -- the
+                # outputs decay gently and NO filter state is touched, making a
+                # blink invisible in game. Only a sustained loss (past the grace
+                # window) decays hard and resets the pipeline for a clean
+                # reacquire. The decay is time-based, so behaviour doesn't
+                # depend on the camera's frame rate.
+                in_grace = (now - last_valid) <= LOSS_GRACE_SEC
+                decay = math.exp(-dt / (HOLD_DECAY_SEC if in_grace else DROP_DECAY_SEC))
+                forward *= decay
+                turn *= decay
+                crouch *= decay
+                if not in_grace and not lost_reset_done:
                     state.reset()
                     forward_filter.reset()
                     turn_filter.reset()
+                    lost_reset_done = True
+                if detected:
+                    # Seen, but not in a valid stance: tell them how to fix it.
                     status_text, status_color = pose_msg, (0, 200, 255)  # amber
-            else:
-                # No body in frame: decay to neutral so the character stops.
-                forward *= 0.5
-                turn *= 0.5
-                crouch *= 0.5
-                state.reset()
-                forward_filter.reset()
-                turn_filter.reset()
-                status_text, status_color = "NO BODY - step back into view", (60, 60, 255)
+                else:
+                    status_text, status_color = "NO BODY - step back into view", (60, 60, 255)
 
             cadence = steps.cadence(now)
-            if pose_ok:
-                met = effort.update(forward, cadence, jumped, now, dt)
+            if detected and pose_ok:
+                met = effort.update(forward, cadence, jumped,
+                                    state.vertical.work_speed, now, dt)
+            elif (now - last_valid) <= LOSS_GRACE_SEC:
+                met = effort.met  # hold effort through a blink -- no calorie dip
             else:
                 # Not measuring: emit no effort so Godot banks no phantom calories.
                 effort.reset()
@@ -619,52 +1341,87 @@ def main(args: argparse.Namespace | None = None) -> None:
             # Heart rate comes from a BLE wearable when --heart-rate is on; 0 means
             # no reading, and Godot then falls back to the motion-based estimate.
             hr = hr_monitor.current_bpm() if hr_monitor is not None else 0.0
+            status = "ready"
+            # Coaching line for the setup screen: empty once fully framed, else the
+            # fix to make (the amber HUD instruction, or "STEP INTO VIEW" when no
+            # body is detected at all). Godot gates the ready-gesture hold on this.
+            ready_hint = "" if (detected and pose_ok) else \
+                (pose_msg if detected else "STEP INTO VIEW")
+            # On a completed calibration, ship the captured values so Godot can save
+            # them to the active profile (0 when there's no result yet).
+            calib_standing = calibrator.result.standing_ext if calibrator.result else 0.0
+            calib_squat = calibrator.result.squat_ext if calibrator.result else 0.0
             packet = _build_packet(forward, turn, jumped, crouch,
-                                   detected and pose_ok, steps.steps, cadence, met, hr)
+                                   detected and pose_ok, steps.steps, cadence, met, hr,
+                                   hands_up=hands_up, status=status, ready_hint=ready_hint,
+                                   calib_state=calibrator.state, calib_prompt=calibrator.prompt,
+                                   calib_progress=calibrator.progress,
+                                   calib_standing=calib_standing, calib_squat=calib_squat)
             _send(sock, dest, packet)
-            _draw_hud(frame, forward, turn, jumped, crouch, status_text,
-                      status_color, steps.steps, cadence, met, state.active_label)
-            if recorder is not None:
-                _draw_recording_overlay(frame, recorder, current_label,
-                                        metronome, beat_now, hr_monitor)
-                if detected:
-                    recorder.write(
-                        ts=now, label=current_label, pose_ok=pose_ok, detected=detected,
-                        packet=packet, landmarks=_landmarks_to_list(lm),
-                        world=_world_to_list(wlm),
-                        features=(state.feature_snapshot if pose_ok else None),
-                        metronome=metronome,
-                    )
+            last_heartbeat = now
+            # Recording is a standalone testing feature but doesn't need the drawn
+            # frame, so it runs regardless of the window.
+            if recorder is not None and detected:
+                recorder.write(
+                    ts=now, label=current_label, pose_ok=pose_ok, detected=detected,
+                    packet=packet, landmarks=_landmarks_to_list(lm),
+                    world=_world_to_list(wlm),
+                    features=(state.feature_snapshot if pose_ok else None),
+                    metronome=metronome,
+                )
 
-            cv2.imshow("MotionFit Pose (press q to quit)", frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27):
-                break
-            if 32 <= key < 127:  # a printable key: maybe a move label
-                new_label = recording.label_for_key(chr(key))
-                if new_label is not None:
-                    current_label = new_label
+            if show_window:
+                _draw_hud(frame, forward, turn, jumped, crouch, status_text,
+                          status_color, steps.steps, cadence, met, state.active_label,
+                          fps_avg, infer_ms_avg)
+                if hands_up:  # confirm the ready gesture registered, on-camera
+                    _put_label(frame, "READY - HANDS UP", (frame.shape[1] // 2 - 130, 40),
+                               0.7, (0, 220, 0))
+                if calibrator.active or calibrator.state in (Calibrator.DONE, Calibrator.FAILED):
+                    _draw_calibration_overlay(frame, calibrator)
+                if recorder is not None:
+                    _draw_recording_overlay(frame, recorder, current_label,
+                                            metronome, beat_now, hr_monitor)
+                cv2.imshow("MotionFit Pose (press q to quit, c to calibrate)", frame)
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("q"), 27):
+                    break
+                if key == ord("c"):  # (re)run the ~10s calibration
+                    calibrator.start()
+                elif 32 <= key < 127:  # a printable key: maybe a move label
+                    new_label = recording.label_for_key(chr(key))
+                    if new_label is not None:
+                        current_label = new_label
     finally:
         # stop the character and zero the effort so no calories accrue after exit
-        _send(sock, dest, _build_packet(0.0, 0.0, False, 0.0, False, steps.steps, 0.0, 0.0, 0.0))
+        _send(sock, dest, _build_packet(0.0, 0.0, False, 0.0, False, steps.steps,
+                                        0.0, 0.0, 0.0, status="idle"))
         if recorder is not None:
             recorder.close()
             print(f"Recording saved: {recorder.path} ({recorder.frames} frames)")
         if hr_monitor is not None:
             hr_monitor.stop()
-        cap.release()
+        if cap is not None:
+            cap.release()
         landmarker.close()
-        cv2.destroyAllWindows()
+        if show_window:
+            cv2.destroyAllWindows()
         sock.close()
+        cmd_sock.close()
 
 
-def _assess_pose(lm) -> tuple[bool, str]:
+def _assess_pose(lm, standing: bool = False) -> tuple[bool, str]:
     """Is the person in a valid standing position to measure from?
 
     Returns (ok, message); when not ok the message is a short on-screen
     instruction. Gating on this stops the tracker from emitting junk forward/step
     values when the user is out of frame, sitting, reclining, or otherwise not
     set up to march in place.
+
+    `standing` = we were already tracking a valid stance on the previous frame.
+    It relaxes the leg-drop check so a squat (which folds the knees up toward the
+    hips) keeps being measured as a crouch instead of dropping out with "STAND UP";
+    you still have to start from a full stand to acquire tracking in the first place.
     """
     core = (L_SHOULDER, R_SHOULDER, L_HIP, R_HIP)
     if any((lm[i].visibility or 0.0) < MIN_VISIBILITY for i in core):
@@ -689,8 +1446,23 @@ def _assess_pose(lm) -> tuple[bool, str]:
     # sitting or reclining with the legs stretched out toward the camera. Using
     # the lower (planted) knee keeps this valid even at the top of a high march.
     planted_knee_y = max(lm[L_KNEE].y, lm[R_KNEE].y)
-    if (planted_knee_y - hip_cy) / torso_len < POSE_MIN_LEG_DROP:
+    leg_drop_min = POSE_SQUAT_LEG_DROP if standing else POSE_MIN_LEG_DROP
+    if (planted_knee_y - hip_cy) / torso_len < leg_drop_min:
         return False, "STAND UP"
+
+    # Distance: keep the player in the band the tracker measures best. torso_len
+    # is the shoulder-centre-to-hip-centre span in normalized image units, so it
+    # doubles as an apparent-size / distance gauge.
+    if torso_len > POSE_MAX_TORSO_FRAC:
+        return False, "STEP BACK"
+    if torso_len < POSE_MIN_TORSO_FRAC:
+        return False, "GET CLOSER"
+    # A planted foot jammed against the bottom edge means you're framed too low --
+    # stepping back brings the feet in, which gives the cleanest cadence.
+    if (lm[L_ANKLE].visibility or 0.0) >= MIN_VISIBILITY and \
+       (lm[R_ANKLE].visibility or 0.0) >= MIN_VISIBILITY and \
+       max(lm[L_ANKLE].y, lm[R_ANKLE].y) > POSE_FEET_EDGE_Y:
+        return False, "STEP BACK — SHOW YOUR FEET"
     return True, "TRACKING"
 
 
@@ -739,12 +1511,22 @@ def _compute_controls(
     for name, idx, weight, _is_leg in FORWARD_CHANNELS:
         osc = state.osc[name]
         vis = lm[idx].visibility or 0.0
-        if vis < MIN_VISIBILITY:
-            osc.reset()
+        # Hysteresis: joining needs MIN_VISIBILITY, but an already-tracked joint
+        # stays until it drops below the lower VIS_EXIT -- so a joint hovering
+        # right at the threshold doesn't flap in and out of the fusion.
+        threshold = VIS_EXIT if state.channel_active[name] else MIN_VISIBILITY
+        if vis < threshold:
+            state.channel_active[name] = False
+            # Keep the filter state through short occlusions (a hand passing in
+            # front, a flicker); only a real absence starts the channel over.
+            if now - state.last_seen[name] > CHANNEL_GRACE_SEC:
+                osc.reset()
             visible[name] = False
             footfalls[name] = False
             channels_snapshot[name] = {"value": 0.0, "speed": 0.0, "vis": round(vis, 3)}
             continue
+        state.channel_active[name] = True
+        state.last_seen[name] = now
         footfalls[name] = osc.update(channel_height(idx), dt)
         visible[name] = True
         w = weight * vis
@@ -756,35 +1538,14 @@ def _compute_controls(
             "vis": round(vis, 3),
         }
     fused_speed = (num / den) if den > 0.0 else 0.0
-    target_forward = 0.0
-    if fused_speed > FORWARD_THRESHOLD:
-        target_forward = _clamp((fused_speed - FORWARD_THRESHOLD) * FORWARD_GAIN, 0.0, 1.0)
-    forward = _clamp(forward_filter(target_forward, dt), 0.0, 1.0)
-
-    # --- Steps: one per foot plant, ankle preferred, knees as fallback ---------
-    # Only while actually moving forward -- otherwise a waist turn or fidget that
-    # nudges the (often poorly tracked) legs would be miscounted as steps.
-    if forward > STEP_FORWARD_GATE:
-        for side in ("l", "r"):
-            if visible.get(f"{side}_ankle"):
-                rep = f"{side}_ankle"
-            elif visible.get(f"{side}_knee"):
-                rep = f"{side}_knee"
-            else:
-                continue
-            if footfalls.get(rep) and now - steps.last_step_time >= STEP_MIN_INTERVAL:
-                steps.add(now)
-
-    legs = any(visible.get(n) for n in ("l_ankle", "r_ankle", "l_knee", "r_knee"))
-    arms = visible.get("l_wrist") or visible.get("r_wrist")
-    state.active_label = " + ".join(
-        p for p in (("legs" if legs else ""), ("arms" if arms else "")) if p
-    ) or "none"
 
     # --- Jump & crouch: from hip height and the planted foot -------------------
-    # The planted (lower on screen = larger y) foot defines standing height; use
-    # ankles when visible, else knees. hip_up is negated because image y grows
-    # downward, so up is negative.
+    # Computed BEFORE forward/steps because a squat (or a jump) has to be able to
+    # veto them: a squat's down-up sweep and a jump's knee-tuck both move the legs
+    # relative to the hip the way a march does, so they'd otherwise leak into
+    # `forward`. The planted (lower on screen = larger y) foot defines standing
+    # height; use ankles when visible, else knees. hip_up is negated because image
+    # y grows downward, so up is negative.
     if visible.get("l_ankle") and visible.get("r_ankle"):
         foot_y = max(lm[L_ANKLE].y, lm[R_ANKLE].y)
     else:
@@ -792,6 +1553,60 @@ def _compute_controls(
     leg_ext = (foot_y - hip_cy) / torso_len
     jumped = state.vertical.update(-hip_cy, leg_ext, torso_len, dt, now)
     crouch = state.vertical.crouch
+
+    # A squat is not a march. While crouching -- with a short hold that also covers
+    # the rising half of the rep -- and while inside a jump, suppress the fused
+    # march speed and the step counter. crouch's big, reliable hip drop wins the
+    # tie, so the ambiguous leg sweep is read as the squat/jump it really is.
+    squatting = crouch > CROUCH_MARCH_GATE
+    if squatting:
+        state.squat_active_until = now + SQUAT_MARCH_HOLD
+    # Block the march for a squat (crouch-triggered hold) OR a jump (in_jump spans
+    # the dip/launch/land). in_jump keys off the leg leaving the floor, NOT crouch,
+    # so blanking crouch during a jump doesn't unblock the march -- the two were
+    # coupled before and a jump leaked straight back into forward.
+    march_blocked = now < state.squat_active_until or state.vertical.in_jump
+
+    target_forward = 0.0
+    if not march_blocked and fused_speed > FORWARD_THRESHOLD:
+        target_forward = _clamp((fused_speed - FORWARD_THRESHOLD) * FORWARD_GAIN, 0.0, 1.0)
+    forward = _clamp(forward_filter(target_forward, dt), 0.0, 1.0)
+
+    # --- Steps: one per foot plant, ankle preferred, knees as fallback ---------
+    # Only while actually moving forward -- otherwise a waist turn or fidget that
+    # nudges the (often poorly tracked) legs would be miscounted as steps -- and
+    # never while a squat or jump is vetoing the march (see march_blocked above;
+    # the explicit guard stops steps immediately, before forward's filter decays).
+    if forward > STEP_FORWARD_GATE and not march_blocked:
+        for side in ("l", "r"):
+            if visible.get(f"{side}_ankle"):
+                rep = f"{side}_ankle"
+            elif visible.get(f"{side}_knee"):
+                rep = f"{side}_knee"
+            else:
+                continue
+            # Two debounces: a global one (real steps of both feet alternate no
+            # faster than this) and a per-leg one (the SAME foot needs longer
+            # between plants, so a noisy single-leg wobble can't double-count).
+            if footfalls.get(rep) and now - steps.last_step_time >= STEP_MIN_INTERVAL \
+                    and steps.side_ready(side, now):
+                steps.add(now, side)
+
+    # Mirror of the squat->march veto: a march's hip-bob folds the planted leg
+    # enough to fake a crouch, so once we're clearly marching, clear crouch (with a
+    # hold, since the crouch spikes sit in the between-step dips where forward
+    # drops). Stable against the squat rule -- a real squat has its forward gated to
+    # ~0 above, so only true locomotion trips this while a held squat keeps crouch.
+    if forward > CROUCH_FORWARD_GATE:
+        state.march_active_until = now + MARCH_CROUCH_HOLD
+    if now < state.march_active_until:
+        crouch = 0.0
+
+    legs = any(visible.get(n) for n in ("l_ankle", "r_ankle", "l_knee", "r_knee"))
+    arms = visible.get("l_wrist") or visible.get("r_wrist")
+    state.active_label = " + ".join(
+        p for p in (("legs" if legs else ""), ("arms" if arms else "")) if p
+    ) or "none"
 
     # --- Turn: shoulder depth offset = body yaw (world landmarks are metric) --
     target_turn = 0.0
@@ -825,8 +1640,31 @@ def _compute_controls(
 
 def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
                   detected: bool, steps: int, cadence: float,
-                  met: float, hr: float) -> dict:
-    """Assembles the Godot-bound packet (CONTEXT.md §9 schema)."""
+                  met: float, hr: float, hands_up: bool = False,
+                  status: str = "ready", ready_hint: str = "",
+                  calib_state: str = "idle", calib_prompt: str = "",
+                  calib_progress: float = 0.0,
+                  calib_standing: float = 0.0, calib_squat: float = 0.0) -> dict:
+    """Assembles the Godot-bound packet (CONTEXT.md §9 schema).
+
+    `hands_up`, `status`, `ready_hint` and the `calib_*` fields are
+    keyword-only-by-default so the offline tools that call this
+    (video_to_features.py) keep working unchanged.
+
+    `status` is the service/camera state so Godot can show the right loading /
+    permission UI even when no pose is streaming: "ready" (camera on, tracking),
+    "idle" (camera off in menus), "opening" (warming up), "error" (open failed).
+
+    `ready_hint` is the setup-screen coaching line: a short instruction to get
+    into a valid, trackable stance ("STEP INTO VIEW", "SHOW YOUR LEGS", "STAND
+    UP", "GET CLOSER", "STEP BACK", ...), or "" when the player is fully framed
+    and ready. Godot's GameIntro gates the "raise your hands to start" hold on
+    this being empty, so the camera is verified before a game begins.
+
+    `calib_state` / `calib_prompt` / `calib_progress` drive the calibration setup
+    UI: the state machine phase ("idle"/"still"/"squat"/"done"/"failed"), a short
+    on-screen instruction, and a 0..1 progress for the current phase.
+    """
     return {
         "forward": round(forward, 3),
         "turn": round(turn, 3),
@@ -838,12 +1676,58 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
         "cadence": round(cadence, 1),
         "met": round(met, 2),   # body-mass-independent effort; Godot -> calories
         "hr": round(hr, 1),     # heart rate bpm, 0 = no reading (motion fallback)
+        "hands_up": hands_up,   # "ready" gesture: both hands above the head
+        "status": status,       # service/camera state (see docstring); CONTEXT.md §9
+        "ready_hint": ready_hint,  # setup coaching line; "" = framed and ready
+        "calib_state": calib_state,      # calibration phase (see docstring)
+        "calib_prompt": calib_prompt,    # calibration on-screen instruction
+        "calib_progress": round(calib_progress, 3),  # 0..1 within the current phase
+        # Captured leg extensions on a completed calibration (0 until then); Godot
+        # persists these to the active profile.
+        "calib_standing": round(calib_standing, 5),
+        "calib_squat": round(calib_squat, 5),
         "ts": time.time(),
     }
 
 
+def _detect_hands_up(lm) -> bool:
+    """True while BOTH wrists are raised above the head -- the "ready" gesture the
+    setup screen waits for before starting the countdown.
+
+    Chosen because it's clearly distinct from marching (arms swing, but rarely
+    above the face) so it can't fire by accident, and it reads from landmarks we
+    already track. `y` grows downward in image space, so "above" means a smaller
+    y than the nose. Godot times how long it's held and shows the progress ring.
+    """
+    for i in (NOSE, L_WRIST, R_WRIST):
+        if (lm[i].visibility or 0.0) < MIN_VISIBILITY:
+            return False
+    nose_y = lm[NOSE].y
+    return lm[L_WRIST].y < nose_y and lm[R_WRIST].y < nose_y
+
+
 def _send(sock: socket.socket, dest, packet: dict) -> None:
     sock.sendto(json.dumps(packet).encode("utf-8"), dest)
+
+
+def _send_preview(sock: socket.socket, dest, frame) -> None:
+    """Encodes `frame` as a small JPEG and sends it to Godot's setup screen.
+
+    Downscaled + moderately compressed so the whole image fits in one UDP
+    datagram; failures (encode error, oversized frame, socket hiccup) are
+    swallowed because the preview is cosmetic -- it must never disturb control.
+    """
+    small = cv2.resize(frame, (PREVIEW_WIDTH, PREVIEW_HEIGHT))
+    ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, PREVIEW_QUALITY])
+    if not ok:
+        return
+    data = buf.tobytes()
+    if len(data) > 60000:  # keep clear of the ~64 KB single-datagram ceiling
+        return
+    try:
+        sock.sendto(data, dest)
+    except OSError:
+        pass
 
 
 def _start_heart_rate(args: argparse.Namespace):
@@ -911,12 +1795,13 @@ def _put_label(frame, text: str, org, scale: float, color) -> None:
 
 def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
               status_text: str, status_color, steps: int, cadence: float,
-              met: float, sources: str = "none") -> None:
+              met: float, sources: str = "none",
+              fps: float = 0.0, infer_ms: float = 0.0) -> None:
     # A translucent dark panel behind the text gives the labels a consistent
     # backdrop, so they read cleanly even when the camera is pointed at a bright
     # window or a white wall.
     panel = frame.copy()
-    cv2.rectangle(panel, (6, 8), (360, 234), (0, 0, 0), -1)
+    cv2.rectangle(panel, (6, 8), (360, 258), (0, 0, 0), -1)
     cv2.addWeighted(panel, 0.4, frame, 0.6, 0, frame)
 
     _put_label(frame, status_text, (12, 28), 0.62, status_color)
@@ -931,6 +1816,33 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
     _put_label(frame, f"cadence {cadence:.0f}/min", (12, 176), 0.6, (255, 255, 255))
     _put_label(frame, f"effort  {met:.1f} MET", (12, 200), 0.6, (120, 255, 120))
     _put_label(frame, f"tracking {sources}", (12, 224), 0.5, (200, 200, 200))
+    # Loop rate + model inference time. Below ~15 fps control gets noticeably
+    # laggy -- that's the cue to relaunch with --model lite.
+    perf_color = (200, 200, 200) if fps >= 15.0 else (0, 200, 255)
+    _put_label(frame, f"{fps:.0f} fps  ({infer_ms:.0f} ms pose)", (12, 248),
+               0.5, perf_color)
+
+
+def _draw_calibration_overlay(frame, calibrator) -> None:
+    """Center-screen calibration prompt + a progress bar for the current phase.
+
+    Only drawn while calibrating (or briefly on done/failed), so it doesn't clutter
+    normal play. Mirrors what Godot's setup screen shows from the packet's calib_*
+    fields, so the standalone preview and the game read the same."""
+    h, w = frame.shape[:2]
+    done = calibrator.state == Calibrator.DONE
+    failed = calibrator.state == Calibrator.FAILED
+    color = (0, 220, 0) if done else (60, 60, 255) if failed else (0, 200, 255)
+    text = calibrator.prompt
+    (tw, _th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
+    cx = w // 2
+    _put_label(frame, text, (cx - tw // 2, h // 2 - 30), 0.9, color)
+    if calibrator.active:  # a progress bar under the prompt
+        bw, bh = 300, 16
+        x0, y0 = cx - bw // 2, h // 2
+        cv2.rectangle(frame, (x0, y0), (x0 + bw, y0 + bh), (255, 255, 255), 1)
+        fill = int(bw * calibrator.progress)
+        cv2.rectangle(frame, (x0, y0), (x0 + fill, y0 + bh), color, -1)
 
 
 def _draw_recording_overlay(frame, recorder, current_label: str, metronome,

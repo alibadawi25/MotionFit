@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://te18r6k0coi1"]
 
 [ext_resource type="Script" uid="uid://c2oikvb35gp4" path="res://scripts/ui/main_menu.gd" id="1"]
-[ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
+[ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/textures/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
 [ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="4_anton"]
 

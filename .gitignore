@@ -26,6 +26,19 @@ env/
 # Local tooling / editor settings
 .claude/
 
+# Godot export / build output
+/export/
+/build/
+*.tmp
+
+# Throwaway scratch / inspection files kept at the project root (e.g. the model
+# inspector or a one-off parse check). Anchored to root so a real _foo.gd in a
+# subfolder is left alone.
+/_*.gd
+/_*.gd.uid
+/_*.tscn
+/_*.tscn.uid
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

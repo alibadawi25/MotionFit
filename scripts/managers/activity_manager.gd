@@ -14,11 +14,16 @@ extends Node
 ## bucket, so no game or screen has to know this manager exists. Persistence is
 ## delegated to SaveManager; it initialises after GameManager (whose signal it
 ## connects to in _ready).
+##
+## The daily log is PER-PROFILE: the save file is scoped by the active profile id
+## and reloaded when ProfileManager switches profile, so each person on a shared
+## device keeps their own history. (ProfileManager autoloads before this.)
 
 ## Emitted after a session has been folded into [param day_key] ("YYYY-MM-DD").
 signal activity_recorded(day_key: String)
 
-const SAVE_FILE: String = "activity.json"
+## Pre-multi-profile shared log, adopted once by the migrated profile.
+const LEGACY_SAVE_FILE: String = "activity.json"
 const SECONDS_PER_DAY: int = 86400
 const DEFAULT_DAILY_CALORIE_GOAL: float = 300.0
 ## Upper bound on the streak scan so a full log can never loop unbounded.
@@ -27,11 +32,31 @@ const MAX_STREAK_SCAN: int = 3650
 var _data: Dictionary = _default_data()
 
 func _ready() -> void:
-	_data = SaveManager.load_data(SAVE_FILE, _default_data())
+	_load_for_active()
+	GameManager.game_finished.connect(_on_game_finished)
+	# The log follows whoever is playing: reload when the active profile changes.
+	ProfileManager.profile_switched.connect(func(_id: String): _load_for_active())
+
+
+## (Re)loads the daily log for the currently-active profile. A migrated profile
+## adopts the old shared "activity.json" once (then owns a scoped copy).
+func _load_for_active() -> void:
+	var file: String = _save_file()
+	if SaveManager.has_save(file):
+		_data = SaveManager.load_data(file, _default_data())
+	elif ProfileManager.active_is_migrated() and SaveManager.has_save(LEGACY_SAVE_FILE):
+		_data = SaveManager.load_data(LEGACY_SAVE_FILE, _default_data())
+		_save()  # write it under the per-profile name so it's owned going forward
+	else:
+		_data = _default_data()
 	for key in _default_data():
 		if not _data.has(key):
 			_data[key] = _default_data()[key]
-	GameManager.game_finished.connect(_on_game_finished)
+
+
+## Per-profile save filename ("activity_<active_id>.json").
+func _save_file() -> String:
+	return "activity_%s.json" % ProfileManager.get_active_id()
 
 
 func _on_game_finished(result: Dictionary) -> void:
@@ -178,4 +203,4 @@ func _default_data() -> Dictionary:
 
 
 func _save() -> void:
-	SaveManager.save_data(SAVE_FILE, _data)
+	SaveManager.save_data(_save_file(), _data)

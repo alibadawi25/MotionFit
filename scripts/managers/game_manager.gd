@@ -26,6 +26,11 @@ var _games: Array[Dictionary] = []
 var _current_game_id: String = ""
 var _difficulty: Difficulty = Difficulty.NORMAL
 var _last_result: Dictionary = {}
+# Set when a game is launched through the platform, so the game's MiniGame base
+# knows to run the setup/countdown intro before play. A game scene opened
+# directly (e.g. from the editor) sees this false and just begins. See
+# [method take_intro_pending] and MiniGame._ready.
+var _intro_pending: bool = false
 
 func _ready() -> void:
 	_build_registry()
@@ -66,18 +71,32 @@ func get_difficulty() -> Difficulty:
 	return _difficulty
 
 
-## Begins the currently selected game by routing to the countdown screen, which
-## then loads the game scene. Does nothing if no available game is selected.
+## Begins the currently selected game by loading its scene directly. The game's
+## MiniGame base then runs the shared setup → countdown intro as an overlay on
+## top of the loaded world (so the countdown can show the game's own first frame)
+## before gameplay begins. Does nothing if no available game is selected.
 func start_selected_game() -> void:
 	var game: Dictionary = get_game(_current_game_id)
 	if game.is_empty() or not bool(game["available"]):
 		push_warning("GameManager: cannot start unavailable game '%s'" % _current_game_id)
 		return
-	SceneManager.load_countdown()
+	_intro_pending = true
+	SceneManager.load_scene(String(game["scene"]))
 
 
-## Loads the scene of the currently selected game. Called by the countdown
-## screen once the count reaches zero.
+## Returns whether the just-loaded game should play the setup/countdown intro,
+## clearing the flag so it fires exactly once. Called by MiniGame._ready; true
+## only when reached through [method start_selected_game] (not a direct open).
+func take_intro_pending() -> bool:
+	var pending: bool = _intro_pending
+	_intro_pending = false
+	return pending
+
+
+## DEPRECATED. The setup/countdown is now an in-game overlay (GameIntro) shown by
+## the MiniGame base, so games load directly (see [method start_selected_game]).
+## Retained only so the now-unused standalone countdown_screen scene still
+## resolves; safe to delete once that scene is removed.
 func launch_current_game_scene() -> void:
 	var game: Dictionary = get_game(_current_game_id)
 	if game.is_empty():
@@ -90,8 +109,19 @@ func launch_current_game_scene() -> void:
 func finish_game(result: Dictionary) -> void:
 	if not result.has("game_id"):
 		result["game_id"] = _current_game_id
-	_last_result = result
+	# Snapshot progression BEFORE recording, so the results screen can show what
+	# this game changed: whether the score beat the old best, and any level-up.
+	var game_id: String = String(result["game_id"])
+	var prev_best: int = ProfileManager.get_best_score(game_id)
+	var prev_level: int = ProfileManager.get_level()
+	result["new_best"] = int(result.get("score", 0)) > prev_best
+	result["prev_best"] = prev_best
+	result["level_before"] = prev_level
 	ProfileManager.record_game_result(result)
+	result["level_after"] = ProfileManager.get_level()
+	result["leveled_up"] = ProfileManager.get_level() > prev_level
+	result["total_xp"] = ProfileManager.get_xp()
+	_last_result = result
 	game_finished.emit(result)
 	SceneManager.load_results()
 

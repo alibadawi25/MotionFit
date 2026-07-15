@@ -52,35 +52,35 @@ Settings · Audio · Save System.
 ```
 addons/            Third-party / editor plugins (godot_mcp lives here).
 assets/            All art & media, grouped by type.
-    audio/         Music and SFX.
-    fonts/
-    icons/
-    sprites/
-    ui/            UI textures, themes, nine-patches.
-    animations/
-    shaders/
+	audio/         Music and SFX.
+	fonts/
+	icons/
+	sprites/
+	ui/            UI textures, themes, nine-patches.
+	animations/
+	shaders/
 data/
-    saves/         Bundled DEFAULT/template data only. Runtime saves go to
-                   user:// (see §8) because res:// is read-only when exported.
+	saves/         Bundled DEFAULT/template data only. Runtime saves go to
+				   user:// (see §8) because res:// is read-only when exported.
 python/            Python side of the AI pipeline (runs as a separate process).
-    pose/          Pose detection / gesture recognition.
-    heart_rate/    Heart-rate estimation.
-    calories/      Calorie estimation.
+	pose/          Pose detection / gesture recognition.
+	heart_rate/    Heart-rate estimation.
+	calories/      Calorie estimation.
 scenes/
-    menus/         Shared UI/flow scenes (main menu, game select, settings,
-                   pause, results, loading, countdown).
-    runner/        Infinite Runner game (scene + its own gameplay script).
-    boxing/        (planned)
-    football/      (planned)
-    tennis/        (planned)
-    shared/        Reusable scene fragments used by multiple games (HUD widgets,
-                   overlays, common props).
-    ui/            Reusable UI component scenes (buttons, cards, meters).
+	menus/         Shared UI/flow scenes (main menu, game select, settings,
+				   pause, results, loading, countdown).
+	runner/        Infinite Runner game (scene + its own gameplay script).
+	boxing/        (planned)
+	football/      (planned)
+	tennis/        (planned)
+	shared/        Reusable scene fragments used by multiple games (HUD widgets,
+				   overlays, common props).
+	ui/            Reusable UI component scenes (buttons, cards, meters).
 scripts/
-    managers/      Autoload singletons (see §5). One file per manager.
-    player/        Player representation, avatars, input mapping (future).
-    ui/            Controller scripts for the shared UI scenes in scenes/menus.
-    utilities/     Cross-cutting helpers and base classes (e.g. MiniGame).
+	managers/      Autoload singletons (see §5). One file per manager.
+	player/        Player representation, avatars, input mapping (future).
+	ui/            Controller scripts for the shared UI scenes in scenes/menus.
+	utilities/     Cross-cutting helpers and base classes (e.g. MiniGame).
 ```
 
 ### Where does game code live? (convention)
@@ -126,6 +126,7 @@ Initialisation order (and dependencies):
 | 1 | `SaveManager`   | —                         | Only system that touches disk. JSON read/write to `user://saves`. |
 | 2 | `SceneManager`  | —                         | Owns **every** scene path; the only place scene transitions happen. |
 | — | `MotionManager` | —                         | Receives body-movement data from the Python pose service over UDP; exposes `get_forward()`/`get_turn()`. The AI-input boundary (§9). |
+| — | `CameraPreview` | —                         | Receives the webcam **preview image** from the pose service over a second UDP port (9991) and exposes it as a `Texture2D` for the setup/countdown screen. Still §9-clean: Python owns the camera; Godot only blits the pixels, never inspects them. |
 | 3 | `AudioManager`  | —                         | Music/SFX playback and audio bus volumes. |
 | 4 | `SettingsManager`| SaveManager, AudioManager| User prefs (volumes, fullscreen); loads, applies, persists them. |
 | 5 | `ProfileManager`| SaveManager               | Player profile: XP/level, calories, achievements, per-game stats. |
@@ -196,14 +197,33 @@ Game Select   ← builds cards from GameManager registry (data-driven)
    ↓ (pick a game)
 [Difficulty]  ← FUTURE screen; currently skipped
    ↓
-Countdown     ← 3·2·1·Go, shared by all games
+Game scene loads (a MiniGame), frozen on its first frame
    ↓
-Game (a MiniGame)
+Game Intro    ← overlay the MiniGame base shows before play (shared by all games):
+                Setup (live webcam mirror; raise both hands to start) → 3·2·1·Go
+				over the game's translucent first frame → begin()
+   ↓
+Game plays
    ↓ finish(result)
 Results        ← shows GameResult; awards XP + calories + stats
    ↓
 back to Game Select
 ```
+
+**Get-into-position intro (setup + countdown).** Because every game is played
+with the body, the moment before play is where the player frames themselves in
+the camera and signals ready. `GameManager.start_selected_game()` loads the game
+scene **directly** (setting an `intro_pending` flag); the `MiniGame` base, in
+`_ready()`, freezes the world on its first frame and shows a reusable `GameIntro`
+overlay (`scripts/ui/game_intro.gd`) on top. Phase 1 **Setup**: a live mirror of
+the webcam (from `CameraPreview`) fills the screen; holding the *ready gesture*
+(both hands above the head, detected in Python — see §9) for ~1 s starts the
+count (or press Space, so it works with no camera). Phase 2 **Countdown**: the
+mirror shrinks to a corner thumbnail, the dim fades to translucent to reveal the
+real game behind it, and 3·2·1·Go plays; then `begin()` runs. A game scene opened
+directly (e.g. from the editor) skips the intro and just plays. Adding a game
+needs **no intro code** — the base handles it. (The old standalone
+`countdown_screen` scene is superseded by this overlay.)
 
 Shared scenes live in `scenes/menus/`:
 `main_menu`, `game_select`, `settings_menu`, `pause_menu`, `results_screen`,
@@ -226,11 +246,11 @@ scene restructuring rarely breaks code.
   - `profile.json`  — owned by ProfileManager.
   - `settings.json` — owned by SettingsManager.
   - `activity.json` — owned by ActivityManager. A `days` map keyed by ISO date
-    (`"YYYY-MM-DD"` → `{calories, active_sec, steps, xp, sessions}`) plus a
-    `daily_calorie_goal`. The daily rows are the source of truth; weekly/average/
-    streak figures are computed on read, never stored. Local JSON is the right
-    store here (single-user, offline, ~365 tiny rows/year) — no DB/cloud needed
-    unless cross-device sync is ever required.
+	(`"YYYY-MM-DD"` → `{calories, active_sec, steps, xp, sessions}`) plus a
+	`daily_calorie_goal`. The daily rows are the source of truth; weekly/average/
+	streak figures are computed on read, never stored. Local JSON is the right
+	store here (single-user, offline, ~365 tiny rows/year) — no DB/cloud needed
+	unless cross-device sync is ever required.
 - Missing keys are backfilled from a manager's `DEFAULTS`/`_default_*()` so old
   saves survive new fields. Never assume a loaded save has every key.
 
@@ -248,24 +268,79 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 
 **Packet schema (Python → Godot), newline-free JSON per datagram:**
 ```json
-{ "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "walking": false,
-  "detected": true, "steps": 0, "cadence": 0.0, "met": 1.2, "hr": 0.0, "ts": 0.0 }
+{ "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "hands_up": false,
+  "walking": false, "detected": true, "steps": 0, "cadence": 0.0, "met": 1.2,
+  "hr": 0.0, "status": "ready", "ready_hint": "", "ts": 0.0 }
 ```
 - `forward` 0..1  — marching-in-place intensity (drives forward speed).
 - `turn` -1..1   — torso lean (drives turning).
 - `jump` bool    — true on the single frame a vertical leap launches (edge event).
 - `crouch` 0..1  — squat depth (0 = upright), from the planted foot folding up.
+- `hands_up` bool — the **"ready" gesture**: both wrists raised above the head.
+  The setup screen (§7) times how long it's held to start the countdown; exposed
+  as `MotionManager.is_hands_up()`. Checked independently of the marching stance,
+  so you can signal ready before getting into position.
 - `steps` int / `cadence` float — cumulative steps and current pace (steps/min).
 - `met` float    — effort as a metabolic equivalent (body-mass-independent).
   Godot turns this into calories via `ProfileManager` weight × time; MET is used
   precisely so Python needs no player data. ~1.2 still, ~4-5 march, ~8+ vigorous.
 - `hr` float     — heart rate bpm from a wearable, `0` = none (motion fallback).
+- `status` string — service/camera state so Godot can show the right loading /
+  permission UI even when no pose is streaming: `ready` (camera on, tracking),
+  `idle` (camera off, e.g. in menus), `opening` (warming up), `error` (the webcam
+  couldn't open — in use or access blocked). Sent as a ~10 Hz heartbeat while the
+  camera is off so `MotionManager.is_receiving()` stays true; exposed as
+  `get_status()` / `is_camera_ready()` / `is_camera_error()`.
+- `ready_hint` string — the setup screen's coaching line: a short instruction to
+  reach a valid, trackable stance (`STEP INTO VIEW`, `SHOW YOUR LEGS`, `STAND
+  UPRIGHT`, `STAND UP`, `GET CLOSER`, `STEP BACK`, `STEP BACK — SHOW YOUR FEET`),
+  or `""` once the player is fully framed and ready. Comes from `_assess_pose`,
+  which now also checks apparent distance (torso size in frame) and feet framing.
+  Exposed as `MotionManager.get_ready_hint()` / `is_pose_ready()`; `GameIntro`
+  gates the "raise your hands to start" hold on it, so the camera is verified
+  ready — standing, legs in view, good distance — before any game begins.
+
+**Camera control channel (Godot → Python), UDP port 9992:** the one channel that
+flows *back* to Python (everything else streams out). Godot's `MotionManager`
+sends tiny JSON commands `{"cmd": "camera_on"}` / `{"cmd": "camera_off"}` so the
+webcam is powered on **only while you're playing** — the LED stays dark in menus
+(the user found an always-on camera off-putting). The camera turns on when a
+game's setup screen appears (`GameIntro._ready` → `camera_on()`) and off on the
+next scene change (`MotionManager` hooks `SceneManager.scene_changing`), which
+covers every menu/results/pause-quit exit with no per-screen wiring. Commands are
+idempotent and re-asserted as a ~1 Hz keepalive, so a dropped datagram — or a
+pose service that started after Godot — still converges. **Honoured only when the
+pose service runs in `--game` (managed) mode**; run standalone it opens the camera
+immediately and ignores commands, so testing the pose service alone isn't
+disrupted. Windows can't be *prompted* for camera permission programmatically, so
+"ask for permission" is: a blocked/in-use camera reports `status:"error"` and the
+UI (setup screen + main-menu banner) points the player at Windows Settings ▸
+Privacy ▸ Camera, noting they can still play keyboard-only.
+
+**Webcam preview stream (Python → Godot), separate UDP port 9991:** so the
+setup/countdown screen can show the player a live mirror of themselves, the pose
+service also ships a small downscaled JPEG of each frame (~15 fps) on a *second*
+port — kept off the control port so a fat image never delays a control datagram.
+`CameraPreview` (autoload, §5) decodes it to a `Texture2D`. This is still §9-clean:
+Python owns the camera and only sends pixels; Godot blits the texture and never
+runs vision on it. Disable with `pose_server.py --no-preview`. Cosmetic and lossy
+by design — with no service running the texture is null and the UI falls back to a
+"start the camera / press Space" prompt.
 
 **Files:**
 - `python/pose/pose_server.py` — webcam + MediaPipe Pose → computes forward/turn
-  → UDP. Shows a preview window; press `q` to quit. `python/requirements.txt`
-  lists deps (opencv-python, mediapipe). CLI flags: `--record [PATH]`,
-  `--metronome BPM` / `--no-beep`, `--heart-rate` / `--hr-address`, `--camera N`.
+  → UDP. Run it alone (no `--game`) to test: it shows the OpenCV preview window
+  (press `q` to quit) and opens the camera immediately. `run.bat` passes `--game`
+  (managed mode): **no** preview window and the camera is switched on/off by Godot
+  over port 9992 (see the camera control channel above), so a camera-open failure
+  reports `status:"error"` instead of exiting. `python/requirements.txt` lists
+  deps (opencv-python, mediapipe). CLI flags: `--game` (managed) / `--window`
+  (force the window in managed mode for debugging), `--record [PATH]`,
+  `--metronome BPM` / `--no-beep`, `--heart-rate` / `--hr-address`, `--camera N`,
+  `--model lite|full|heavy` (pose model size; auto-downloads on first use — pick
+  `lite` if the HUD's fps readout is low). Capture runs on its own thread
+  (latest-frame-wins) so inference never waits on the camera; short tracking
+  losses are coasted through a grace window instead of resetting the filters.
 - `python/pose/recording.py` — recording-harness support (stdlib only): JSONL
   `Recorder`, `Metronome`, the number-key→move label map, and the shared feature
   schema (`build_feature_row` / `FEATURE_NAMES`) used by both the logger and the
@@ -288,18 +363,30 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
   (standard GATT Heart Rate Service 0x180D, device-agnostic). Runs on a daemon
   thread; feeds real bpm into the packet's `hr` field. Deps in
   `python/requirements-hr.txt` (bleak). Runs standalone (`--scan`) too.
+- `scripts/managers/camera_preview.gd` — `CameraPreview` autoload. Binds UDP 9991,
+  decodes the latest preview JPEG to an `ImageTexture`, exposes `get_texture()` /
+  `is_streaming()`. Consumed by the `GameIntro` setup screen (§7).
 - `scripts/managers/motion_manager.gd` — `MotionManager` autoload. Exposes
   `get_forward()`, `get_turn()`, `is_walking()`, `get_crouch()`,
-  `is_crouching()`, `consume_jump()`, `is_receiving()`, and the `motion_updated`
-  / `jumped` / `crouch_changed` signals. If the service isn't running, values
-  stay 0 and nothing breaks (values also decay to 0 after `TIMEOUT_SEC`).
+  `is_crouching()`, `consume_jump()`, `is_hands_up()`, `is_receiving()`,
+  `is_hr_connected()`, the camera-control API `camera_on()` / `camera_off()` and
+  state readouts `get_status()` / `is_camera_ready()` / `is_camera_error()`, and
+  the `motion_updated` / `jumped` / `crouch_changed` signals. `get_forward()` /
+  `get_turn()` / `get_crouch()` are time-smoothed (`SMOOTH_TIME`) so ~20-30 Hz
+  packets drive 60+ fps games without stair-stepping (`get_forward_raw()` etc.
+  give the exact packet values). If the service isn't running, values stay 0 and
+  nothing breaks (values also ease to 0 after `TIMEOUT_SEC`).
 - `scenes/open-world/` — the **Open World game** (registered in GameManager,
   `available:true`): a free-roam "vibing" mode with no fail state. Its root
   (`open_world.gd`) `extends MiniGame`, so it plugs into the normal
   countdown → play → results pipeline; a `CharacterBody3D` (`player.gd`) reads
   `MotionManager` (march → move, lean → turn, leap → jump, squat → crouch), with
-  a follow camera + lighting. Steps become score/XP and the pipeline's calories
-  are banked on finish. Ending is player-driven: Esc opens the shared PauseMenu,
+  a follow camera, sun shadows, procedural sky + fog, and four coloured landmark
+  pillars for orientation. Steps become score/XP, and six code-spawned **glow
+  orbs** (`_spawn_orbs` in `open_world.gd`) each award bonus score on touch and
+  respawn ≥8 m from the player — an endless trail of walking goals. The HUD
+  shows time/calories/steps/orbs; `player.gd` respawns anyone who falls off the
+  60×60 ground. Ending is player-driven: Esc opens the shared PauseMenu,
   whose "End & Save" (`enable_end_option()` / `end_requested`) calls `finish()`.
   This scene doubles as the proof of the motion loop.
 
@@ -311,16 +398,21 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
    jump to hop, squat to crouch. (`player.gd` has an `invert_turn` export if
    leaning steers the wrong way, plus `jump_velocity`/`crouch_height` tunables.)
 
-**Calories (wired 2026-07-14):** Python emits `met` (motion-based effort);
-`MotionManager` integrates it against the player's weight (`ProfileManager`) into
-a per-session kcal total (`get_session_calories()`); `MiniGame.finish()` banks
-that into the `GameResult.calories` field automatically for every game, and
-`ProfileManager` rolls it into the lifetime total. Set the player's real weight
-via `ProfileManager.set_physical_attributes()` for accuracy (a profile screen for
-this is still to build). The `met` mapping is a reasonable-but-unvalidated
-starting point — real accuracy needs a calibration/recording pass, and
-heart-rate fusion once a BLE wearable is ingested (send real bpm in `hr`; the
-Keytel formula then runs on the Godot side with the profile it already has).
+**Calories (wired 2026-07-14, upgraded 2026-07-15):** Python emits `met`
+(motion-based effort); `MotionManager` integrates it against the player's weight
+(`ProfileManager`) into a per-session kcal total (`get_session_calories()`);
+`MiniGame.finish()` banks that into the `GameResult.calories` field automatically
+for every game, and `ProfileManager` rolls it into the lifetime total. The
+cadence→MET leg is anchored to published measurements (CADENCE-Adults /
+Tudor-Locke: 100 steps/min = 3 MET, +1 MET per +10 spm), and slow squats now
+count via a vertical-work term. **Heart-rate fusion is live:** when a wearable
+streams `hr` ≥ 90 bpm, `MotionManager` switches to the Keytel et al. 2005
+equation (sex-specific, uses profile weight/age/sex, captured at
+`reset_session_stats()`), floored at the motion estimate — so calories stay
+accurate even if the camera loses the player. Below 90 bpm (or no strap) the
+motion-MET path is used. Set real attributes via
+`ProfileManager.set_physical_attributes()` for accuracy. The non-cadence motion
+terms are still reasoned estimates pending a calibration/recording pass.
 
 **Recording & training harness (added 2026-07-14):** the accuracy phase runs on
 labelled data, so `pose_server.py --record` logs every frame — raw landmarks +
@@ -336,8 +428,9 @@ accuracy) as a layer on top of the heuristics, which remain the fallback. BLE
 heart-rate ingestion is likewise Python-side — `--heart-rate` sends real bpm in
 `hr`, and Godot fuses it against the profile it already holds.
 
-Still to come on the Python side (same UDP boundary, no Godot AI): gesture
-recognition, wiring the trained classifier into the live server, per-user
+Still to come on the Python side (same UDP boundary, no Godot AI): more gesture
+recognition (the "hands up to start" ready gesture is done — see the `hands_up`
+field above), wiring the trained classifier into the live server, per-user
 runtime calibration, and validating the calorie numbers against a reference.
 
 Any game reads movement from `MotionManager` instead of the keyboard, so the
@@ -374,45 +467,45 @@ same controller works with the camera today or another input source later.
 ## 12. Current TODO
 
 - [ ] **Build the Infinite Runner** in `scenes/runner/` (owner is building this).
-      Root node's script `extends MiniGame`; override `get_game_id()` → `"runner"`
+	  Root node's script `extends MiniGame`; override `get_game_id()` → `"runner"`
       and `_start_game()`; call `add_score(...)` during play and `finish(calories)`
       when the session ends. The registry entry and `SceneManager.RUNNER` path
-      (`res://scenes/runner/runner.tscn`) already exist — just flip the runner's
-      `available` to `true` in `GameManager._build_registry()` once the scene is in.
+	  (`res://scenes/runner/runner.tscn`) already exist — just flip the runner's
+	  `available` to `true` in `GameManager._build_registry()` once the scene is in.
 - [ ] **Difficulty select screen** between Game Select and Countdown (flow §7
-      currently skips it; `GameManager` already stores difficulty).
+	  currently skips it; `GameManager` already stores difficulty).
 - [ ] Real calorie value in `MiniGame.finish()` (currently a time-based stub).
 - [ ] Extend the Python pipeline (§9) beyond movement — same UDP boundary:
-      - ✅ calorie/effort estimation (motion MET), heart-rate field wired.
-      - ✅ recording harness (`--record`) + offline `train_classifier.py`.
-      - ✅ BLE heart-rate ingestion stub (`--heart-rate`, standard GATT HRS).
-      - [ ] Record a multi-person labelled dataset and train the real classifier.
-      - [ ] Wire the trained move classifier into the live server (crisper events
-            + per-move METs; keep the heuristics as fallback).
-      - [ ] Per-user runtime calibration (stand → march → squat) for thresholds.
-      - [ ] Validate the calorie numbers against a reference (HR / calorimetry).
+	  - ✅ calorie/effort estimation (motion MET), heart-rate field wired.
+	  - ✅ recording harness (`--record`) + offline `train_classifier.py`.
+	  - ✅ BLE heart-rate ingestion stub (`--heart-rate`, standard GATT HRS).
+	  - [ ] Record a multi-person labelled dataset and train the real classifier.
+	  - [ ] Wire the trained move classifier into the live server (crisper events
+			+ per-move METs; keep the heuristics as fallback).
+	  - [ ] Per-user runtime calibration (stand → march → squat) for thresholds.
+	  - [ ] Validate the calorie numbers against a reference (HR / calorimetry).
 - [ ] Tune pose thresholds in `pose_server.py` for the target play space/camera.
 - [ ] Achievements definitions + unlock triggers (ProfileManager supports the
-      storage; no achievements defined yet).
+	  storage; no achievements defined yet).
 - [ ] Heart-rate display/HUD (data source is future Python).
 - [ ] Async loading via `LoadingScreen` for heavy game scenes.
 - [x] Global UI `Theme` in `assets/ui/` for consistent styling — `assets/ui/main_theme.tres`
-      styles Button (+ a `PrimaryButton` type variation) and sets a default Rajdhani
-      font. Applied at the Main Menu root; reuse it on the other menu scenes next.
+	  styles Button (+ a `PrimaryButton` type variation) and sets a default Rajdhani
+	  font. Applied at the Main Menu root; reuse it on the other menu scenes next.
 - [x] **Player profile UI + first-run onboarding.** `scenes/menus/profile_setup.tscn`
-      (one-time onboarding) and `scenes/menus/profile_screen.tscn` (editable) collect
-      weight/height/age/sex into `ProfileManager` (data layer already existed). A new
-      `onboarded` flag (`ProfileManager.is_onboarded()`/`mark_onboarded()`) gates the
-      one-time setup; the main menu redirects to it on first run and otherwise shows a
-      PROFILE button. Screens are code-built on a shared `PanelScreen` base
-      (`scripts/ui/panel_screen.gd`) using a reusable `ProfileForm`
-      (`scripts/ui/profile_form.gd`); paths/loaders live in `SceneManager`
-      (`PROFILE_SETUP`/`PROFILE`). The profile screen's top row shows REAL lifetime
+	  (one-time onboarding) and `scenes/menus/profile_screen.tscn` (editable) collect
+	  weight/height/age/sex into `ProfileManager` (data layer already existed). A new
+	  `onboarded` flag (`ProfileManager.is_onboarded()`/`mark_onboarded()`) gates the
+	  one-time setup; the main menu redirects to it on first run and otherwise shows a
+	  PROFILE button. Screens are code-built on a shared `PanelScreen` base
+	  (`scripts/ui/panel_screen.gd`) using a reusable `ProfileForm`
+	  (`scripts/ui/profile_form.gd`); paths/loaders live in `SceneManager`
+	  (`PROFILE_SETUP`/`PROFILE`). The profile screen's top row shows REAL lifetime
       fitness totals derived from `ActivityManager` (calories, steps, active minutes,
       workouts) — deliberately NOT XP/Level. XP/Level still accrue in ProfileManager
       for progression but are kept off the profile UI (no gamification placeholders).
-      Still TODO: name entry, and wiring HR-based (Keytel) calories once a wearable
-      streams `hr` (see §9).
+      Still TODO: name entry. (HR-based Keytel calories are now wired in
+      `MotionManager` — see §9 Calories.)
 - [x] **Fitness dashboard + daily/weekly history.** `ActivityManager` (§5) logs a
       per-day record on every `game_finished` and derives week totals, daily
       averages and streaks. `scenes/menus/fitness_screen.tscn` (FitnessScreen, on
@@ -422,11 +515,12 @@ same controller works with the camera today or another input source later.
       from the main menu (FITNESS). Future: editable daily goal UI, monthly/yearly
       views + consistency heat-calendar, steps/active-minutes charts, per-day HR.
 - [ ] **Watch / heart-rate connection UX.** BLE stays Python-side (§9); `hr` already
-      flows through `MotionManager.get_heart_rate()`. Next: a connection-status
-      indicator (`is_hr_connected()`), then optionally a Godot→Python control channel
+      flows through `MotionManager.get_heart_rate()`, `is_hr_connected()` exists, and
+      Keytel HR→kcal fusion is live (§9 Calories). Next: a connection-status
+      indicator in the UI, then optionally a Godot→Python control channel
       for in-app scan/pair (the current UDP is one-way). NB only live BLE HRS devices
-      (chest straps / broadcast-mode watches) work — Apple Watch/Fitbit don't expose
-      real-time HR to third parties.
+	  (chest straps / broadcast-mode watches) work — Apple Watch/Fitbit don't expose
+	  real-time HR to third parties.
 - [ ] Boxing / Football / Tennis game scenes (flip `available` to true).
 
 ## 13. Rules for Adding a Future Game
