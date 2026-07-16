@@ -1,6 +1,36 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1"]
+[ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
+[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
+
+[sub_resource type="Gradient" id="grad_dim"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.02, 0.03, 0.06, 0.55, 0.01, 0.02, 0.04, 0.82)
+
+[sub_resource type="GradientTexture2D" id="tex_dim"]
+gradient = SubResource("grad_dim")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 1)
+
+[sub_resource type="StyleBoxFlat" id="card"]
+content_margin_left = 52.0
+content_margin_top = 44.0
+content_margin_right = 52.0
+content_margin_bottom = 44.0
+bg_color = Color(0.07, 0.09, 0.13, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.1)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 28
 
 [node name="PauseMenu" type="Control"]
 layout_mode = 3
@@ -9,16 +39,18 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("2_theme")
 script = ExtResource("1")
 
-[node name="Dim" type="ColorRect" parent="."]
+[node name="Dim" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.5)
+texture = SubResource("tex_dim")
+stretch_mode = 0
 
 [node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -28,36 +60,60 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBox" type="VBoxContainer" parent="Center"]
+[node name="Card" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_styles/panel = SubResource("card")
 
-[node name="Title" type="Label" parent="Center/VBox"]
+[node name="VBox" type="VBoxContainer" parent="Center/Card"]
 layout_mode = 2
-text = "Paused"
-horizontal_alignment = 1
+theme_override_constants/separation = 14
 
-[node name="ResumeButton" type="Button" parent="Center/VBox"]
+[node name="AccentBar" type="ColorRect" parent="Center/Card/VBox"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="Title" type="Label" parent="Center/Card/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("3_anton")
+theme_override_font_sizes/font_size = 60
+text = "PAUSED"
+
+[node name="Subtitle" type="Label" parent="Center/Card/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+text = "Catch your breath — your session is safe."
+
+[node name="Spacer" type="Control" parent="Center/Card/VBox"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+
+[node name="ResumeButton" type="Button" parent="Center/Card/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 44)
+custom_minimum_size = Vector2(300, 58)
 layout_mode = 2
-text = "Resume"
+theme_type_variation = &"PrimaryButton"
+text = "RESUME"
 
-[node name="RestartButton" type="Button" parent="Center/VBox"]
+[node name="RestartButton" type="Button" parent="Center/Card/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 44)
+custom_minimum_size = Vector2(300, 54)
 layout_mode = 2
-text = "Restart"
+text = "RESTART"
 
-[node name="EndButton" type="Button" parent="Center/VBox"]
+[node name="EndButton" type="Button" parent="Center/Card/VBox"]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(220, 44)
+custom_minimum_size = Vector2(300, 54)
 layout_mode = 2
-text = "End & Save"
+text = "END & SAVE"
 
-[node name="QuitButton" type="Button" parent="Center/VBox"]
+[node name="QuitButton" type="Button" parent="Center/Card/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 44)
+custom_minimum_size = Vector2(300, 54)
 layout_mode = 2
-text = "Quit to Game Select"
+text = "QUIT TO GAME SELECT"

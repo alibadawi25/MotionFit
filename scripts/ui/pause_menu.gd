@@ -38,6 +38,13 @@ func enable_end_option() -> void:
 func open() -> void:
 	visible = true
 	get_tree().paused = true
+	# Focus Resume so the menu is immediately keyboard/controller navigable.
+	_resume_button.grab_focus()
+	# A quick fade-in so the pause reads as a deliberate overlay, not a hard cut.
+	modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property(self, "modulate:a", 1.0, 0.14) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 ## Hides the overlay and resumes the game.

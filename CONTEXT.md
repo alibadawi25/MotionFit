@@ -494,7 +494,25 @@ same controller works with the camera today or another input source later.
 - [ ] Async loading via `LoadingScreen` for heavy game scenes.
 - [x] Global UI `Theme` in `assets/ui/` for consistent styling — `assets/ui/main_theme.tres`
 	  styles Button (+ a `PrimaryButton` type variation) and sets a default Rajdhani
-	  font. Applied at the Main Menu root; reuse it on the other menu scenes next.
+	  font. Applied across the menu scenes (Main Menu, Game Select, Settings, Profile,
+	  Fitness, and now the Pause Menu and Loading Screen). The shared "app mood" is a
+	  dark navy field (≈`0.05,0.07,0.11` → `0.02,0.03,0.05` gradient), a single orange
+	  accent (`1,0.5,0.14`) used sparingly (accent bar + PrimaryButton), the Anton
+	  display font for big all-caps titles/values over Rajdhani body text, and dark
+	  rounded cards (`~0.07,0.09,0.13`, 14–20px radius, hairline `1,1,1,0.1` border).
+	  New screens should reuse `main_theme.tres` + this palette.
+- [x] **Styled the Pause Menu, Loading Screen, and Open World HUD** to the app mood
+	  (above). The Pause Menu (`scenes/menus/pause_menu.tscn`) is now a centred dark
+	  card over a vignette dim: an accent bar, an Anton "PAUSED" title, RESUME as the
+	  PrimaryButton, then Restart / End & Save / Quit; `pause_menu.gd` grabs focus on
+	  RESUME and fades the overlay in (its node processes while paused so the tween
+	  runs). The Loading Screen gets the gradient background, accent bar, Anton title
+	  and an orange-filled progress bar. The Open World HUD
+	  (`open_world.gd::_build_hud`) is no longer one crammed label — it's a centred row
+	  of dark stat chips (TIME · CALORIES · STEPS · ORBS; caption over an Anton value,
+	  calories/orbs in accent) with a subtle bottom "ESC — PAUSE / END & SAVE" hint and
+	  a scale-pop on the ORBS chip when one is banked. The Results screen was already
+	  code-styled to this look.
 - [x] **Player profile UI + first-run onboarding.** `scenes/menus/profile_setup.tscn`
 	  (one-time onboarding) and `scenes/menus/profile_screen.tscn` (editable) collect
 	  weight/height/age/sex into `ProfileManager` (data layer already existed). A new
