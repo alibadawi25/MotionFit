@@ -15,12 +15,13 @@ extends CharacterBody3D
 ## (e.g. the follow camera's FOV kick) can react without polling MotionManager.
 signal walking_state_changed(is_walking: bool)
 
-## The rigged low-poly character (see assets/models/generated_human). It ships
-## with baked TRS clips — "idle", "walk", "jump" — which this controller
-## crossfades between by motion state (see [method _update_animation]).
-## Swapping this path for any other GLB works as long as it exposes clips by
-## those names; a model with different clip names falls back to its first clip.
-const CHARACTER_MODEL: String = "res://assets/models/generated_human/human.glb"
+## The rigged low-poly character comes from CharacterFactory — the ACTIVE
+## profile's personalised build (body shape from their physical attributes,
+## look from their appearance settings), or the bundled default when no
+## profile/generator is available. Every variant carries the same baked TRS
+## clips — "idle", "walk", "jump" — which this controller crossfades between by
+## motion state (see [method _update_animation]); a model with different clip
+## names falls back to its first clip.
 ## Clip names baked into the GLB (see assets/models/generated_human/export_glb.py).
 const CLIP_IDLE: String = "idle"
 const CLIP_WALK: String = "walk"
@@ -88,16 +89,15 @@ func _ready() -> void:
 	_spawn_character()
 
 
-## Swaps the placeholder capsule for the rigged low-poly figure: instance the
-## GLB, plant its feet at the bottom of the collision capsule, and turn it to
-## face Godot's forward (-Z) since the model is authored looking down +Z. The
-## capsule mesh is kept (hidden) so the scene degrades to the capsule if the
-## model is ever missing.
+## Swaps the placeholder capsule for the rigged low-poly figure: fetch the
+## active profile's personalised model from CharacterFactory, plant its feet at
+## the bottom of the collision capsule, and turn it to face Godot's forward
+## (-Z) since the model is authored looking down +Z. The capsule mesh is kept
+## (hidden) so the scene degrades to the capsule if no model can be produced.
 func _spawn_character() -> void:
-	var packed: PackedScene = load(CHARACTER_MODEL)
-	if packed == null:
+	_character = CharacterFactory.get_character()
+	if _character == null:
 		return  # keep the visible capsule as a fallback
-	_character = packed.instantiate()
 	_mesh.visible = false
 	add_child(_character)
 	# The GLB's origin is at the hips, so measure its real vertical extent and

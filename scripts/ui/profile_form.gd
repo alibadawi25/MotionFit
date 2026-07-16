@@ -8,6 +8,10 @@ class_name ProfileForm
 ## profile screen so the widgets, ranges and sex-value mapping live in exactly
 ## one place. Ranges mirror the clamps in ProfileManager.set_physical_attributes.
 
+## Emitted whenever any input changes, so listeners (the character preview on
+## the profile screen — weight/height reshape the model) can react live.
+signal changed
+
 const LABEL_COLOR := Color(0.86, 0.89, 0.94)
 const ROW_LABEL_WIDTH := 150.0
 const INPUT_WIDTH := 240.0
@@ -28,6 +32,10 @@ func _ready() -> void:
 	_age = _add_spin_row("Age", 5.0, 120.0, 1.0, " yr")
 	_sex = _add_sex_row("Sex")
 	load_from_profile()
+	# Wire change notifications AFTER the initial fill so loading doesn't fire.
+	for spin in [_weight, _height, _age]:
+		spin.value_changed.connect(func(_v): changed.emit())
+	_sex.item_selected.connect(func(_i): changed.emit())
 
 
 ## Fills the inputs from the saved profile so an edit screen shows current values.
@@ -44,6 +52,17 @@ func load_from_profile() -> void:
 func apply_to_profile() -> void:
 	ProfileManager.set_physical_attributes(
 		_weight.value, _height.value, int(_age.value), SEX_VALUES[_sex.selected])
+
+
+## The current (possibly unsaved) inputs, in the shape CharacterFactory expects
+## for its body parameter — lets the profile screen preview the model live.
+func get_attributes() -> Dictionary:
+	return {
+		"sex": SEX_VALUES[_sex.selected],
+		"age": int(_age.value),
+		"height_cm": _height.value,
+		"weight_kg": _weight.value,
+	}
 
 
 func _add_spin_row(label_text: String, min_v: float, max_v: float,

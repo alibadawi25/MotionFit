@@ -129,7 +129,8 @@ Initialisation order (and dependencies):
 | — | `CameraPreview` | —                         | Receives the webcam **preview image** from the pose service over a second UDP port (9991) and exposes it as a `Texture2D` for the setup/countdown screen. Still §9-clean: Python owns the camera; Godot only blits the pixels, never inspects them. |
 | 3 | `AudioManager`  | —                         | Music/SFX playback and audio bus volumes. |
 | 4 | `SettingsManager`| SaveManager, AudioManager| User prefs (volumes, fullscreen); loads, applies, persists them. |
-| 5 | `ProfileManager`| SaveManager               | Player profile: XP/level, calories, achievements, per-game stats. |
+| 5 | `ProfileManager`| SaveManager               | Player profile: XP/level, calories, achievements, per-game stats, character appearance. |
+| — | `CharacterFactory` | ProfileManager (at call time, not init) | Personalised character model: runs the Python generator (`assets/models/generated_human/export_glb.py`) with the active profile's body attributes + appearance, caches the GLB per profile under `user://characters/`, loads it at runtime via `GLTFDocument`. Falls back to the bundled `human.glb`. Body shape is always derived from weight/height/age/sex — never chosen directly. |
 | 6 | `GameManager`   | SceneManager, ProfileManager | Game registry + session state + play flow + awards progression. |
 | 7 | `ActivityManager`| SaveManager, GameManager | Day-by-day fitness history (time series). Listens to `game_finished`, rolls each session into today's bucket; derives weekly totals/averages/streaks on read (never stores them). Feeds the Fitness dashboard. |
 

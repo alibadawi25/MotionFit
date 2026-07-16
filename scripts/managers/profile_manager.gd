@@ -33,6 +33,15 @@ const SAVE_FILE: String = "profiles.json"
 const LEGACY_SAVE_FILE: String = "profile.json"
 ## XP required for each level is BASE_XP * level. Simple, tunable, and cheap.
 const BASE_XP_PER_LEVEL: int = 100
+## Default character look. Values are the option/color names understood by the
+## model generator (see CharacterFactory and export_glb.py's catalogs). "auto"
+## hair means "let the generator pick by sex" (short male / long female).
+const DEFAULT_APPEARANCE: Dictionary = {
+	"hair": "auto", "hair_color": "brown",
+	"top": "tshirt", "top_color": "blue",
+	"bottom": "pants", "bottom_color": "navy",
+	"skin": "light",
+}
 
 var _profiles: Dictionary = {}   # id (String) -> profile Dictionary
 var _active_id: String = ""
@@ -149,6 +158,36 @@ func mark_onboarded() -> void:
 	if not has_active() or bool(_active()["onboarded"]):
 		return
 	_active()["onboarded"] = true
+	_save()
+
+
+# --- Character appearance ------------------------------------------------------
+# The player's chosen look for the in-game character (hair/outfit styles and
+# colors). Body SHAPE is not stored here — CharacterFactory derives it from the
+# physical attributes below, so losing weight in real life shows on the model.
+
+## The active profile's appearance, with defaults filled in for any missing key
+## (so saves from older builds render sensibly). Always safe to read.
+func get_appearance() -> Dictionary:
+	var merged: Dictionary = DEFAULT_APPEARANCE.duplicate()
+	var stored: Dictionary = _active().get("appearance", {})
+	for key in merged:
+		if stored.has(key):
+			merged[key] = String(stored[key])
+	return merged
+
+
+## Stores the active profile's appearance and persists. Only keys present in
+## [constant DEFAULT_APPEARANCE] are accepted; others are ignored, so a stray
+## dictionary can't bloat the save.
+func set_appearance(appearance: Dictionary) -> void:
+	if not has_active():
+		return
+	var current: Dictionary = get_appearance()
+	for key in DEFAULT_APPEARANCE:
+		if appearance.has(key):
+			current[key] = String(appearance[key])
+	_active()["appearance"] = current
 	_save()
 
 
@@ -419,6 +458,8 @@ func _default_profile() -> Dictionary:
 		"height_cm": 170.0,
 		"age": 30,
 		"sex": "unspecified",
+		# Character look ({} = all defaults; see get_appearance / DEFAULT_APPEARANCE).
+		"appearance": {},
 		# Body calibration captured by the pose service ({} = not calibrated).
 		"calibration": {},
 	}

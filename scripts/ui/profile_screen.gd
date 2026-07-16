@@ -2,15 +2,23 @@ extends PanelScreen
 ## ProfileScreen
 ##
 ## Editable player profile: read-only progression (level, XP, lifetime activity),
-## editable name + physical attributes (which feed calorie estimation), the body
-## calibration status with a Recalibrate action, and a Switch Profile shortcut.
-## Uses the same ProfileForm as first-run onboarding so the inputs stay in sync.
+## editable name + physical attributes (which feed calorie estimation), character
+## appearance with a live 3D preview, the body calibration status with a
+## Recalibrate action, and a Switch Profile shortcut. Uses the same ProfileForm
+## as first-run onboarding so the inputs stay in sync.
+
+## Debounce before regenerating the preview model, so spinning a SpinBox doesn't
+## run the (~0.15 s, blocking) Python generator on every tick.
+const PREVIEW_DEBOUNCE: float = 0.35
 
 var _name_edit: LineEdit
 var _form: ProfileForm
+var _appearance: AppearanceForm
+var _preview: CharacterPreview
+var _preview_timer: Timer
 
 func _ready() -> void:
-	var box := build_panel("PROFILE", "", 600.0)
+	var box := build_panel("PROFILE", "", 1060.0)
 
 	box.add_child(_build_stats())
 	box.add_child(HSeparator.new())
@@ -18,11 +26,46 @@ func _ready() -> void:
 	_name_edit = _build_name_row()
 	box.add_child(_name_edit.get_parent())
 
+	# Two columns: inputs on the left, the live character preview on the right.
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 40)
+	box.add_child(columns)
+
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 16)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	columns.add_child(left)
+
 	_form = ProfileForm.new()
-	box.add_child(_form)
+	left.add_child(_form)
+	left.add_child(HSeparator.new())
+	_appearance = AppearanceForm.new()
+	left.add_child(_appearance)
+
+	_preview = CharacterPreview.new()
+	columns.add_child(_preview)
 
 	box.add_child(_build_calibration_row())
 	box.add_child(_build_buttons())
+
+	# Any edit re-renders the preview after a short debounce; body attributes
+	# matter too because weight/height reshape the model.
+	_preview_timer = Timer.new()
+	_preview_timer.one_shot = true
+	_preview_timer.wait_time = PREVIEW_DEBOUNCE
+	_preview_timer.timeout.connect(_refresh_preview)
+	add_child(_preview_timer)
+	_form.changed.connect(_preview_timer.start)
+	_appearance.changed.connect(_preview_timer.start)
+	_refresh_preview()
+
+
+## Regenerates the preview model from the CURRENT (unsaved) inputs and shows it.
+func _refresh_preview() -> void:
+	var figure: Node3D = CharacterFactory.build_preview(
+		_form.get_attributes(), _appearance.get_appearance())
+	if figure != null:
+		_preview.show_figure(figure)
 
 
 func _build_stats() -> Control:
@@ -114,6 +157,7 @@ func _build_buttons() -> Control:
 func _apply_edits() -> void:
 	ProfileManager.rename_profile("", _name_edit.text)
 	_form.apply_to_profile()
+	_appearance.apply_to_profile()
 
 
 func _on_save() -> void:
