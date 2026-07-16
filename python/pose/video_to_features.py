@@ -36,10 +36,13 @@ import sys
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 
+# Import pose_server FIRST: it installs a meta-path hook that hides the (unused,
+# ~14-25s) tensorflow package before mediapipe is imported, so `import mediapipe`
+# stays ~1.5s here too. Importing mediapipe before pose_server would defeat it.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pose_server as ps  # noqa: E402  reuse the live pipeline verbatim
+import mediapipe as mp  # noqa: E402  (already cached fast by pose_server's import)
 import recording  # noqa: E402
 
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}

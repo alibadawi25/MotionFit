@@ -47,6 +47,27 @@ from collections import deque
 from pathlib import Path
 
 import cv2
+
+# --- Skip TensorFlow (huge, unused) before importing mediapipe ---------------
+# mediapipe's PoseLandmarker runs on its own bundled TFLite/XNNPACK C++ runtime
+# and does NOT need the Python `tensorflow` package. But one line deep in
+# mediapipe (tasks/python/core/optional_dependencies.py) does
+# `from tensorflow.tools.docs import doc_controls` purely for a docs decorator,
+# wrapped in `try/except ModuleNotFoundError`. If tensorflow happens to be
+# installed, that import drags in ALL of TensorFlow -- ~14s warm, ~25s cold on
+# this machine -- every single launch, for nothing. Making the import look
+# missing sends mediapipe down its own no-op fallback, cutting `import mediapipe`
+# from ~14-25s to ~1.5s. Nothing in this project uses tensorflow. Must run
+# BEFORE `import mediapipe`.
+class _HideTensorFlow:
+    def find_spec(self, name, path=None, target=None):
+        if name == "tensorflow" or name.startswith("tensorflow."):
+            raise ModuleNotFoundError(name)  # mediapipe catches this and stubs it
+        return None
+
+
+sys.meta_path.insert(0, _HideTensorFlow())
+
 import mediapipe as mp
 
 import recording  # sibling module: JSONL recorder, metronome, label + feature schema

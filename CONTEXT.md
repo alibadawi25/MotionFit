@@ -380,7 +380,8 @@ by design — with no service running the texture is null and the UI falls back 
   `available:true`): a free-roam "vibing" mode with no fail state. Its root
   (`open_world.gd`) `extends MiniGame`, so it plugs into the normal
   countdown → play → results pipeline; a `CharacterBody3D` (`player.gd`) reads
-  `MotionManager` (march → move, lean → turn, leap → jump, squat → crouch), with
+  `MotionManager` (march → walk/run on a curved speed ramp, lean → turn,
+  leap → jump), with
   a follow camera, sun shadows, procedural sky + fog, and four coloured landmark
   pillars for orientation. Steps become score/XP, and six code-spawned **glow
   orbs** (`_spawn_orbs` in `open_world.gd`) each award bonus score on touch and
@@ -394,9 +395,10 @@ by design — with no service running the texture is null and the UI falls back 
 1. `pip install -r python/requirements.txt` (once).
 2. `python python/pose/pose_server.py` — stand ~2 m back so knees/hips are
    visible; the preview shows `forward`/`turn` values.
-3. Play the open-world scene in Godot. March in place to move, lean to turn,
-   jump to hop, squat to crouch. (`player.gd` has an `invert_turn` export if
-   leaning steers the wrong way, plus `jump_velocity`/`crouch_height` tunables.)
+3. Play the open-world scene in Godot. March in place to move (a harder march
+   runs faster), lean to turn, jump to hop. (`player.gd` has an `invert_turn`
+   export if leaning steers the wrong way, plus `jump_velocity`/`move_speed`
+   tunables.)
 
 **Calories (wired 2026-07-14, upgraded 2026-07-15):** Python emits `met`
 (motion-based effort); `MotionManager` integrates it against the player's weight

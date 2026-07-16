@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>human.glb viewer</title>
+<style>
+  body { margin: 0; background: #1b1f27; color: #dde3ee; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #hud { position: fixed; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; z-index: 2; }
+  #hud select, #hud button {
+    background: #2a3140; color: #dde3ee; border: 1px solid #3d4658;
+    border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer;
+  }
+  #hud button.active { background: #4a86d8; border-color: #4a86d8; color: #fff; }
+  #info { position: fixed; bottom: 10px; left: 10px; opacity: .75; z-index: 2; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <select id="model"></select>
+  <span id="clips"></span>
+  <button id="spin">spin</button>
+</div>
+<div id="info">drag = orbit &middot; wheel = zoom &middot; right-drag = pan</div>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const params = new URLSearchParams(location.search);
+const models = (params.get('models') || 'human.glb').split(',');
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1f27);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(1.8, 1.3, 2.6);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.55, 0);
+
+scene.add(new THREE.HemisphereLight(0xcfd8ff, 0x3a3430, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(3, 5, 2);
+scene.add(sun);
+const grid = new THREE.GridHelper(6, 24, 0x39445a, 0x252c3a);
+grid.position.y = -0.62;
+scene.add(grid);
+
+const loader = new GLTFLoader();
+let current = null, mixer = null, actions = {}, activeClip = null, spin = false;
+
+const modelSel = document.getElementById('model');
+models.forEach(m => modelSel.add(new Option(m, m)));
+modelSel.onchange = () => load(modelSel.value);
+
+const clipsBox = document.getElementById('clips');
+document.getElementById('spin').onclick = e => {
+  spin = !spin; e.target.classList.toggle('active', spin);
+};
+
+function load(url) {
+  loader.load(url, gltf => {
+    if (current) scene.remove(current);
+    current = gltf.scene;
+    scene.add(current);
+    mixer = new THREE.AnimationMixer(current);
+    actions = {};
+    clipsBox.innerHTML = '';
+    gltf.animations.forEach(clip => {
+      actions[clip.name] = mixer.clipAction(clip);
+      const btn = document.createElement('button');
+      btn.textContent = clip.name;
+      btn.onclick = () => play(clip.name);
+      btn.dataset.clip = clip.name;
+      clipsBox.appendChild(btn);
+    });
+    play(gltf.animations.length ? gltf.animations[0].name : null);
+    document.title = url.split('/').pop();
+  }, undefined, err => console.error('load failed', url, err));
+}
+
+function play(name) {
+  activeClip = name;
+  for (const [n, a] of Object.entries(actions)) {
+    if (n === name) { a.reset(); a.play(); } else a.stop();
+  }
+  clipsBox.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('active', b.dataset.clip === name));
+}
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (mixer) mixer.update(dt);
+  if (spin && current) current.rotation.y += dt * 0.8;
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+load(models[0]);
+</script>
+</body>
+</html>

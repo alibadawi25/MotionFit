@@ -5,7 +5,6 @@ extends CharacterBody3D
 ##   - forward speed  <- MotionManager.get_forward()  (marching in place)
 ##   - turning        <- MotionManager.get_turn()     (leaning your torso)
 ##   - jumping        <- MotionManager.consume_jump() (a real vertical leap)
-##   - crouching      <- MotionManager.get_crouch()   (squatting down)
 ##
 ## The character reads MotionManager rather than the keyboard, so the exact same
 ## controller works with camera input today or any future input source. Values
@@ -17,8 +16,8 @@ extends CharacterBody3D
 signal walking_state_changed(is_walking: bool)
 
 ## The rigged low-poly character (see assets/models/generated_human). It ships
-## with four baked TRS clips — "idle", "walk", "jump", "crouch" — which this
-## controller crossfades between by motion state (see [method _update_animation]).
+## with baked TRS clips — "idle", "walk", "jump" — which this controller
+## crossfades between by motion state (see [method _update_animation]).
 ## Swapping this path for any other GLB works as long as it exposes clips by
 ## those names; a model with different clip names falls back to its first clip.
 const CHARACTER_MODEL: String = "res://assets/models/generated_human/human.glb"
@@ -26,22 +25,27 @@ const CHARACTER_MODEL: String = "res://assets/models/generated_human/human.glb"
 const CLIP_IDLE: String = "idle"
 const CLIP_WALK: String = "walk"
 const CLIP_JUMP: String = "jump"
-const CLIP_CROUCH: String = "crouch"
-## Crossfade time (s) when switching locomotion clips, so idle↔walk↔crouch blend
+## Crossfade time (s) when switching locomotion clips, so idle↔walk blend
 ## instead of popping.
 const ANIM_BLEND: float = 0.18
 ## Above this much [method MotionManager.get_forward] the figure plays "walk";
 ## below it, "idle". A little hysteresis-free deadzone stops a twitchy toggle.
 const WALK_ENTER: float = 0.12
-## Playback speed of "walk" at a full march. Standing-still winds down toward a
-## slow step; the clip is paced so faster marching reads as faster steps.
-const WALK_SPEED_MIN: float = 0.6
-const WALK_SPEED_MAX: float = 1.7
-## Crouch amount (0..1) above which the figure holds the "crouch" squat clip.
-const CROUCH_ENTER: float = 0.45
+## Playback speed of "walk" across the march range. A gentle march ambles at
+## WALK_SPEED_MIN; a hard march sprints at WALK_SPEED_MAX. Driven by the same
+## curved "run" factor as the body's ground speed, so the legs stay planted (no
+## foot-sliding) whether you're strolling or sprinting.
+const WALK_SPEED_MIN: float = 0.7
+const WALK_SPEED_MAX: float = 2.6
+## Exponent shaping raw march intensity (0..1) into ground speed. >1 is convex:
+## a light march barely moves you (a slow walk) while a hard march ramps up fast
+## (a real run), so the gap between walking and running reads clearly instead of
+## everything gliding at one middling pace.
+const RUN_CURVE: float = 1.5
 
-## Metres/second at full march (forward == 1.0).
-@export var move_speed: float = 4.0
+## Metres/second at a full-tilt march (the curved run factor == 1.0). Set well
+## above a stroll so sprinting in place actually covers ground.
+@export var move_speed: float = 8.0
 ## Radians/second at full lean (turn == 1.0). Kept gentle so steering with your
 ## torso feels deliberate rather than twitchy (the yaw signal is also smoothed in
 ## MotionManager and scaled down in the pose service).
@@ -51,11 +55,6 @@ const CROUCH_ENTER: float = 0.45
 ## Upward launch speed (m/s) applied when a jump is detected. ~4.5 clears a
 ## comfortable hop given the project's default gravity.
 @export var jump_velocity: float = 4.5
-## Fraction of [member move_speed] left at a full crouch — squatting slows you.
-@export var crouch_speed_scale: float = 0.4
-## Capsule height at a full (crouch == 1.0) squat, in metres. Clamped so it never
-## drops below the capsule's diameter.
-@export var crouch_height: float = 1.2
 
 @onready var _mesh: MeshInstance3D = $MeshInstance3D
 @onready var _collision: CollisionShape3D = $CollisionShape3D
@@ -68,35 +67,32 @@ var _was_walking: bool = false
 var _stand_height: float = 2.0  # captured from the capsule at _ready
 var _spawn_transform: Transform3D  # where to respawn after falling off the world
 var _character: Node3D  # the visible GLB figure (null if the model failed to load)
-var _anim: AnimationPlayer  # drives the idle/walk/jump/crouch clips
+var _anim: AnimationPlayer  # drives the idle/walk/jump clips
 var _clips: PackedStringArray  # clip names actually present in the GLB
 var _current_clip: String = ""  # locomotion clip currently crossfaded in
 var _jumping: bool = false  # true while the one-shot "jump" clip is playing
 ## How far the model's lowest vertex sits below its own origin, in metres. The
 ## GLB's root is at the hips, not the soles, so we measure the real feet and lift
 ## the figure by this much to plant them on the capsule bottom (see
-## [method _spawn_character] / [method _apply_crouch]).
+## [method _spawn_character]).
 var _feet_offset: float = 0.0
 
 func _ready() -> void:
 	_spawn_transform = global_transform
-	# Remember the upright capsule height so crouch can lerp back to it. Make the
-	# shape/mesh local to this instance so resizing the capsule at runtime can't
-	# leak into any other node that happens to share the resource.
+	# Capture the capsule's upright height; the figure's feet are planted relative
+	# to it (see [method _spawn_character]). Duplicate the shape so it stays local
+	# to this instance rather than shared across any node using the same resource.
 	if _collision.shape is CapsuleShape3D:
 		_collision.shape = _collision.shape.duplicate()
 		_stand_height = (_collision.shape as CapsuleShape3D).height
-	if _mesh.mesh is CapsuleMesh:
-		_mesh.mesh = _mesh.mesh.duplicate()
 	_spawn_character()
 
 
 ## Swaps the placeholder capsule for the rigged low-poly figure: instance the
 ## GLB, plant its feet at the bottom of the collision capsule, and turn it to
 ## face Godot's forward (-Z) since the model is authored looking down +Z. The
-## capsule mesh is kept (hidden) so the crouch height maths in _apply_crouch
-## still has a valid CapsuleMesh to read, and so the scene degrades to the
-## capsule if the model is ever missing.
+## capsule mesh is kept (hidden) so the scene degrades to the capsule if the
+## model is ever missing.
 func _spawn_character() -> void:
 	var packed: PackedScene = load(CHARACTER_MODEL)
 	if packed == null:
@@ -125,14 +121,14 @@ func _spawn_character() -> void:
 
 
 ## Returns [param name] if the GLB actually contains that clip, else the current
-## locomotion clip — so a model missing (say) a crouch clip degrades gracefully
+## locomotion clip — so a model missing (say) a walk clip degrades gracefully
 ## instead of erroring on an unknown animation.
 func _clip_or_fallback(name: String) -> String:
 	return name if _clips.has(name) else _current_clip
 
 
 ## When the one-shot jump finishes, drop the latch so [method _update_animation]
-## resumes picking idle/walk/crouch from live motion state.
+## resumes picking idle/walk from live motion state.
 func _on_anim_finished(name: StringName) -> void:
 	if name == CLIP_JUMP:
 		_jumping = false
@@ -171,14 +167,12 @@ func _physics_process(delta: float) -> void:
 		turn = -turn
 	rotate_y(-turn * turn_speed * delta)
 
-	# Crouching squats the capsule down and slows the march.
-	var crouch: float = MotionManager.get_crouch()
-	_apply_crouch(crouch)
-
-	# Move along the body's current facing (-Z is "forward" in Godot).
+	# Move along the body's current facing (-Z is "forward" in Godot). Curve the
+	# raw march so a gentle march is a slow walk and a hard march is a real run —
+	# see [member RUN_CURVE].
 	var forward: float = MotionManager.get_forward()
-	var speed: float = move_speed * lerpf(1.0, crouch_speed_scale, crouch)
-	var direction: Vector3 = -transform.basis.z * (forward * speed)
+	var run: float = pow(clampf(forward, 0.0, 1.0), RUN_CURVE)
+	var direction: Vector3 = -transform.basis.z * (run * move_speed)
 	velocity.x = direction.x
 	velocity.z = direction.z
 
@@ -194,7 +188,7 @@ func _physics_process(delta: float) -> void:
 		MotionManager.consume_jump()  # discard jumps that arrive mid-air
 
 	# Pick and pace the clip that matches what the body is doing this frame.
-	_update_animation(forward, crouch)
+	_update_animation(forward, run)
 
 	move_and_slide()
 
@@ -215,16 +209,15 @@ func _play_jump() -> void:
 
 
 ## Chooses the clip that matches the body's state and paces the walk to the
-## march. Priority: an in-progress jump wins; then a deep crouch holds the squat;
-## otherwise it's walk vs. idle by how hard you're marching.
-func _update_animation(forward: float, crouch: float) -> void:
+## march. Priority: an in-progress jump wins; otherwise it's walk vs. idle by how
+## hard you're marching, with the walk's playback tied to the curved run factor so
+## the stride speeds up in step with the ground speed.
+func _update_animation(forward: float, run: float) -> void:
 	if _anim == null or _jumping:
 		return  # let the jump one-shot play out uninterrupted
 
 	var want: String
-	if crouch >= CROUCH_ENTER:
-		want = _clip_or_fallback(CLIP_CROUCH)
-	elif forward > WALK_ENTER:
+	if forward > WALK_ENTER:
 		want = _clip_or_fallback(CLIP_WALK)
 	else:
 		want = _clip_or_fallback(CLIP_IDLE)
@@ -233,24 +226,6 @@ func _update_animation(forward: float, crouch: float) -> void:
 		_current_clip = want
 		_anim.play(want, ANIM_BLEND)
 
-	# Faster marching -> faster steps; other clips play at their authored speed.
-	_anim.speed_scale = (lerpf(WALK_SPEED_MIN, WALK_SPEED_MAX, clampf(forward, 0.0, 1.0))
+	# Faster running -> faster steps; other clips play at their authored speed.
+	_anim.speed_scale = (lerpf(WALK_SPEED_MIN, WALK_SPEED_MAX, run)
 			if want == CLIP_WALK else 1.0)
-
-
-## Squats the collision capsule and its mesh toward [member crouch_height] as the
-## crouch amount rises, keeping them in sync. Height is floored at the capsule's
-## diameter, the smallest a capsule can validly be.
-func _apply_crouch(crouch: float) -> void:
-	var capsule := _collision.shape as CapsuleShape3D
-	if capsule == null:
-		return
-	var target := lerpf(_stand_height, maxf(crouch_height, capsule.radius * 2.0), crouch)
-	capsule.height = target
-	if _mesh.mesh is CapsuleMesh:
-		(_mesh.mesh as CapsuleMesh).height = target
-	# Keep the figure's feet planted on the (now shorter) capsule bottom. The
-	# squat itself is the "crouch" animation clip (bent knees + lean), not a
-	# vertical scale — so the figure folds like a body instead of shrinking.
-	if _character != null:
-		_character.position.y = -target / 2.0 + _feet_offset

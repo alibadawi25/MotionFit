@@ -10,21 +10,127 @@ walk gets a proper stride bend, the jump can load and tuck, and the crouch can
 fold. Each animation is a named clip; the game (player.gd) crossfades between
 them by motion state.
 
-Run:  python export_glb.py      ->  human.glb
+The figure is customizable: hair style/color, top and bottom style/color,
+skin tone, and body shape. Body shape is not set directly — it is estimated
+from sex, age, height and weight via BMI + the Deurenberg body-fat formula,
+which then drives a fatness factor (belly, limb girth, hip/shoulder width)
+and an overall height scale.
+
+Run:  python export_glb.py                          ->  human.glb (defaults)
+      python export_glb.py --sex female --age 30 \
+          --height 164 --weight 78 --hair long \
+          --hair-color blonde --top tank --top-color red \
+          --bottom shorts --skin tan --out custom.glb
 """
+import argparse
 import math
 import struct
 
-# ---- dimensions (keep in sync with generate_human.py) -------------------
-F = 1.0  # FATNESS
-PALETTE = {
-    "skin":  (0.98, 0.83, 0.70),
-    "hair":  (0.25, 0.16, 0.13),
-    "shirt": (0.45, 0.70, 0.90),
-    "pants": (0.22, 0.26, 0.36),
-    "shoes": (0.95, 0.94, 0.96),
-    "eyes":  (0.10, 0.12, 0.18),
+# ===================== customization catalog =============================
+SKIN_TONES = {
+    "light": (0.98, 0.83, 0.70),
+    "tan":   (0.87, 0.67, 0.51),
+    "brown": (0.62, 0.43, 0.29),
+    "dark":  (0.42, 0.28, 0.19),
 }
+HAIR_COLORS = {
+    "brown":  (0.25, 0.16, 0.13),
+    "black":  (0.09, 0.08, 0.09),
+    "blonde": (0.85, 0.70, 0.35),
+    "red":    (0.55, 0.22, 0.10),
+    "gray":   (0.62, 0.62, 0.64),
+    "blue":   (0.20, 0.35, 0.80),
+}
+TOP_COLORS = {
+    "blue":   (0.45, 0.70, 0.90),
+    "red":    (0.82, 0.25, 0.22),
+    "green":  (0.30, 0.65, 0.38),
+    "purple": (0.55, 0.35, 0.75),
+    "black":  (0.15, 0.15, 0.17),
+    "white":  (0.92, 0.92, 0.94),
+    "orange": (0.95, 0.55, 0.15),
+}
+BOTTOM_COLORS = {
+    "navy":  (0.22, 0.26, 0.36),
+    "black": (0.13, 0.13, 0.15),
+    "khaki": (0.76, 0.69, 0.50),
+    "gray":  (0.45, 0.45, 0.48),
+    "jeans": (0.30, 0.42, 0.58),
+}
+HAIR_STYLES = ("short", "long", "ponytail", "bun", "spiky", "bald")
+TOP_STYLES = ("tshirt", "longsleeve", "tank")
+BOTTOM_STYLES = ("pants", "shorts")
+
+EYE_COLOR = (0.10, 0.12, 0.18)
+SHOE_COLOR = (0.95, 0.94, 0.96)
+
+
+def parse_color(value, table):
+    """A named color from `table`, or a '#rrggbb' hex string."""
+    if value in table:
+        return table[value]
+    v = value.lstrip("#")
+    if len(v) == 6:
+        try:
+            return tuple(int(v[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+        except ValueError:
+            pass
+    raise argparse.ArgumentTypeError(
+        f"unknown color {value!r}; use one of {sorted(table)} or #rrggbb")
+
+
+# ===================== body-shape estimation =============================
+def estimate_body_fat(sex, age, height_cm, weight_kg):
+    """Estimated body-fat %% via the Deurenberg (1991) formula:
+    BF%% = 1.20*BMI + 0.23*age - 10.8*(1 if male) - 5.4.  Returns (bf%%, bmi)."""
+    bmi = weight_kg / (height_cm / 100.0) ** 2
+    bf = 1.20 * bmi + 0.23 * age - (10.8 if sex == "male" else 0.0) - 5.4
+    return bf, bmi
+
+
+def fatness_from_body(sex, age, height_cm, weight_kg):
+    """Map estimated body fat to the mesh fatness factor F.
+
+    F = 1.0 at a typical healthy body fat for the sex (17%% male, 25%% female
+    — healthy female BF runs higher, so the same F reads the same on both).
+    Each body-fat point moves F by 0.02, clamped to what the rig can wear."""
+    bf, _ = estimate_body_fat(sex, age, height_cm, weight_kg)
+    ref = 17.0 if sex == "male" else 25.0
+    return max(0.75, min(1.55, 1.0 + (bf - ref) * 0.02))
+
+
+class Character:
+    """Resolved look + body parameters that build() consumes."""
+
+    def __init__(self, sex="male", age=25, height_cm=175.0, weight_kg=70.0,
+                 hair="short", hair_color=(0.25, 0.16, 0.13),
+                 top="tshirt", top_color=(0.45, 0.70, 0.90),
+                 bottom="pants", bottom_color=(0.22, 0.26, 0.36),
+                 skin=(0.98, 0.83, 0.70)):
+        self.sex = sex
+        self.age = age
+        self.height_cm = height_cm
+        self.weight_kg = weight_kg
+        self.hair = hair
+        self.hair_color = hair_color
+        self.top = top
+        self.top_color = top_color
+        self.bottom = bottom
+        self.bottom_color = bottom_color
+        self.skin = skin
+
+        self.body_fat, self.bmi = estimate_body_fat(sex, age, height_cm, weight_kg)
+        # fatness: torso girth. Belly (depth) gains more than girth; limbs
+        # gain less than the torso — reads far more like real weight gain
+        # than inflating everything uniformly.
+        self.f_torso = fatness_from_body(sex, age, height_cm, weight_kg)
+        self.f_belly = 1.0 + (self.f_torso - 1.0) * 1.4
+        self.f_limb = 1.0 + (self.f_torso - 1.0) * 0.6
+        # sex proportions: female reads narrower at the shoulder, wider at the hip
+        self.shoulder_factor = 1.0 if sex == "male" else 0.88
+        self.hip_factor = 1.0 if sex == "male" else 1.15
+        # uniform scale from height (rig authored at ~175 cm)
+        self.height_scale = max(0.80, min(1.20, height_cm / 175.0))
 
 
 # ===================== quaternion helpers (xyzw) ========================
@@ -90,6 +196,55 @@ def capsule_geom(rx, ry, rz, seg=14, rings=10):
     than a bare egg. Just an ellipsoid with the lower rings pinched in."""
     pos, nor = ellipsoid_geom(rx, ry, rz, seg, rings)
     return pos, nor
+
+
+def real_capsule(r, half_len, seg=14, cap_rings=5):
+    """A true capsule (round cross-section): a straight cylinder of half-height
+    `half_len` and radius `r`, capped top and bottom by hemispheres of radius r.
+    Total height = 2*(half_len + r).
+
+    Unlike an ellipsoid, its sides are parallel and it never pinches to a point,
+    so two segments stacked with a small overlap fuse into one continuous, bending
+    limb instead of reading as a stack of pills. Flat-shaded (per-triangle
+    normals) to match the rest of the low-poly figure."""
+    # Latitude rows as (y, ring-radius): top cap (north pole -> equator), then
+    # bottom cap (equator -> south pole). The straight cylinder wall is the single
+    # segment joining the two equator rows (both at ring-radius r).
+    rows = []
+    for k in range(cap_rings + 1):                       # top hemisphere
+        phi = (math.pi / 2) * k / cap_rings
+        rows.append((half_len + r * math.cos(phi), r * math.sin(phi)))
+    for k in range(1, cap_rings + 1):                    # bottom hemisphere
+        phi = (math.pi / 2) * (1 + k / cap_rings)
+        rows.append((-half_len + r * math.cos(phi), r * math.sin(phi)))
+
+    grid = []
+    for y, rad in rows:
+        row = []
+        for ix in range(seg + 1):
+            theta = 2 * math.pi * ix / seg
+            row.append((math.cos(theta) * rad, y, math.sin(theta) * rad))
+        grid.append(row)
+
+    positions, normals = [], []
+    for iy in range(len(grid) - 1):
+        for ix in range(seg):
+            a = grid[iy][ix]
+            b = grid[iy][ix + 1]
+            c = grid[iy + 1][ix + 1]
+            d = grid[iy + 1][ix]
+            for tri in ((a, b, c), (a, c, d)):
+                ux = (tri[1][0]-tri[0][0], tri[1][1]-tri[0][1], tri[1][2]-tri[0][2])
+                vx = (tri[2][0]-tri[0][0], tri[2][1]-tri[0][1], tri[2][2]-tri[0][2])
+                nx = ux[1]*vx[2] - ux[2]*vx[1]
+                ny = ux[2]*vx[0] - ux[0]*vx[2]
+                nz = ux[0]*vx[1] - ux[1]*vx[0]
+                L = math.sqrt(nx*nx + ny*ny + nz*nz) or 1.0
+                nx /= L; ny /= L; nz /= L
+                for p in tri:
+                    positions.extend(p)
+                    normals.extend((nx, ny, nz))
+    return positions, normals
 
 
 # ===================== glTF binary builder ==============================
@@ -248,40 +403,56 @@ class Clip:
                 "samplers": self.samplers}
 
 
-def build():
+def build(ch=None):
+    ch = ch or Character()
     b = GLBBuilder()
 
-    # materials
-    mtl = {name: b.add_material(name, rgb) for name, rgb in PALETTE.items()}
+    # materials from the character's colors
+    mtl = {name: b.add_material(name, rgb) for name, rgb in (
+        ("skin",  ch.skin),
+        ("hair",  ch.hair_color),
+        ("shirt", ch.top_color),
+        ("pants", ch.bottom_color),
+        ("shoes", SHOE_COLOR),
+        ("eyes",  EYE_COLOR),
+    )}
+
+    Ft, Fb, Fl = ch.f_torso, ch.f_belly, ch.f_limb
 
     # ---- geometries (ellipsoid half-extents) ----------------------------
     head_r = 0.27                       # a touch smaller -> less chibi
     geoms = {
-        "torso":  ellipsoid_geom(0.30*F, 0.44, 0.22*F),
-        "thigh":  capsule_geom(0.135*F, 0.20, 0.135*F),
-        "shin":   capsule_geom(0.11*F, 0.20, 0.11*F),
-        "shoe":   ellipsoid_geom(0.13*F, 0.07, 0.20*F),   # longer, points +Z
-        "arm":    capsule_geom(0.095*F, 0.19, 0.10*F),
-        "fore":   capsule_geom(0.082*F, 0.17, 0.088*F),
-        "hand":   ellipsoid_geom(0.085*F, 0.10*F, 0.075*F),
+        "torso":  ellipsoid_geom(0.30*Ft*(0.7 + 0.3*ch.shoulder_factor),
+                                 0.44, 0.22*Fb),
+        # Legs are real capsules (parallel sides, rounded caps) sized to OVERLAP
+        # at the knee joint, so thigh + shin fuse into one smooth, tapering leg
+        # instead of two pinched pills stacked nose-to-nose. Thigh a touch thicker
+        # than the shin for a natural taper down to the ankle.
+        "thigh":  real_capsule(0.13*Fl, 0.10),
+        "shin":   real_capsule(0.115*Fl, 0.11),
+        "shoe":   ellipsoid_geom(0.13*Fl, 0.07, 0.20*Fl),   # longer, points +Z
+        "arm":    capsule_geom(0.095*Fl, 0.19, 0.10*Fl),
+        "fore":   capsule_geom(0.082*Fl, 0.17, 0.088*Fl),
+        "hand":   ellipsoid_geom(0.085*Fl, 0.10*Fl, 0.075*Fl),
         "neck":   ellipsoid_geom(0.09, 0.10, 0.09),
         "head":   ellipsoid_geom(head_r, head_r*1.08, head_r),
-        "hair":   ellipsoid_geom(head_r*1.06, head_r*1.10, head_r*1.06,
-                                 phi_end=math.pi*0.60),
         "eye":    ellipsoid_geom(0.026, 0.030, 0.026, seg=8, rings=6),
         "nose":   ellipsoid_geom(0.03, 0.028, 0.04, seg=7, rings=5),
     }
+    # outfit decides which parts wear cloth and which show skin
+    arm_mat = "skin" if ch.top == "tank" else "shirt"
+    fore_mat = "shirt" if ch.top == "longsleeve" else "skin"
+    shin_mat = "skin" if ch.bottom == "shorts" else "pants"
     mesh = {name: b.add_mesh(pos, nor, mtl[mat]) for name, (pos, nor), mat in [
         ("torso", geoms["torso"], "shirt"),
         ("thigh", geoms["thigh"], "pants"),
-        ("shin",  geoms["shin"],  "pants"),
+        ("shin",  geoms["shin"],  shin_mat),
         ("shoe",  geoms["shoe"],  "shoes"),
-        ("arm",   geoms["arm"],   "shirt"),
-        ("fore",  geoms["fore"],  "skin"),
+        ("arm",   geoms["arm"],   arm_mat),
+        ("fore",  geoms["fore"],  fore_mat),
         ("hand",  geoms["hand"],  "skin"),
         ("neck",  geoms["neck"],  "skin"),
         ("head",  geoms["head"],  "skin"),
-        ("hair",  geoms["hair"],  "hair"),
         ("eye",   geoms["eye"],   "eyes"),
         ("nose",  geoms["nose"],  "skin"),
     ]}
@@ -290,13 +461,55 @@ def build():
     # node indices we want to animate get stashed in `nd`
     nd = {}
 
+    # hair: every style is one or more meshes parented to the head so they
+    # ride every head animation for free
+    def hair_nodes():
+        hair_mtl = mtl["hair"]
+
+        def add_hair(name, geom, translation, rotation=None):
+            m = b.add_mesh(geom[0], geom[1], hair_mtl)
+            return b.add_node(name, mesh=m, translation=translation,
+                              rotation=rotation)
+
+        cap = lambda extra=0.0, phi=0.60: ellipsoid_geom(
+            head_r*1.06, head_r*(1.10 + extra), head_r*1.06,
+            phi_end=math.pi*phi)
+        nodes = []
+        if ch.hair == "bald":
+            return nodes
+        if ch.hair == "short":
+            nodes.append(add_hair("hair", cap(), (0, 0.05, -0.02)))
+        elif ch.hair == "spiky":
+            nodes.append(add_hair("hair", cap(phi=0.52), (0, 0.05, -0.02)))
+            spike = ellipsoid_geom(0.05, 0.13, 0.05, seg=6, rings=4)
+            for i, (sx, sz, tilt) in enumerate((
+                    (0.0, 0.0, 0.0), (0.13, 0.02, -0.45), (-0.13, 0.02, 0.45),
+                    (0.06, -0.11, -0.2), (-0.06, -0.11, 0.2))):
+                y = math.sqrt(max(0.0, 1 - (sx/head_r)**2 - (sz/head_r)**2))
+                nodes.append(add_hair(
+                    f"spike{i}", spike, (sx, head_r*1.02*y + 0.06, sz),
+                    rotation=q_axis((0, 0, 1), tilt)))
+        elif ch.hair == "long":
+            nodes.append(add_hair("hair", cap(phi=0.68), (0, 0.05, -0.02)))
+            back = ellipsoid_geom(0.21, 0.34, 0.10)
+            nodes.append(add_hair("hairBack", back, (0, -0.16, -head_r*0.72)))
+        elif ch.hair == "ponytail":
+            nodes.append(add_hair("hair", cap(), (0, 0.05, -0.02)))
+            tail = ellipsoid_geom(0.075, 0.24, 0.075)
+            nodes.append(add_hair("ponytail", tail, (0, -0.06, -head_r*1.15),
+                                  rotation=q_axis((1, 0, 0), 0.35)))
+        elif ch.hair == "bun":
+            nodes.append(add_hair("hair", cap(), (0, 0.05, -0.02)))
+            bun = ellipsoid_geom(0.10, 0.10, 0.10, seg=10, rings=8)
+            nodes.append(add_hair("bun", bun, (0, head_r*0.72, -head_r*0.85)))
+        return nodes
+
     # head: hair + eyes + nose
     eye_l = b.add_node("eyeL", mesh=mesh["eye"], translation=(0.10, 0.01, head_r*0.86))
     eye_r = b.add_node("eyeR", mesh=mesh["eye"], translation=(-0.10, 0.01, head_r*0.86))
     nose_n = b.add_node("nose", mesh=mesh["nose"], translation=(0, -0.05, head_r*0.94))
-    hair_n = b.add_node("hair", mesh=mesh["hair"], translation=(0, 0.05, -0.02))
     head_n = b.add_node("head", mesh=mesh["head"], translation=(0, 0.30, 0),
-                        children=[hair_n, eye_l, eye_r, nose_n])
+                        children=hair_nodes() + [eye_l, eye_r, nose_n])
     neck_n = b.add_node("neck", mesh=mesh["neck"], translation=(0, 0.30, 0),
                         children=[head_n])
     nd["neck"] = neck_n
@@ -309,7 +522,8 @@ def build():
                            children=[fore, hand])
         arm = b.add_node(f"arm{name}", mesh=mesh["arm"], translation=(0, -0.19, 0))
         shoulder = b.add_node(f"shoulder{name}",
-                              translation=(0.30*F*side_sign, 0.30, 0),
+                              translation=(0.30*Ft*ch.shoulder_factor*side_sign,
+                                           0.30, 0),
                               children=[arm, elbow])
         return shoulder, elbow
 
@@ -324,13 +538,17 @@ def build():
 
     # legs: hip -> (thigh mesh) knee -> (shin mesh) ankle -> shoe
     def build_leg(side_sign, name):
-        shoe = b.add_node(f"shoe{name}", mesh=mesh["shoe"], translation=(0, -0.24, 0.07))
+        # shin mesh sits at knee-local y=-0.20 and reaches down to ~-0.43
+        # (half_len 0.11 + cap radius 0.115), so the shoe belongs at the
+        # ankle just below that, not at mid-shin
+        shoe = b.add_node(f"shoe{name}", mesh=mesh["shoe"], translation=(0, -0.42, 0.07))
         knee = b.add_node(f"knee{name}", translation=(0, -0.40, 0),
                           children=[b.add_node(f"shin{name}", mesh=mesh["shin"],
                                                translation=(0, -0.20, 0)), shoe])
         thigh = b.add_node(f"thigh{name}", mesh=mesh["thigh"], translation=(0, -0.20, 0))
         hip = b.add_node(f"hip{name}",
-                         translation=(0.13*(0.7+0.3*F)*side_sign, 0, 0),
+                         translation=(0.13*(0.7+0.3*Ft)*ch.hip_factor*side_sign,
+                                      0, 0),
                          children=[thigh, knee])
         return hip, knee
 
@@ -345,6 +563,14 @@ def build():
     root_n = b.add_node("root", children=[torso_n, hips_n])
     nd["root"] = root_n
 
+    # height lives on a wrapper above "root" so the animated root.y
+    # translation never fights the static scale
+    s = ch.height_scale
+    scene_n = root_n
+    if abs(s - 1.0) > 1e-6:
+        scene_n = b.add_node("character", children=[root_n])
+        b.nodes[scene_n]["scale"] = [s, s, s]
+
     # ---- animations -----------------------------------------------------
     b.animations = [clip.dict() for clip in (
         clip_idle(b, nd),
@@ -352,7 +578,7 @@ def build():
         clip_jump(b, nd),
         clip_crouch(b, nd),
     )]
-    return b, root_n
+    return b, scene_n
 
 
 # ===================== the four clips ==================================
@@ -521,7 +747,51 @@ def write_glb(path, gltf_dict, binary):
           f"{len(gltf_dict['animations'])} animations)")
 
 
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--sex", choices=("male", "female"), default="male")
+    p.add_argument("--age", type=float, default=25)
+    p.add_argument("--height", type=float, default=None, metavar="CM",
+                   help="height in cm (default 175 male / 165 female)")
+    p.add_argument("--weight", type=float, default=None, metavar="KG",
+                   help="weight in kg (default 70 male / 62 female)")
+    p.add_argument("--hair", choices=HAIR_STYLES, default=None,
+                   help="hair style (default short male / long female)")
+    p.add_argument("--hair-color", default="brown",
+                   type=lambda v: parse_color(v, HAIR_COLORS),
+                   help=f"{sorted(HAIR_COLORS)} or #rrggbb")
+    p.add_argument("--top", choices=TOP_STYLES, default="tshirt")
+    p.add_argument("--top-color", default="blue",
+                   type=lambda v: parse_color(v, TOP_COLORS),
+                   help=f"{sorted(TOP_COLORS)} or #rrggbb")
+    p.add_argument("--bottom", choices=BOTTOM_STYLES, default="pants")
+    p.add_argument("--bottom-color", default="navy",
+                   type=lambda v: parse_color(v, BOTTOM_COLORS),
+                   help=f"{sorted(BOTTOM_COLORS)} or #rrggbb")
+    p.add_argument("--skin", default="light",
+                   type=lambda v: parse_color(v, SKIN_TONES),
+                   help=f"{sorted(SKIN_TONES)} or #rrggbb")
+    p.add_argument("--out", default="human.glb")
+    a = p.parse_args(argv)
+    if a.height is None:
+        a.height = 175.0 if a.sex == "male" else 165.0
+    if a.weight is None:
+        a.weight = 70.0 if a.sex == "male" else 62.0
+    if a.hair is None:
+        a.hair = "short" if a.sex == "male" else "long"
+    return a
+
+
 if __name__ == "__main__":
-    b, root = build()
+    args = parse_args()
+    ch = Character(sex=args.sex, age=args.age, height_cm=args.height,
+                   weight_kg=args.weight, hair=args.hair,
+                   hair_color=args.hair_color, top=args.top,
+                   top_color=args.top_color, bottom=args.bottom,
+                   bottom_color=args.bottom_color, skin=args.skin)
+    print(f"{ch.sex}, {ch.age:.0f}y, {ch.height_cm:.0f}cm/{ch.weight_kg:.0f}kg"
+          f" -> BMI {ch.bmi:.1f}, est. body fat {ch.body_fat:.1f}%,"
+          f" fatness {ch.f_torso:.2f}, height scale {ch.height_scale:.2f}")
+    b, root = build(ch)
     d = to_gltf_dict(b, root)
-    write_glb("human.glb", d, bytes(b.buffer))
+    write_glb(args.out, d, bytes(b.buffer))
