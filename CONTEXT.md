@@ -165,7 +165,11 @@ Every game's root node extends `MiniGame`. This is what lets any game plug into
 the shared countdown → play → results → XP pipeline.
 
 - `begin()` — platform starts the game (called after the countdown).
-- `_start_game()` — override for game-specific setup.
+- `_prepare_world()` — override for setup that must be VISIBLE during the intro
+  (runs in `_ready`, before the countdown freezes the scene) — e.g. standing the
+  player at their spawn point so the count reveals them ready. Gameplay start
+  belongs in `_start_game()`, not here.
+- `_start_game()` — override for game-specific setup (runs after the countdown).
 - `add_score(points)` / `get_score()` / `get_elapsed_sec()`.
 - `get_difficulty()` — reads the launcher's chosen difficulty.
 - `get_game_id()` — override to return the registry id (e.g. `"runner"`).
@@ -175,11 +179,11 @@ the shared countdown → play → results → XP pipeline.
 ### GameResult schema (the contract between a game and the platform)
 ```gdscript
 {
-    "game_id":      String,   # registry id, e.g. "runner"
-    "score":        int,      # game-defined points
-    "duration_sec": float,    # seconds played
-    "calories":     float,    # from the calorie system (0.0 until Python is wired)
-    "xp_earned":    int,      # computed by MiniGame from score
+	"game_id":      String,   # registry id, e.g. "runner"
+	"score":        int,      # game-defined points
+	"duration_sec": float,    # seconds played
+	"calories":     float,    # from the calorie system (0.0 until Python is wired)
+	"xp_earned":    int,      # computed by MiniGame from score
 }
 ```
 Because every game emits this exact shape, the results screen, profile stats, and
@@ -201,7 +205,7 @@ Game Select   ← builds cards from GameManager registry (data-driven)
 Game scene loads (a MiniGame), frozen on its first frame
    ↓
 Game Intro    ← overlay the MiniGame base shows before play (shared by all games):
-                Setup (live webcam mirror; raise both hands to start) → 3·2·1·Go
+				Setup (live webcam mirror; raise both hands to start) → 3·2·1·Go
 				over the game's translucent first frame → begin()
    ↓
 Game plays
@@ -221,10 +225,13 @@ the webcam (from `CameraPreview`) fills the screen; holding the *ready gesture*
 (both hands above the head, detected in Python — see §9) for ~1 s starts the
 count (or press Space, so it works with no camera). Phase 2 **Countdown**: the
 mirror shrinks to a corner thumbnail, the dim fades to translucent to reveal the
-real game behind it, and 3·2·1·Go plays; then `begin()` runs. A game scene opened
-directly (e.g. from the editor) skips the intro and just plays. Adding a game
-needs **no intro code** — the base handles it. (The old standalone
-`countdown_screen` scene is superseded by this overlay.)
+real game behind it, and 3·2·1·Go plays; then `begin()` runs. Because the count
+reveals the actual (frozen) game, `MiniGame._ready` calls `_prepare_world()`
+*before* freezing, so a game can pose its world play-ready for the reveal (the
+Open World stands the player at its spawn point and frames the camera there — see
+§9). A game scene opened directly (e.g. from the editor) skips the intro and just
+plays. Adding a game needs **no intro code** — the base handles it. (The old
+standalone `countdown_screen` scene is superseded by this overlay.)
 
 Shared scenes live in `scenes/menus/`:
 `main_menu`, `game_select`, `settings_menu`, `pause_menu`, `results_screen`,
@@ -382,15 +389,28 @@ by design — with no service running the texture is null and the UI falls back 
   (`open_world.gd`) `extends MiniGame`, so it plugs into the normal
   countdown → play → results pipeline; a `CharacterBody3D` (`player.gd`) reads
   `MotionManager` (march → walk/run on a curved speed ramp, lean → turn,
-  leap → jump), with
-  a follow camera, sun shadows, procedural sky + fog, and four coloured landmark
-  pillars for orientation. Steps become score/XP, and six code-spawned **glow
-  orbs** (`_spawn_orbs` in `open_world.gd`) each award bonus score on touch and
-  respawn ≥8 m from the player — an endless trail of walking goals. The HUD
-  shows time/calories/steps/orbs; `player.gd` respawns anyone who falls off the
-  60×60 ground. Ending is player-driven: Esc opens the shared PauseMenu,
-  whose "End & Save" (`enable_end_option()` / `end_requested`) calls `finish()`.
-  This scene doubles as the proof of the motion loop.
+  leap → jump), with a follow camera, sun shadows, and procedural sky + fog.
+  The world is a **sculpted HTerrain heightmap** (`addons/zylann.hterrain`,
+  data in `Terrain/`, grass/stone/iced-stone splat textures) — real hills and
+  valleys to roam. `open_world.gd` handles the terrain plumbing itself: in
+  `_prepare_world()` (before the intro — §7) it stands the player at the
+  `SpawnPoint` Marker3D and frames the camera behind them, so the countdown
+  reveals them ready at the start line; then in `_start_game()` it waits a physics
+  tick (so the terrain collider is live) and ground-snaps the player precisely
+  onto the surface via a downward raycast (`_ground_y` / `_drop_player_to_ground`).
+  Every orb is likewise snapped to the ground so none float or bury in a slope.
+  Steps become score/XP, and six code-spawned **glow orbs** (`_spawn_orbs`) each
+  award bonus score on touch and respawn 8–26 m **from the player** (not the world
+  origin — on a large terrain the player is rarely at the centre) — an endless
+  trail of walking goals. The stat HUD (time/calories/steps/orbs) is its own
+  `OpenWorldHud` component (`open_world_hud.gd`, a code-built CanvasLayer the game
+  feeds via `set_stats`); `player.gd` respawns anyone who falls below
+  `FALL_RESET_Y` back to their ground-snapped spawn.
+  Ending is player-driven: Esc opens the shared PauseMenu, whose "End & Save"
+  (`enable_end_option()` / `end_requested`) calls `finish()`. This scene doubles
+  as the proof of the motion loop. (The earlier flat box-ground sandbox and a
+  separate `scenes/tests/` terrain subclass were consolidated into this one
+  scene + script.)
 
 **How to run the camera control:**
 1. `pip install -r python/requirements.txt` (once).
@@ -469,12 +489,64 @@ same controller works with the camera today or another input source later.
 
 ## 12. Current TODO
 
-- [ ] **Build the Infinite Runner** in `scenes/runner/` (owner is building this).
-	  Root node's script `extends MiniGame`; override `get_game_id()` → `"runner"`
-      and `_start_game()`; call `add_score(...)` during play and `finish(calories)`
-      when the session ends. The registry entry and `SceneManager.RUNNER` path
-	  (`res://scenes/runner/runner.tscn`) already exist — just flip the runner's
-	  `available` to `true` in `GameManager._build_registry()` once the scene is in.
+- [x] **Zombie Run — the Infinite Runner** (`scenes/runner/`, registry id `runner`,
+	  `available:true`). A cardio chase: a zombie pursues you and you escape by
+	  MARCHING — `MotionManager.get_forward()` sets your run speed, which the world
+	  scrolls at and which decides whether you out-run the pursuer. The chase is a
+	  0..1 "gap": the zombie's speed ramps with time + difficulty, the gap grows when
+	  it out-runs you and shrinks when you out-run it; reach `CAUGHT_GAP` and it
+	  lunges and the run ends (a real fail state, unlike Open World). Along the way
+	  you jump low barriers (`consume_jump`), slide under bars (`get_crouch`) and lean
+	  to dodge side wreckage (`get_turn`) — a hit stumbles you and lets the zombie
+	  gain. Score = distance in metres. **Tension is all feedback, and deliberately
+	  unquantified** (sounds TODO): as the gap closes the vignette squeezes the
+	  visible world down to a narrow tunnel and a heartbeat — quickening, throbbing
+	  blood into the edges — pulses the camera zoom. There is NO proximity gauge and
+	  NO escape-route map (both existed and were cut on 2026-07-17, see below). The world scrolls PAST a
+	  stationary player (`RunnerTrack` recycles a handful of graveyard-corridor tiles
+	  + streams obstacles), so "infinite" is cheap and origin-stable. The rear camera
+	  only reveals the zombie in the last stretch of the gap, when it rears up huge
+	  and reaching in the foreground — the UI carries the threat until then.
+	  Files: `runner.gd` (MiniGame orchestrator: chase, tension, camera, flow),
+	  `runner_track.gd` (`RunnerTrack`: scrolling world + obstacles + collisions),
+	  `runner_player.gd` (`RunnerPlayer`: strafe/jump/slide, personalised model),
+	  `zombie.gd` (`RunnerZombie`: loads the zombie GLB, shamble/lunge, self-glow),
+	  `runner_hud.gd` (`RunnerHud`: closing-dark vignette + stats + prompts),
+	  `runner.tscn`.
+	  The **zombie model** is generated by `assets/models/generated_human/
+	  export_zombie_glb.py` → `assets/models/zombie/zombie.glb`: it reuses the player
+	  rig from `export_glb.py` (now takes a `clip_builders` arg) with a gaunt green
+	  reskin and bespoke hunched shamble / lunge / idle clips. Shared feet-planting
+	  lives in `scripts/utilities/rig_utils.gd` (`RigUtils`). Verified end-to-end via
+	  fake UDP march packets + `tools/shot.sh`: escape, loom, catch→Results all clean.
+	  **10s briefing + scarier/encouraging pass (2026-07-17):** `runner.gd` now opens
+	  every run with a ~10s **grace period** (`BRIEFING_SEC`) before the chase — the
+	  world scrolls so you can warm up marching and watch the pace bar, but nothing is
+	  scored and the gap is pinned at 0. A centred "OUTRUN THE DEAD" how-to card
+	  (`RunnerHud.show_briefing`) lists the four body moves + a live "CHASE BEGINS IN
+	  N" countdown, then `_begin_chase()` starts hazards/scoring. The zombie speed ramp
+	  is now keyed to `_chase_time` (chase-only elapsed), NOT total elapsed, so the
+	  briefing doesn't secretly pre-accelerate the pursuer. Briefing scrolls scenery
+	  via `RunnerTrack.scroll(delta, speed, spawn=false)`. Feedback is both scarier and
+	  more hyping: distant lightning double-flashes + "IT'S RIGHT BEHIND YOU" groan
+	  toasts that quicken with the gap (`_update_scares`), 100m milestone toasts, and a
+	  reworked prompt that praises ("YOU'RE PULLING AWAY!", "GREAT PACE") when you're
+	  holding it off, not only scolds. New HUD bits: `flash_toast`/`flash_lightning`.
+	  **"The less you see, the more you fear" pass (2026-07-17):** the top PROXIMITY
+	  gauge and the bottom-right "ESCAPE ROUTE" minimap are **deleted**. Both told you
+	  exactly how close the zombie was, which turned terror into arithmetic — you
+	  managed a bar instead of feeling hunted. The gap's ONLY channel now is the
+	  closing dark: `VIGNETTE_SHADER` drags its clear centre from a wide cinematic
+	  frame (`intensity` 0) down to a narrow tunnel (`intensity` 1), clenching on each
+	  heartbeat, with grain + a slow breathing wobble so the murk never sits still.
+	  Near-black by default — blood washes in only on the beat, so it reads as the
+	  light dying rather than a red filter. The beat is the other readout: `hz`
+	  0.75→3.2 with the gap. Groan toasts pull from `runner.gd`'s `GROANS` and stay
+	  vague on purpose ("SOMETHING'S GAINING"). Don't reintroduce a number.
+	  Environment enriched in `runner_track.gd` (`_scenery` seeds varied graves /
+	  broken pillars / crypts / broken fences / dead trees per tile + a low
+	  ground-fog slab — no crosses or other religious imagery, by request)
+	  and `runner.tscn` (a pale emissive **moon** in the upper-left fog, deeper fog).
 - [ ] **Difficulty select screen** between Game Select and Countdown (flow §7
 	  currently skips it; `GameManager` already stores difficulty).
 - [ ] Real calorie value in `MiniGame.finish()` (currently a time-based stub).
@@ -508,7 +580,7 @@ same controller works with the camera today or another input source later.
 	  RESUME and fades the overlay in (its node processes while paused so the tween
 	  runs). The Loading Screen gets the gradient background, accent bar, Anton title
 	  and an orange-filled progress bar. The Open World HUD
-	  (`open_world.gd::_build_hud`) is no longer one crammed label — it's a centred row
+	  (`OpenWorldHud` in `scenes/open-world/open_world_hud.gd`) is no longer one crammed label — it's a centred row
 	  of dark stat chips (TIME · CALORIES · STEPS · ORBS; caption over an Anton value,
 	  calories/orbs in accent) with a subtle bottom "ESC — PAUSE / END & SAVE" hint and
 	  a scale-pop on the ORBS chip when one is banked. The Results screen was already
@@ -522,24 +594,24 @@ same controller works with the camera today or another input source later.
 	  (`scripts/ui/panel_screen.gd`) using a reusable `ProfileForm`
 	  (`scripts/ui/profile_form.gd`); paths/loaders live in `SceneManager`
 	  (`PROFILE_SETUP`/`PROFILE`). The profile screen's top row shows REAL lifetime
-      fitness totals derived from `ActivityManager` (calories, steps, active minutes,
-      workouts) — deliberately NOT XP/Level. XP/Level still accrue in ProfileManager
-      for progression but are kept off the profile UI (no gamification placeholders).
-      Still TODO: name entry. (HR-based Keytel calories are now wired in
-      `MotionManager` — see §9 Calories.)
+	  fitness totals derived from `ActivityManager` (calories, steps, active minutes,
+	  workouts) — deliberately NOT XP/Level. XP/Level still accrue in ProfileManager
+	  for progression but are kept off the profile UI (no gamification placeholders).
+	  Still TODO: name entry. (HR-based Keytel calories are now wired in
+	  `MotionManager` — see §9 Calories.)
 - [x] **Fitness dashboard + daily/weekly history.** `ActivityManager` (§5) logs a
-      per-day record on every `game_finished` and derives week totals, daily
-      averages and streaks. `scenes/menus/fitness_screen.tscn` (FitnessScreen, on
-      the `PanelScreen` base) shows a KPI row (today-vs-goal, streak, week total,
-      daily avg) and a 7-day calorie bar chart (`scripts/ui/bar_chart.gd`,
-      `BarChart`, code-drawn) with the goal line and today highlighted. Reachable
-      from the main menu (FITNESS). Future: editable daily goal UI, monthly/yearly
-      views + consistency heat-calendar, steps/active-minutes charts, per-day HR.
+	  per-day record on every `game_finished` and derives week totals, daily
+	  averages and streaks. `scenes/menus/fitness_screen.tscn` (FitnessScreen, on
+	  the `PanelScreen` base) shows a KPI row (today-vs-goal, streak, week total,
+	  daily avg) and a 7-day calorie bar chart (`scripts/ui/bar_chart.gd`,
+	  `BarChart`, code-drawn) with the goal line and today highlighted. Reachable
+	  from the main menu (FITNESS). Future: editable daily goal UI, monthly/yearly
+	  views + consistency heat-calendar, steps/active-minutes charts, per-day HR.
 - [ ] **Watch / heart-rate connection UX.** BLE stays Python-side (§9); `hr` already
-      flows through `MotionManager.get_heart_rate()`, `is_hr_connected()` exists, and
-      Keytel HR→kcal fusion is live (§9 Calories). Next: a connection-status
-      indicator in the UI, then optionally a Godot→Python control channel
-      for in-app scan/pair (the current UDP is one-way). NB only live BLE HRS devices
+	  flows through `MotionManager.get_heart_rate()`, `is_hr_connected()` exists, and
+	  Keytel HR→kcal fusion is live (§9 Calories). Next: a connection-status
+	  indicator in the UI, then optionally a Godot→Python control channel
+	  for in-app scan/pair (the current UDP is one-way). NB only live BLE HRS devices
 	  (chest straps / broadcast-mode watches) work — Apple Watch/Fitbit don't expose
 	  real-time HR to third parties.
 - [ ] Boxing / Football / Tennis game scenes (flip `available` to true).
@@ -564,23 +636,23 @@ same controller works with the camera today or another input source later.
 ## 14. Completed
 
 - ✅ Project configured for Forward+, 1920×1080, windowed, Keep aspect,
-      canvas-items/fractional scaling, VSync on, 60 physics FPS, title "MotionFit".
+	  canvas-items/fractional scaling, VSync on, 60 physics FPS, title "MotionFit".
 - ✅ Full folder structure created (§3).
 - ✅ Six manager autoloads implemented and registered in dependency order (§5).
 - ✅ `SceneManager` owns all scene paths; no paths hardcoded elsewhere.
 - ✅ Data-driven `GameManager` registry (Open World available; others "Coming Soon").
 - ✅ `MiniGame` base contract + `GameResult` schema (§6).
 - ✅ Shared UI scenes: Main Menu, Game Select, Settings, Pause, Results, Loading,
-      Countdown, with controller scripts. Main Menu is themed (`assets/ui/main_theme.tres`);
-      the other menus still use the default theme (next up).
+	  Countdown, with controller scripts. Main Menu is themed (`assets/ui/main_theme.tres`);
+	  the other menus still use the default theme (next up).
 - ✅ Full launcher flow wired and verified end-to-end (Menu → Game Select →
-      Countdown → **Open World** → End & Save → Results). Open World is the first
-      playable game and completes the loop; the other games show "Coming Soon".
+	  Countdown → **Open World** → End & Save → Results). Open World is the first
+	  playable game and completes the loop; the other games show "Coming Soon".
 - ✅ PauseMenu gained an optional "End & Save" (`enable_end_option()` +
-      `end_requested`) so endless/no-fail games can bank a session to Results.
+	  `end_requested`) so endless/no-fail games can bank a session to Results.
 - ✅ Save system (`SaveManager`) with Profile + Settings persistence.
 - ✅ **Camera movement pipeline** (§9): Python pose service (MediaPipe) →
-      UDP → `MotionManager` → `CharacterBody3D`. Godot side verified end-to-end
-      with simulated packets (character moves/turns; halts on signal loss).
-      Real webcam run is user-side.
+	  UDP → `MotionManager` → `CharacterBody3D`. Godot side verified end-to-end
+	  with simulated packets (character moves/turns; halts on signal loss).
+	  Real webcam run is user-side.
 - ✅ This CONTEXT.md.
