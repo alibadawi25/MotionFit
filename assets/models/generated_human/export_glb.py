@@ -403,7 +403,12 @@ class Clip:
                 "samplers": self.samplers}
 
 
-def build(ch=None):
+def build(ch=None, clip_builders=None):
+    """Assemble the rigged figure. `clip_builders` is an optional list of
+    functions `(GLBBuilder, node_dict) -> Clip`; when omitted the four default
+    human clips are baked. Passing a custom list lets another generator reuse
+    this exact rig with a different animation set (e.g. the zombie's shamble/
+    lunge — see export_zombie_glb.py) without duplicating the node hierarchy."""
     ch = ch or Character()
     b = GLBBuilder()
 
@@ -572,12 +577,9 @@ def build(ch=None):
         b.nodes[scene_n]["scale"] = [s, s, s]
 
     # ---- animations -----------------------------------------------------
-    b.animations = [clip.dict() for clip in (
-        clip_idle(b, nd),
-        clip_walk(b, nd),
-        clip_jump(b, nd),
-        clip_crouch(b, nd),
-    )]
+    if clip_builders is None:
+        clip_builders = (clip_idle, clip_walk, clip_jump, clip_crouch)
+    b.animations = [cb(b, nd).dict() for cb in clip_builders]
     return b, scene_n
 
 

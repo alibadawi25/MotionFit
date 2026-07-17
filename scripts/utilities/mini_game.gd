@@ -22,6 +22,13 @@ signal finished_with_result(result: Dictionary)
 ## rewarded on the same scale.
 const XP_PER_SCORE: float = 1.0
 
+## Nodes in this group are left processing during the intro freeze. Some world
+## nodes (e.g. HTerrain) build their visible mesh lazily in _process, so freezing
+## them on frame one leaves them invisible behind the countdown. Scenery has no
+## gameplay to pause, so a game can add such a node to this group to keep it
+## rendering while everything else holds still. See [method _freeze_world].
+const KEEP_PROCESSING_GROUP: StringName = &"intro_keep_processing"
+
 var _score: int = 0
 var _elapsed_sec: float = 0.0
 var _running: bool = false
@@ -32,6 +39,9 @@ var _frozen_children: Array[Node] = []
 ## then starts the game. Games should NOT override _ready; put game-specific
 ## setup in [method _start_game], which begin() calls once the count finishes.
 func _ready() -> void:
+	# Pre-intro world setup runs first, so the frozen scene the countdown reveals
+	# already looks play-ready (e.g. the player standing at their spawn point).
+	_prepare_world()
 	if GameManager.take_intro_pending():
 		_run_intro()
 	else:
@@ -61,12 +71,17 @@ func _on_intro_finished() -> void:
 
 ## Freezes (or restores) every world node so the game holds still on its first
 ## frame while the intro plays. Rendering is unaffected — only processing/input
-## are paused — so the countdown shows the real, static game behind it. The
+## are paused — so the countdown shows the real, static game behind it. Nodes in
+## [constant KEEP_PROCESSING_GROUP] are left running, since some (e.g. HTerrain)
+## build their visible mesh in _process and would otherwise stay invisible. The
 ## intro overlay is added afterwards, so it keeps running.
 func _freeze_world(frozen: bool) -> void:
 	if frozen:
-		_frozen_children = get_children()
-		for child in _frozen_children:
+		_frozen_children = []
+		for child in get_children():
+			if child.is_in_group(KEEP_PROCESSING_GROUP):
+				continue
+			_frozen_children.append(child)
 			child.process_mode = Node.PROCESS_MODE_DISABLED
 	else:
 		for child in _frozen_children:
@@ -141,6 +156,15 @@ func get_difficulty() -> GameManager.Difficulty:
 ## GameManager entry (e.g. "runner").
 func get_game_id() -> String:
 	return "unknown"
+
+
+## Pre-intro world setup, run in _ready before the countdown. Override for
+## anything that must already look right in the static scene the intro reveals
+## behind it — e.g. standing the player at their spawn point. Gameplay start
+## (score reset, HUD, spawning collectibles) belongs in [method _start_game],
+## which runs after the count. Default does nothing.
+func _prepare_world() -> void:
+	pass
 
 
 ## Game-specific setup. Override in subclasses; default does nothing.

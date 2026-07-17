@@ -145,10 +145,10 @@ func _build_registry() -> void:
 		},
 		{
 			"id": "runner",
-			"title": "Infinite Runner",
-			"description": "Dodge and dash to a rhythm. Great cardio warm-up.",
+			"title": "Zombie Run",
+			"description": "A zombie is chasing you — march hard to escape, jump, slide and dodge. Pure cardio panic.",
 			"scene": SceneManager.RUNNER,
-			"available": false,
+			"available": true,
 		},
 		{
 			"id": "boxing",

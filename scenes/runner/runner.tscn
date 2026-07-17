@@ -1,0 +1,69 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scenes/runner/runner.gd" id="1_runner"]
+[ext_resource type="Script" path="res://scenes/runner/runner_player.gd" id="2_player"]
+[ext_resource type="Script" path="res://scenes/runner/zombie.gd" id="3_zombie"]
+
+[sub_resource type="StandardMaterial3D" id="moon_mat"]
+shading_mode = 0
+albedo_color = Color(0.88, 0.9, 0.85, 1)
+emission_enabled = true
+emission = Color(0.88, 0.9, 0.85, 1)
+emission_energy_multiplier = 7.0
+
+[sub_resource type="SphereMesh" id="moon_mesh"]
+material = SubResource("moon_mat")
+radius = 5.5
+height = 11.0
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.02, 0.02, 0.05, 1)
+sky_horizon_color = Color(0.16, 0.06, 0.06, 1)
+ground_bottom_color = Color(0.02, 0.02, 0.03, 1)
+ground_horizon_color = Color(0.12, 0.05, 0.05, 1)
+sun_angle_max = 30.0
+
+[sub_resource type="Sky" id="sky_res"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky_res")
+ambient_light_source = 3
+ambient_light_color = Color(0.24, 0.16, 0.18, 1)
+ambient_light_energy = 0.5
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.32, 0.12, 0.12, 1)
+fog_light_energy = 0.7
+fog_density = 0.028
+fog_sky_affect = 0.35
+
+[node name="Runner" type="Node3D"]
+script = ExtResource("1_runner")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 40, 0)
+light_color = Color(0.85, 0.6, 0.55, 1)
+light_energy = 0.7
+shadow_enabled = true
+
+[node name="Moon" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30, 32, -52)
+mesh = SubResource("moon_mesh")
+cast_shadow = 0
+
+[node name="Player" type="Node3D" parent="."]
+script = ExtResource("2_player")
+
+[node name="Zombie" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 18)
+script = ExtResource("3_zombie")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.4, 8.5)
+current = true
+fov = 74.0
