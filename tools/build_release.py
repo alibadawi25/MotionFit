@@ -195,6 +195,42 @@ def build_launcher() -> None:
     )
 
 
+def find_iscc() -> Path | None:
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe",
+        Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"),
+    ]
+    found = shutil.which("ISCC")
+    if found:
+        return Path(found)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def build_installer() -> None:
+    step("Compiling MotionFit-Setup.exe (Inno Setup)")
+    iscc = find_iscc()
+    if iscc is None:
+        print(
+            "Inno Setup not found - skipping the installer.\n"
+            "Install it with:  winget install -e --id JRSoftware.InnoSetup --scope user\n"
+            "The plain release folder above is still complete and shippable."
+        )
+        return
+    run(
+        [
+            iscc,
+            f"/DSourceDir={OUT}",
+            f"/O{REPO / 'build'}",
+            REPO / "tools" / "installer.iss",
+        ]
+    )
+    setup = REPO / "build" / "MotionFit-Setup.exe"
+    print(f"installer: {setup}  ({setup.stat().st_size / 1e6:.0f} MB)")
+
+
 def write_readme() -> None:
     (OUT / "README.txt").write_text(
         "MotionFit\n"
@@ -220,7 +256,10 @@ def summary() -> None:
     for item in sorted(OUT.iterdir()):
         print(f"  {item.name}{'/' if item.is_dir() else ''}")
     print("\nDouble-click build\\MotionFit\\MotionFit.exe to play.")
-    print("Zip the MotionFit folder to share it.")
+    print(
+        "Share build\\MotionFit-Setup.exe with friends (or zip the MotionFit "
+        "folder)."
+    )
 
 
 def main() -> None:
@@ -231,6 +270,7 @@ def main() -> None:
     build_pose_server()
     build_launcher()
     write_readme()
+    build_installer()
     summary()
 
 

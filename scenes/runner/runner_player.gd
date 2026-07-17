@@ -7,7 +7,7 @@ extends Node3D
 ## pipeline drives it:
 ##   - strafe left/right  <- get_turn()      (lean your torso to dodge)
 ##   - jump over           <- consume_jump()  (a real vertical leap)
-##   - slide under         <- get_crouch()    (squat/duck)
+##   - slide under         <- get_duck() / get_crouch()  (lean down, or squat)
 ## Its run PACE is not its own concern — runner.gd turns marching intensity
 ## (get_forward) into how fast the world scrolls and how far ahead of the zombie
 ## you stay. The visible legs just always run; the stride speeds up with pace.
@@ -38,8 +38,8 @@ const GRAVITY: float = 22.0
 ## Above this height the runner counts as clearing a low barrier.
 const CLEAR_HEIGHT: float = 0.35
 
-## Squat depth that starts a slide, and how long a slide lasts once triggered so a
-## brief duck still carries you under a bar.
+## Duck/squat depth that starts a slide, and how long a slide lasts once triggered
+## so a brief bob still carries you under a bar.
 const SLIDE_ENTER: float = 0.40
 const SLIDE_MIN_TIME: float = 0.55
 
@@ -141,12 +141,16 @@ func _update_jump(delta: float) -> void:
 
 
 func _update_slide(delta: float) -> void:
-	var crouch: float = MotionManager.get_crouch()
+	# Lean-down (duck) is the primary slide gesture — it reads from the torso
+	# alone, so it works WHILE running in place. A squat still counts too, but
+	# crouch is march-gated upstream, so mid-run it rarely fires; duck is why
+	# the slide is actually reachable.
+	var sink: float = maxf(MotionManager.get_duck(), MotionManager.get_crouch())
 	if _sliding:
 		_slide_timer = maxf(0.0, _slide_timer - delta)
-		if _slide_timer <= 0.0 and crouch < SLIDE_ENTER:
+		if _slide_timer <= 0.0 and sink < SLIDE_ENTER:
 			_sliding = false
-	elif crouch >= SLIDE_ENTER and _grounded:
+	elif sink >= SLIDE_ENTER and _grounded:
 		_sliding = true
 		_slide_timer = SLIDE_MIN_TIME
 

@@ -7,6 +7,7 @@ control + fitness values that it streams to Godot over a local UDP socket:
     turn    : -1.0 .. 1.0  torso yaw (rotate your body to steer)
     jump    : bool         true on the frame you launch into a jump
     crouch  : 0.0 .. 1.0   how deep you are squatting (0 = upright)
+    duck    : 0.0 .. 1.0   how far you are bowing/leaning forward (0 = upright)
     hands_up: bool         the "ready" gesture -- both hands raised above the head
     steps   : int          cumulative steps since the service started
     cadence : float        current pace in steps per minute
@@ -201,6 +202,11 @@ POSE_SQUAT_LEG_DROP = -0.3  # ...but once you're already being tracked, the knee
 # live-webcam tuning pass.
 POSE_MIN_TORSO_FRAC = 0.16  # torso shorter than this => "GET CLOSER"
 POSE_MAX_TORSO_FRAC = 0.42  # torso taller than this  => "STEP BACK"
+POSE_DUCK_TORSO_SCALE = 0.6  # ...but once tracked, allow the apparent torso to
+                             # shrink to this fraction of the minimum: bowing
+                             # toward the camera (the duck gesture) foreshortens
+                             # it, and dropping to "GET CLOSER" mid-duck would
+                             # freeze the very control the bow is driving.
 POSE_FEET_EDGE_Y = 0.99     # a planted foot past this (bottom edge) => framed too low
 
 # --- Jump & crouch -----------------------------------------------------------
@@ -281,6 +287,23 @@ MARCH_CROUCH_HOLD = 0.3     # keep suppressing crouch this long after marching -
                             # 0.3 is the knee of the tradeoff on the recorded clips:
                             # it nearly halves the march->crouch leak (33%->19%) for
                             # only a ~4pt dip in a real squat's crouch (45%->41%).
+
+# --- Duck (bow/lean forward) --------------------------------------------------
+# The squat-based crouch proved near-unusable mid-run: the march gate above
+# suppresses it while forward > CROUCH_FORWARD_GATE, so a player running in place
+# had to fully stop, wait out the hold, THEN squat deep -- far too slow for an
+# oncoming bar. Duck is the alternative: bow the torso forward (lean down) while
+# still running. It is measured as torso pitch from MediaPipe's METRIC world
+# landmarks -- the hip->shoulder line tipping toward the camera (z) versus its
+# vertical rise -- so it is distance-invariant, needs no calibration, and shares
+# nothing with the leg channels: no march/jump gating required, marching legs
+# can't fake it, and it can't fake a march. Only the forward (z) component
+# counts, so a sideways lean (steering body language) never reads as a duck.
+DUCK_START_DEG = 20.0   # torso pitch where the duck begins -- above the ~5-15
+                        # degrees of natural jogging lean, so running is 0
+DUCK_FULL_DEG = 45.0    # ...and where it reaches 1.0: a clear but easy bow
+DUCK_SMOOTH_HZ = 3.0    # light low-pass on the pitch read (world landmarks
+                        # jitter more than image ones); Godot smooths again
 
 # One Euro filter (Casiez et al.): adaptive smoothing that removes jitter when
 # you hold a pose but stays responsive when you move quickly -- the standard for
@@ -697,6 +720,7 @@ class ControlState:
     def __init__(self) -> None:
         self.osc = {name: _Oscillator() for name, *_ in FORWARD_CHANNELS}
         self.vertical = _VerticalMotion()  # jump/crouch from hip & leg height
+        self.duck_lp = _LowPass()          # smoothed torso-pitch duck (bow forward)
         # While this is in the future the player is squatting (or just was), so the
         # march signal is suppressed -- a squat's leg sweep mustn't read as walking.
         self.squat_active_until = -1e9
@@ -718,6 +742,7 @@ class ControlState:
         for osc in self.osc.values():
             osc.reset()
         self.vertical.reset()
+        self.duck_lp.reset()
         self.squat_active_until = -1e9
         self.march_active_until = -1e9
         self.active_label = "none"
@@ -1173,6 +1198,7 @@ def main(args: argparse.Namespace | None = None) -> None:
     forward = 0.0
     turn = 0.0
     crouch = 0.0
+    duck = 0.0
     met = 0.0
     start_time = time.time()
     prev_ts = 0.0
@@ -1232,7 +1258,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                     forward_filter.reset()
                     turn_filter.reset()
                     effort.reset()
-                    forward = turn = crouch = met = 0.0
+                    forward = turn = crouch = duck = met = 0.0
                     last_valid = -1000.0
                     lost_reset_done = True
                     prev_ts = 0.0
@@ -1299,7 +1325,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 hands_up = _detect_hands_up(lm)
 
             if detected and pose_ok:
-                forward, turn, jumped, crouch = _compute_controls(
+                forward, turn, jumped, crouch, duck = _compute_controls(
                     lm, wlm, state, forward_filter, turn_filter, steps, now, dt
                 )
                 status_text, status_color = "TRACKING", (0, 220, 0)
@@ -1337,6 +1363,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 forward *= decay
                 turn *= decay
                 crouch *= decay
+                duck *= decay
                 if not in_grace and not lost_reset_done:
                     state.reset()
                     forward_filter.reset()
@@ -1374,7 +1401,8 @@ def main(args: argparse.Namespace | None = None) -> None:
             calib_squat = calibrator.result.squat_ext if calibrator.result else 0.0
             packet = _build_packet(forward, turn, jumped, crouch,
                                    detected and pose_ok, steps.steps, cadence, met, hr,
-                                   hands_up=hands_up, status=status, ready_hint=ready_hint,
+                                   hands_up=hands_up, duck=duck,
+                                   status=status, ready_hint=ready_hint,
                                    calib_state=calibrator.state, calib_prompt=calibrator.prompt,
                                    calib_progress=calibrator.progress,
                                    calib_standing=calib_standing, calib_squat=calib_squat)
@@ -1392,7 +1420,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 )
 
             if show_window:
-                _draw_hud(frame, forward, turn, jumped, crouch, status_text,
+                _draw_hud(frame, forward, turn, jumped, crouch, duck, status_text,
                           status_color, steps.steps, cadence, met, state.active_label,
                           fps_avg, infer_ms_avg)
                 if hands_up:  # confirm the ready gesture registered, on-camera
@@ -1476,7 +1504,11 @@ def _assess_pose(lm, standing: bool = False) -> tuple[bool, str]:
     # doubles as an apparent-size / distance gauge.
     if torso_len > POSE_MAX_TORSO_FRAC:
         return False, "STEP BACK"
-    if torso_len < POSE_MIN_TORSO_FRAC:
+    # Once tracked, tolerate a shorter apparent torso: bowing toward the camera
+    # (the duck gesture) foreshortens it, and losing tracking mid-duck would
+    # freeze the control the bow is driving. Acquisition still needs full size.
+    min_torso = POSE_MIN_TORSO_FRAC * (POSE_DUCK_TORSO_SCALE if standing else 1.0)
+    if torso_len < min_torso:
         return False, "GET CLOSER"
     # A planted foot jammed against the bottom edge means you're framed too low --
     # stepping back brings the feet in, which gives the cleanest cadence.
@@ -1490,8 +1522,8 @@ def _assess_pose(lm, standing: bool = False) -> tuple[bool, str]:
 def _compute_controls(
     lm, wlm, state: ControlState, forward_filter: OneEuroFilter,
     turn_filter: OneEuroFilter, steps: StepCounter, now: float, dt: float,
-) -> tuple[float, float, bool, float]:
-    """Returns (forward, turn, jumped, crouch) from pose landmarks.
+) -> tuple[float, float, bool, float, float]:
+    """Returns (forward, turn, jumped, crouch, duck) from pose landmarks.
 
     forward: confidence-weighted average of several body channels' band-passed
              speeds (both knees, both ankles, both wrists), each measured in a
@@ -1502,6 +1534,9 @@ def _compute_controls(
     jumped:  True on the frame a vertical launch is detected (an edge event).
     crouch:  squat depth 0.0 (upright) .. 1.0, from how far the planted foot has
              folded up toward the hip.
+    duck:    forward bow of the torso 0.0 (upright) .. 1.0, from world-landmark
+             torso pitch -- the mid-run "lean down" gesture, independent of the
+             legs so it needs none of crouch's march/jump gating.
     forward and turn are passed through a 1-Euro filter for smooth, low-lag output.
     """
     # --- Body-local frame: origin at the hip centre, "up" is hip -> shoulder ---
@@ -1515,8 +1550,9 @@ def _compute_controls(
         # Degenerate pose -- can't build a body frame; coast toward neutral.
         forward = _clamp(forward_filter(0.0, dt), 0.0, 1.0)
         turn = _clamp(turn_filter(0.0, dt), -1.0, 1.0)
+        duck = state.duck_lp(0.0, _BandPass._alpha(DUCK_SMOOTH_HZ, dt))
         state.feature_snapshot = {}
-        return forward, turn, False, state.vertical.crouch
+        return forward, turn, False, state.vertical.crouch, duck
     up_x /= torso_len
     up_y /= torso_len
 
@@ -1643,6 +1679,25 @@ def _compute_controls(
                 target_turn = _clamp(signed * TURN_GAIN, -1.0, 1.0)
     turn = _clamp(turn_filter(target_turn, dt), -1.0, 1.0)
 
+    # --- Duck: torso pitched toward the camera = "lean down" ------------------
+    # World landmarks are metric 3D, so the pitch is real geometry: how far the
+    # hip->shoulder line has tipped along z (toward/away from the camera) versus
+    # its vertical rise. Only the z component counts -- a sideways lean (steering
+    # body language) keeps duck at 0 -- and |z| is used so the read doesn't hang
+    # on MediaPipe's z sign convention. Legs play no part, so no march/jump gate.
+    target_duck = 0.0
+    if wlm is not None:
+        sh_w_y = (wlm[L_SHOULDER].y + wlm[R_SHOULDER].y) * 0.5
+        sh_w_z = (wlm[L_SHOULDER].z + wlm[R_SHOULDER].z) * 0.5
+        hip_w_y = (wlm[L_HIP].y + wlm[R_HIP].y) * 0.5
+        hip_w_z = (wlm[L_HIP].z + wlm[R_HIP].z) * 0.5
+        rise = hip_w_y - sh_w_y          # shoulders above hips (world y grows down)
+        pitch = math.degrees(math.atan2(abs(sh_w_z - hip_w_z), max(rise, 1e-6)))
+        target_duck = _clamp(
+            (pitch - DUCK_START_DEG) / (DUCK_FULL_DEG - DUCK_START_DEG), 0.0, 1.0
+        )
+    duck = state.duck_lp(target_duck, _BandPass._alpha(DUCK_SMOOTH_HZ, dt))
+
     # --- Feature snapshot for the recording harness ---------------------------
     # A flat, model-ready view of this frame's motion (see recording.py's
     # FEATURE_NAMES). Empty when not recording costs nothing; here it's cheap.
@@ -1650,18 +1705,19 @@ def _compute_controls(
         "fused_speed": round(fused_speed, 4),
         "leg_ext": round(leg_ext, 4),
         "crouch": round(crouch, 4),
+        "duck": round(duck, 4),
         "forward": round(forward, 4),
         "turn": round(turn, 4),
         "cadence": round(steps.cadence(now), 2),
         "channels": channels_snapshot,
     }
 
-    return forward, turn, jumped, crouch
+    return forward, turn, jumped, crouch, duck
 
 
 def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
                   detected: bool, steps: int, cadence: float,
-                  met: float, hr: float, hands_up: bool = False,
+                  met: float, hr: float, hands_up: bool = False, duck: float = 0.0,
                   status: str = "ready", ready_hint: str = "",
                   calib_state: str = "idle", calib_prompt: str = "",
                   calib_progress: float = 0.0,
@@ -1691,6 +1747,7 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
         "turn": round(turn, 3),
         "jump": jump,
         "crouch": round(crouch, 3),
+        "duck": round(duck, 3),  # forward bow / lean-down depth (world-landmark pitch)
         "walking": forward > 0.05,
         "detected": detected,
         "steps": steps,
@@ -1815,6 +1872,7 @@ def _put_label(frame, text: str, org, scale: float, color) -> None:
 
 
 def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
+              duck: float,
               status_text: str, status_color, steps: int, cadence: float,
               met: float, sources: str = "none",
               fps: float = 0.0, infer_ms: float = 0.0) -> None:
@@ -1832,7 +1890,9 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
     jump_color = (0, 220, 0) if jump else (255, 255, 255)
     _put_label(frame, f"jump    {'YES' if jump else '-'}", (12, 104), 0.6, jump_color)
     crouch_color = (0, 200, 255) if crouch > 0.2 else (255, 255, 255)
+    duck_color = (0, 200, 255) if duck > 0.2 else (255, 255, 255)
     _put_label(frame, f"crouch  {crouch:.2f}", (12, 128), 0.6, crouch_color)
+    _put_label(frame, f"duck {duck:.2f}", (190, 128), 0.6, duck_color)
     _put_label(frame, f"steps   {steps}", (12, 152), 0.6, (255, 255, 255))
     _put_label(frame, f"cadence {cadence:.0f}/min", (12, 176), 0.6, (255, 255, 255))
     _put_label(frame, f"effort  {met:.1f} MET", (12, 200), 0.6, (120, 255, 120))

@@ -5,7 +5,7 @@ extends MiniGame
 ## marching in place: the harder you march (MotionManager.get_forward), the faster
 ## the world scrolls past and the more distance you put between you and the
 ## pursuer. Slack off and it closes in; let it reach you and it grabs you and the
-## run ends. Along the way you leap low barriers (jump), slide under bars (crouch)
+## run ends. Along the way you leap low barriers (jump), slide under bars (bow/duck)
 ## and dodge wreckage (lean) — but the core burn is sustained marching, so the
 ## game rewards exactly the cardio it's meant to.
 ##

@@ -284,7 +284,8 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 
 **Packet schema (Python → Godot), newline-free JSON per datagram:**
 ```json
-{ "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "hands_up": false,
+{ "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "duck": 0.0,
+  "hands_up": false,
   "walking": false, "detected": true, "steps": 0, "cadence": 0.0, "met": 1.2,
   "hr": 0.0, "status": "ready", "ready_hint": "", "ts": 0.0 }
 ```
@@ -292,6 +293,11 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 - `turn` -1..1   — torso lean (drives turning).
 - `jump` bool    — true on the single frame a vertical leap launches (edge event).
 - `crouch` 0..1  — squat depth (0 = upright), from the planted foot folding up.
+  Suppressed while marching (`CROUCH_FORWARD_GATE`), so it is NOT reachable
+  mid-run — that's what `duck` is for.
+- `duck` 0..1    — forward bow of the torso ("lean down"), from world-landmark
+  torso pitch. Legs play no part, so it stays live while running in place — the
+  runner's slide reads `max(duck, crouch)`. `MotionManager.get_duck()`.
 - `hands_up` bool — the **"ready" gesture**: both wrists raised above the head.
   The setup screen (§7) times how long it's held to start the countdown; exposed
   as `MotionManager.is_hands_up()`. Checked independently of the marching stance,
@@ -384,7 +390,8 @@ by design — with no service running the texture is null and the UI falls back 
   `is_streaming()`. Consumed by the `GameIntro` setup screen (§7).
 - `scripts/managers/motion_manager.gd` — `MotionManager` autoload. Exposes
   `get_forward()`, `get_turn()`, `is_walking()`, `get_crouch()`,
-  `is_crouching()`, `consume_jump()`, `is_hands_up()`, `is_receiving()`,
+  `is_crouching()`, `get_duck()`, `is_ducking()`, `consume_jump()`,
+  `is_hands_up()`, `is_receiving()`,
   `is_hr_connected()`, the camera-control API `camera_on()` / `camera_off()` and
   state readouts `get_status()` / `is_camera_ready()` / `is_camera_error()`, and
   the `motion_updated` / `jumped` / `crouch_changed` signals. `get_forward()` /
@@ -617,7 +624,9 @@ same controller works with the camera today or another input source later.
 	  0..1 "gap": the zombie's speed ramps with time + difficulty, the gap grows when
 	  it out-runs you and shrinks when you out-run it; reach `CAUGHT_GAP` and it
 	  lunges and the run ends (a real fail state, unlike Open World). Along the way
-	  you jump low barriers (`consume_jump`), slide under bars (`get_crouch`) and lean
+	  you jump low barriers (`consume_jump`), slide under bars by bowing the torso
+	  forward (`max(get_duck(), get_crouch())` — the lean-down duck was added because
+	  the squat-based crouch is march-gated and near-impossible mid-run) and lean
 	  to dodge side wreckage (`get_turn`) — a hit stumbles you and lets the zombie
 	  gain. Score = distance in metres. **Tension is all feedback, and deliberately
 	  unquantified**: as the gap closes the vignette squeezes the

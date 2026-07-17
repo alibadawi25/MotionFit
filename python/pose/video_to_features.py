@@ -102,14 +102,15 @@ def process_video(path: Path, label: str, landmarker, recorder: recording.Record
             if not ok_pose:
                 continue
 
-        forward, turn, jumped, crouch = ps._compute_controls(
+        forward, turn, jumped, crouch, duck = ps._compute_controls(
             lm, wlm, state, forward_filter, turn_filter, steps, now, dt
         )
         feats = state.feature_snapshot
         if not feats or idx <= args.warmup:
             continue
         packet = ps._build_packet(forward, turn, jumped, crouch, True,
-                                  steps.steps, steps.cadence(now), 0.0, 0.0)
+                                  steps.steps, steps.cadence(now), 0.0, 0.0,
+                                  duck=duck)
         recorder.write(
             ts=now, label=label, pose_ok=True, detected=True, packet=packet,
             landmarks=ps._landmarks_to_list(lm), world=ps._world_to_list(wlm),

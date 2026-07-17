@@ -384,7 +384,8 @@ func show_briefing() -> void:
 	box.add_child(_brief_row(ICON_RUN_A, "run", "MARCH IN PLACE",
 			"run — march harder to pull ahead", SAFE))
 	box.add_child(_brief_row(ICON_UP, "rise", "JUMP", "leap the low barriers", TEXT))
-	box.add_child(_brief_row(ICON_DOWN, "sink", "SQUAT", "slide under the bars", TEXT))
+	box.add_child(_brief_row(ICON_DOWN, "sink", "DUCK",
+			"bow forward to slide under the bars", TEXT))
 	box.add_child(_brief_row(ICON_LEAN, "sway", "LEAN", "dodge the wreckage", TEXT))
 	box.add_child(_spacer(6))
 	box.add_child(_divider())

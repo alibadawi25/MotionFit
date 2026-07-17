@@ -90,9 +90,11 @@ var _forward: float = 0.0     # latest packet targets…
 var _turn: float = 0.0
 var _walking: bool = false
 var _crouch: float = 0.0
+var _duck: float = 0.0
 var _forward_out: float = 0.0  # …and the smoothed values games actually read
 var _turn_out: float = 0.0
 var _crouch_out: float = 0.0
+var _duck_out: float = 0.0
 var _steps: int = 0
 var _cadence: float = 0.0
 var _met: float = 0.0       # current effort (metabolic equivalent of task)
@@ -166,6 +168,7 @@ func _process(delta: float) -> void:
 		_turn = 0.0
 		_walking = false
 		_crouch = 0.0
+		_duck = 0.0
 		_cadence = 0.0
 		_met = 0.0
 		_heart_rate = 0.0
@@ -201,6 +204,7 @@ func _process(delta: float) -> void:
 	_forward_out += (_forward - _forward_out) * alpha
 	_turn_out += (_turn - _turn_out) * turn_alpha
 	_crouch_out += (_crouch - _crouch_out) * alpha
+	_duck_out += (_duck - _duck_out) * alpha
 
 	# Keep asserting the desired camera state so a dropped command — or a pose
 	# service that started after us — still converges (the command is idempotent).
@@ -249,6 +253,19 @@ func get_crouch() -> float:
 ## True while the player is squatting past a small dead-zone.
 func is_crouching() -> bool:
 	return _crouch > 0.25
+
+
+## How far the player is bowing/leaning their torso forward, 0.0 (upright) ..
+## 1.0 (a clear bow). Unlike [method get_crouch] it reads only the torso, so it
+## stays live while the player is running in place — the runner's slide uses it
+## as the easy mid-run "duck" gesture. Smoothed like [method get_forward].
+func get_duck() -> float:
+	return _duck_out
+
+
+## True while the player is leaning down past a small dead-zone.
+func is_ducking() -> bool:
+	return _duck > 0.4
 
 
 ## True while the player is holding the "ready" gesture — both hands raised above
@@ -486,6 +503,7 @@ func _apply(data: Dictionary) -> void:
 	_turn = clampf(float(data.get("turn", 0.0)), -1.0, 1.0)
 	_walking = bool(data.get("walking", false))
 	_crouch = clampf(float(data.get("crouch", 0.0)), 0.0, 1.0)
+	_duck = clampf(float(data.get("duck", 0.0)), 0.0, 1.0)
 	_steps = int(data.get("steps", _steps))
 	_cadence = maxf(float(data.get("cadence", 0.0)), 0.0)
 	_met = maxf(float(data.get("met", 0.0)), 0.0)

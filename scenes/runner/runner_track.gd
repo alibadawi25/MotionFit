@@ -206,7 +206,7 @@ func nearest_prompt() -> Dictionary:
 		ObstacleType.JUMP:
 			return {"action": "JUMP!"}
 		ObstacleType.DUCK:
-			return {"action": "SLIDE!"}
+			return {"action": "DUCK!"}
 		_:
 			# dodge to the OPEN side (away from the block's centre)
 			var block_left: bool = (best["x_min"] + best["x_max"]) * 0.5 < 0.0

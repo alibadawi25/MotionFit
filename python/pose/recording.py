@@ -68,7 +68,8 @@ def label_legend() -> str:
 # body-local / torso-normalised upstream, so these features are camera- and
 # distance-invariant, which is what lets a classifier generalise across players.
 CHANNEL_ORDER = ("l_knee", "r_knee", "l_ankle", "r_ankle", "l_wrist", "r_wrist")
-SCALAR_FEATURES = ("fused_speed", "leg_ext", "crouch", "forward", "turn", "cadence")
+SCALAR_FEATURES = ("fused_speed", "leg_ext", "crouch", "duck", "forward", "turn",
+                   "cadence")
 
 FEATURE_NAMES: tuple[str, ...] = tuple(
     list(SCALAR_FEATURES)
@@ -192,6 +193,7 @@ class Recorder:
             "turn": packet.get("turn"),
             "jump": packet.get("jump"),
             "crouch": packet.get("crouch"),
+            "duck": packet.get("duck"),
             "cadence": packet.get("cadence"),
             "met": packet.get("met"),
             "hr": packet.get("hr"),

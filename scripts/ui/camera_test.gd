@@ -8,7 +8,7 @@ extends Control
 ##
 ##   • WALK IN PLACE  → step counter climbs
 ##   • JUMP           → jump counter climbs
-##   • SQUAT / CROUCH → crouch depth fills
+##   • SQUAT / BOW DOWN → crouch/duck depth fills
 ##
 ## Each action has a card with a status "lamp": grey (not tried yet) → orange
 ## (detecting it right now) → green ✓ (it works!). A big banner says in plain words
@@ -176,7 +176,7 @@ func _build_ui() -> void:
 	_jump_value = jump_card["value"]
 	_jump_status = jump_card["status"]
 
-	var crouch_card := _make_card("SQUAT DOWN", "Squat down to test")
+	var crouch_card := _make_card("SQUAT / BOW DOWN", "Squat or bow down to test")
 	cards.add_child(crouch_card["panel"])
 	_crouch_sb = crouch_card["sb"]
 	_crouch_lamp = crouch_card["lamp"]
@@ -326,15 +326,18 @@ func _update_cards(streaming: bool, pose_ready: bool) -> void:
 			"✓  Jump detected — it works!", "Nice — that's a jump!",
 			"Jump up to test")
 
-	# Crouch: live depth as a percentage, lit past the crouch dead-zone.
-	var crouch: float = MotionManager.get_crouch()
-	var crouching: bool = live and MotionManager.is_crouching()
+	# Crouch/duck: live depth as a percentage (whichever gesture reads deeper),
+	# lit past either dead-zone — the runner slides on the lean-down bow, the
+	# open world crouches on the squat, so this card covers both.
+	var crouch: float = maxf(MotionManager.get_crouch(), MotionManager.get_duck())
+	var crouching: bool = live and \
+			(MotionManager.is_crouching() or MotionManager.is_ducking())
 	if crouching:
 		_crouch_ok = true
 	_set_card(_crouch_sb, _crouch_lamp, _crouch_status,
 			_crouch_ok, crouching, "%d%%" % int(round(crouch * 100.0)), _crouch_value,
-			"✓  Squat detected — it works!", "Detecting… go a bit lower",
-			"Squat down to test")
+			"✓  Detected — it works!", "Detecting… go a bit lower",
+			"Squat or bow down to test")
 
 
 ## Applies one card's colour state. `done` (green ✓) wins over `active` (orange);
@@ -386,6 +389,8 @@ func _update_banner(streaming: bool, pose_ready: bool) -> void:
 		_set_banner("YOU JUMPED!", GREEN, "Try walking or squatting too")
 	elif MotionManager.is_crouching():
 		_set_banner("YOU'RE SQUATTING", GREEN, "Stand back up when you're ready")
+	elif MotionManager.is_ducking():
+		_set_banner("YOU'RE DUCKING", GREEN, "That's the slide move — stand tall again")
 	elif MotionManager.get_forward() > 0.45:
 		_set_banner("YOU'RE MARCHING", GREEN, "Looking good — try a jump or a squat")
 	elif MotionManager.get_forward() > MOVING_THRESHOLD:

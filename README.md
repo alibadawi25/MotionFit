@@ -28,7 +28,7 @@ and Godot only receives processed movement data over a local socket.
   cycle, altitude wind/snow/frost effects at the summits, and a fog border that
   closes off the map edge without a visible wall.
 - **Zombie Run** mini-game — an endless graveyard chase where marching hard is
-  how you escape; jump, slide and lean to dodge. Tension is deliberately
+  how you escape; jump, bow forward to slide, and lean to dodge. Tension is deliberately
   unquantified: a closing vignette, a phase-locked heartbeat and dragging
   footsteps behind you instead of any proximity gauge.
 - **Difficulty select** — an effort-framed EASY / NORMAL / HARD picker between
