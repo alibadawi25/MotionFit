@@ -26,7 +26,11 @@ and Godot only receives processed movement data over a local socket.
 - **Open World** mini-game — free-roam over a sculpted terrain, driven by real
   motion input, with a full atmosphere pass: spring-arm follow camera, day/night
   cycle, altitude wind/snow/frost effects at the summits, and a fog border that
-  closes off the map edge without a visible wall.
+  closes off the map edge without a visible wall. The terrain itself is alive:
+  sand shores painted around the waterline, wind-blown grass meadows (HTerrain
+  detail layer fed by a generated density map), and a deterministic scatter of
+  low-poly conifer/broadleaf woods and boulders — all placed by the same
+  height/slope/splat rules, with collidable trunks.
 - **Zombie Run** mini-game — an endless graveyard chase where marching hard is
   how you escape; jump, bow forward to slide, and lean to dodge. Tension is deliberately
   unquantified: a closing vignette, a phase-locked heartbeat and dragging

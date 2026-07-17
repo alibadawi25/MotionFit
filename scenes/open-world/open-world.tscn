@@ -16,11 +16,16 @@
 [ext_resource type="Script" uid="uid://b7xee63xfwsp6" path="res://scenes/open-world/world_border.gd" id="14_brdr"]
 [ext_resource type="Script" path="res://scenes/open-world/day_night_cycle.gd" id="15_dnc"]
 [ext_resource type="Script" path="res://scenes/open-world/altitude_effects.gd" id="16_alt"]
+[ext_resource type="Texture2D" uid="uid://cogf5c0afd31p" path="res://assets/textures/terrain/sand_albedo_bump.png" id="17_sanda"]
+[ext_resource type="Texture2D" uid="uid://dwu1b0avochyd" path="res://assets/textures/terrain/sand_normal_rough.png" id="18_sandn"]
+[ext_resource type="Script" uid="uid://dt76it4kp4xvj" path="res://addons/zylann.hterrain/hterrain_detail_layer.gd" id="19_dtl"]
+[ext_resource type="Texture2D" uid="uid://24ki2ai83bi4" path="res://assets/textures/terrain/grass_blades.png" id="20_blades"]
+[ext_resource type="Script" path="res://scenes/open-world/world_scatter.gd" id="21_scat"]
 
 [sub_resource type="Resource" id="Resource_xcpkc"]
 script = ExtResource("3_7qf85")
 mode = 0
-textures = [[ExtResource("4_n5o5n"), ExtResource("5_bg08r"), ExtResource("6_xoslx")], [ExtResource("7_xlsp5"), ExtResource("8_h0csi"), ExtResource("9_j15uk")]]
+textures = [[ExtResource("4_n5o5n"), ExtResource("5_bg08r"), ExtResource("6_xoslx"), ExtResource("17_sanda")], [ExtResource("7_xlsp5"), ExtResource("8_h0csi"), ExtResource("9_j15uk"), ExtResource("18_sandn")]]
 
 [sub_resource type="FastNoiseLite" id="noise_sea"]
 frequency = 0.012
@@ -131,12 +136,20 @@ custom_globalmap_shader = null
 texture_set = SubResource("Resource_xcpkc")
 render_layers = 1
 cast_shadow = 1
+ambient_wind = 0.15
 shader_params/u_ground_uv_scale = 10.0
 shader_params/u_depth_blending = true
 shader_params/u_triplanar = true
 shader_params/u_tile_reduction = Vector4(0, 0, 0, 0)
 shader_params/u_specular = 0.5
 metadata/_custom_type_script = "uid://duea1rw5hxpro"
+
+[node name="GrassLayer" type="Node3D" parent="HTerrain"]
+script = ExtResource("19_dtl")
+layer_index = 0
+texture = ExtResource("20_blades")
+density = 3.0
+view_distance = 115.0
 
 [node name="Sea" type="MeshInstance3D" parent="." unique_id=1449021337]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 13.5, 0)
@@ -193,6 +206,10 @@ environment_path = NodePath("../WorldEnvironment")
 [node name="AltitudeEffects" type="Node3D" parent="."]
 script = ExtResource("16_alt")
 player_path = NodePath("../CharacterBody3D")
+
+[node name="WorldScatter" type="Node3D" parent="."]
+script = ExtResource("21_scat")
+terrain_path = NodePath("../HTerrain")
 
 [node name="SpawnPoint" type="Marker3D" parent="." unique_id=905473459]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 182.26863, 31.022503, -6.018368)

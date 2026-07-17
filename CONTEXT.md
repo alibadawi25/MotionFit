@@ -459,17 +459,17 @@ by design — with no service running the texture is null and the UI falls back 
   aerial perspective, a sun disk with soft cascaded shadows, and a
   `CameraAttributesPractical` far-DOF. Orb `emission_energy_multiplier` must stay
   above `glow_hdr_threshold` (0.95) or orbs go back to being flat dots.
-  **Fog border pass (2026-07-17):** the terrain is a finite 512 m square, so
+  **Fog border pass (2026-07-17):** the terrain is a finite ~1 km square, so
   `world_border.gd` (`WorldBorder`, a node in the scene) closes it off the Black Flag
   way — the world doesn't end, it gets too thick to walk into. The boundary is a
-  **square hugging the terrain's own rim**: `HALF_EXTENT` 248 caps |x| and |z|, so
+  **square hugging the terrain's own rim**: `HALF_EXTENT` 496 caps |x| and |z|, so
   ~94% of the map stays walkable and you can reach the coast on every side. It was a
   circle first and that was wrong — a circle inscribed in a square cuts every corner
   (r=224 kept ~60% of the map and left only ~40 m between the spawn and the wall).
   **The boundary must follow the shape of the thing it bounds.** Four systems keyed
-  off ONE number — `get_haze(pos)`, 0 inside `SOFT_EXTENT` (218 m) → 1 at
+  off ONE number — `get_haze(pos)`, 0 inside `SOFT_EXTENT` (466 m) → 1 at
   `HALF_EXTENT` — so they always agree:
-  (1) two nested square rings of `border_fog.gdshader` walls at ±254/±266 (three
+  (1) two nested square rings of `border_fog.gdshader` walls at ±508/±532 (three
   octaves of seamless noise, thresholded into clumps; the OUTER carries
   `floor_density` 0.8 so it genuinely occludes, the INNER is pure wisps drifting
   across it at a different rate — the parallax between them is what reads as volume).
@@ -495,10 +495,10 @@ by design — with no service running the texture is null and the UI falls back 
   * The fog/prompt start at SOFT_EXTENT but the cap only bites in the last ~16 m,
 	so you are always WARNED before you are HELD.
   * A wall is ~5× wider than it is tall, so `tiles_up` is derived from the wall's
-    real width (`across / width`) to keep a noise tile SQUARE in world metres. Any
-    fixed vertical rate stretches the clumps into vertical streaks.
+	real width (`across / width`) to keep a noise tile SQUARE in world metres. Any
+	fixed vertical rate stretches the clumps into vertical streaks.
   * `_place_orb` pulls its anchor back inside (`pull_inside`) when the player is in
-    the band — the band is wider than `ORB_RANGE`, so otherwise every candidate
+	the band — the band is wider than `ORB_RANGE`, so otherwise every candidate
 	fails and the fallback strands a goal in the fog where it can't be reached.
   * Shader noise tiling must stay on WHOLE numbers (`tiles_around`, and the 1/2/4
 	octave scales) — no longer a seam constraint now the walls are flat, but the noise texture stays `seamless` so a wall tiles without a join.
@@ -539,6 +539,45 @@ by design — with no service running the texture is null and the UI falls back 
   Verified via `scenes/tests/climate_view.tscn` (raycast-scans for the summit,
   parks the player on it; `VIEW_HOUR=18.4 bash tools/shot.sh climate
   scenes/tests/climate_view.tscn` picks the time of day).
+  **Flora & ground-cover pass (2026-07-18):** the world stopped being bare
+  geometry — sand shores, waving grass, and code-scattered woods, all driven by
+  the SAME height/slope/splat rules so every layer agrees on what grows where.
+  *Data maps* (`tools/paint_terrain.gd`, a headless one-shot painter — rerun it
+  then `--headless --import` whenever the heightmap is resculpted): paints the
+  4th splat weight (SAND, alpha channel) below ~world y 15 fading out by ~17
+  with noise-jittered thresholds (wandering coastline) and slope damping (cliff
+  shores stay stone), and writes `Terrain/detail.png` (L8), the grass detail
+  layer's density map — grass-splat weight × shore/altitude/slope fades ×
+  patch noise. The detail map had to be REGISTERED in `Terrain/data.hterrain`
+  (JSON: `maps[4] = [{"id":0}]`) — the PNG alone is not enough. Data maps
+  import lossless (like splat.png); surface textures VRAM-compressed + mipmaps.
+  *Textures* (`assets/textures/terrain/`): `gen_sand.py` (sand albedo+bump /
+  normal+rough pair, same packing as gen_grass.py) and `gen_grass_blades.py`
+  (the blade billboard, tips at texture-top because the detail shader's wind
+  displaces `1 - uv.y`; alpha re-hardened after downscale since the shader
+  alpha-scissors at 0.5).
+  *Grass rendering*: an `HTerrainDetailLayer` node (`GrassLayer`) under
+  HTerrain — layer 0, density 3, view_distance 115 — plus `ambient_wind 0.15`
+  on the terrain node, which is what makes the blades sway.
+  *Scatter* (`scenes/open-world/world_scatter.gd` + `scatter_meshes.gd`, a
+  `WorldScatter` node): deterministic (fixed-seed) jittered-grid placement of
+  ~1k trees + boulders into three MultiMeshes (one draw call each, subtle
+  per-instance tints via vertex-color-as-albedo), with slim trunk/boulder
+  colliders pushed straight through the PhysicsServer onto ONE StaticBody3D
+  (node-per-shape would cost more than the shapes). Trees clump into woods via
+  a low-frequency noise mask; conifers own the upper band, broadleafs the
+  valleys; the wood thins toward the treeline instead of stopping dead.
+  Non-obvious numbers: the roamable midlands INCLUDING THE SPAWN PLATEAU sit
+  at world y ~64-68 — vegetation bands tuned "sensibly" against sea level
+  (13.5) left the first meadow the player ever sees bare; the treeline runs to
+  66 and full grass to ~65 for exactly that reason. Verified via
+  `scenes/tests/ground_view.tscn` (`GV_POS="x,y,z" GV_AT="x,y,z" bash
+  tools/shot.sh name scenes/tests/ground_view.tscn` — head-height camera,
+  defaults to the spawn meadow). NB a camera placed below the terrain surface
+  sees straight through backface-culled ground to the sea plane — it reads as
+  "standing at a shoreline" and cost a debugging detour; probe heights first
+  (`tools/probe_height.gd` conventions: world ≈ (pixel − 256) × 2, world y =
+  map value × 1.5).
 
 **How to run the camera control:**
 1. `pip install -r python/requirements.txt` (once).
