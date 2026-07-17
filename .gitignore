@@ -6,6 +6,12 @@
 /tools/shots/*
 !/tools/shots/.gitkeep
 
+# Texture-generator contact sheets: a 2x2 inspection sheet each gen_*.py writes
+# beside its real output (tools/gen_textures.py, assets/textures/*/gen_*.py).
+# The game never loads them — rerun the generator to look at one again.
+_preview.png
+_preview.png.import
+
 # Python
 __pycache__/
 *.py[cod]
