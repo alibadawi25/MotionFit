@@ -51,12 +51,20 @@ func _build_buttons() -> Control:
 
 	# A way back to the picker only makes sense once other profiles exist (i.e.
 	# this is "Add profile", not first-run onboarding which must create one).
+	# On first run there's no picker to return to, so offer QUIT instead — this
+	# is the very first screen and would otherwise be a dead end.
 	if ProfileManager.has_profiles():
 		var back := Button.new()
 		back.text = "BACK"
 		back.custom_minimum_size = Vector2(150, 54)
 		back.pressed.connect(SceneManager.load_profile_picker)
 		row.add_child(back)
+	else:
+		var quit := Button.new()
+		quit.text = "QUIT"
+		quit.custom_minimum_size = Vector2(150, 54)
+		quit.pressed.connect(func(): get_tree().quit())
+		row.add_child(quit)
 
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -69,6 +77,17 @@ func _build_buttons() -> Control:
 	continue_button.pressed.connect(_on_continue)
 	row.add_child(continue_button)
 	return row
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Escape mirrors the row's leading button: back to the picker when one exists,
+	# otherwise quit the app (first-run onboarding has nowhere to go back to).
+	if event.is_action_pressed("ui_cancel"):
+		if ProfileManager.has_profiles():
+			SceneManager.load_profile_picker()
+		else:
+			get_tree().quit()
+		get_viewport().set_input_as_handled()
 
 
 func _on_continue() -> void:

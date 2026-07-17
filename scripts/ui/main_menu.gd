@@ -57,32 +57,63 @@ func _build_profile_card() -> void:
 	card.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	card.offset_left = 52.0
 	card.offset_top = 40.0
-	card.add_theme_constant_override("separation", 0)
+	card.add_theme_constant_override("separation", 8)
 
+	# The greeting is a real, obviously-tappable chip (rounded translucent
+	# background, orange edge, trailing chevron) — not a flat label — so it
+	# reads as the profile entry point at a glance.
 	var greeting := Button.new()
-	greeting.flat = true
 	greeting.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	greeting.tooltip_text = "View your profile"
-	greeting.text = "Hi, %s  ·  Level %d" % [
+	greeting.custom_minimum_size = Vector2(300, 0)
+	greeting.text = "Hi, %s   ·   Level %d      ›" % [
 		ProfileManager.get_display_name(), ProfileManager.get_level()]
 	greeting.add_theme_font_size_override("font_size", 22)
-	greeting.add_theme_color_override("font_color", Color(0.86, 0.89, 0.94))
-	greeting.add_theme_color_override("font_hover_color", Color(1, 0.64, 0.3))
-	greeting.add_theme_color_override("font_pressed_color", Color(1, 0.5, 0.14))
+	greeting.add_theme_color_override("font_color", Color(0.92, 0.94, 0.98))
+	greeting.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	greeting.add_theme_color_override("font_pressed_color", Color(0.11, 0.06, 0.02))
+	greeting.add_theme_stylebox_override(
+		"normal", _chip_style(Color(0.10, 0.12, 0.17, 0.62), Color(1, 0.5, 0.14, 0.45)))
+	greeting.add_theme_stylebox_override(
+		"hover", _chip_style(Color(0.15, 0.18, 0.26, 0.88), Color(1, 0.5, 0.14, 0.95), true))
+	greeting.add_theme_stylebox_override(
+		"pressed", _chip_style(Color(1, 0.5, 0.14, 0.92), Color(1, 0.62, 0.24, 1)))
+	greeting.add_theme_stylebox_override(
+		"focus", _chip_style(Color(0.13, 0.16, 0.23, 0.7), Color(1, 1, 1, 0.9)))
 	greeting.pressed.connect(SceneManager.load_profile)
 	card.add_child(greeting)
 
+	# Secondary, quieter action styled as a text link but with a leading glyph
+	# so it still reads as tappable.
 	var switch_link := Button.new()
 	switch_link.flat = true
 	switch_link.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	switch_link.text = "Switch profile"
+	switch_link.text = "⇄  Switch profile"
 	switch_link.add_theme_font_size_override("font_size", 16)
-	switch_link.add_theme_color_override("font_color", Color(1, 0.64, 0.3, 0.82))
-	switch_link.add_theme_color_override("font_hover_color", Color(1, 0.74, 0.4))
+	switch_link.add_theme_color_override("font_color", Color(1, 0.64, 0.3, 0.9))
+	switch_link.add_theme_color_override("font_hover_color", Color(1, 0.78, 0.45))
 	switch_link.pressed.connect(SceneManager.load_profile_picker)
 	card.add_child(switch_link)
 
 	add_child(card)
+
+
+## Builds a rounded, translucent chip StyleBox for the tappable profile greeting.
+## [param glow] adds a soft orange shadow for the hover state.
+func _chip_style(bg: Color, border: Color, glow: bool = false) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg
+	style.set_corner_radius_all(14)
+	style.set_border_width_all(1)
+	style.border_color = border
+	style.content_margin_left = 20.0
+	style.content_margin_right = 22.0
+	style.content_margin_top = 13.0
+	style.content_margin_bottom = 13.0
+	if glow:
+		style.shadow_color = Color(1, 0.5, 0.14, 0.35)
+		style.shadow_size = 12
+	return style
 
 
 ## Bottom-right status line telling the player whether the pose service is up

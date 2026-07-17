@@ -64,6 +64,48 @@ func _build() -> void:
 	_edit_button.pressed.connect(_on_toggle_edit)
 	column.add_child(_edit_button)
 
+	# This is the first screen of the launch and has no "back" — without an
+	# explicit quit the only way out is Alt+F4. A corner button (and Escape)
+	# closes the app, matching the main menu's QUIT.
+	_build_quit_button()
+
+
+func _build_quit_button() -> void:
+	var quit := Button.new()
+	quit.text = "✕  QUIT"
+	quit.focus_mode = Control.FOCUS_NONE
+	quit.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	quit.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	quit.offset_left = -214.0
+	quit.offset_top = 44.0
+	quit.offset_right = -48.0
+	quit.offset_bottom = 96.0
+	quit.add_theme_font_size_override("font_size", 20)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.08, 0.12, 0.82)
+	sb.set_corner_radius_all(10)
+	sb.set_border_width_all(1)
+	sb.border_color = Color(1, 1, 1, 0.16)
+	var hover := sb.duplicate()
+	hover.bg_color = Color(0.12, 0.15, 0.22, 0.95)
+	hover.border_color = ACCENT
+	quit.add_theme_stylebox_override("normal", sb)
+	quit.add_theme_stylebox_override("hover", hover)
+	quit.add_theme_stylebox_override("pressed", hover)
+	quit.pressed.connect(_on_quit)
+	add_child(quit)
+
+
+func _on_quit() -> void:
+	get_tree().quit()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Escape is the expected "get me out" key on a screen with no back.
+	if event.is_action_pressed("ui_cancel"):
+		get_tree().quit()
+		get_viewport().set_input_as_handled()
+
 
 func _rebuild_cards() -> void:
 	for child in _cards_row.get_children():

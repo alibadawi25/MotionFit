@@ -6,7 +6,7 @@
 
 [sub_resource type="Gradient" id="grad_dim"]
 offsets = PackedFloat32Array(0, 1)
-colors = PackedColorArray(0.02, 0.03, 0.06, 0.55, 0.01, 0.02, 0.04, 0.82)
+colors = PackedColorArray(0.02, 0.03, 0.06, 0.18, 0, 0.01, 0.03, 0.5)
 
 [sub_resource type="GradientTexture2D" id="tex_dim"]
 gradient = SubResource("grad_dim")
@@ -19,18 +19,27 @@ content_margin_left = 52.0
 content_margin_top = 44.0
 content_margin_right = 52.0
 content_margin_bottom = 44.0
-bg_color = Color(0.07, 0.09, 0.13, 0.97)
+bg_color = Color(0.06, 0.08, 0.13, 0.42)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(1, 1, 1, 0.1)
-corner_radius_top_left = 20
-corner_radius_top_right = 20
-corner_radius_bottom_right = 20
-corner_radius_bottom_left = 20
-shadow_color = Color(0, 0, 0, 0.45)
-shadow_size = 28
+border_color = Color(1, 1, 1, 0.16)
+corner_radius_top_left = 22
+corner_radius_top_right = 22
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 22
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 40
+
+[sub_resource type="StyleBoxFlat" id="accent_pill"]
+bg_color = Color(1, 0.5, 0.14, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(1, 0.5, 0.14, 0.55)
+shadow_size = 12
 
 [node name="PauseMenu" type="Control"]
 layout_mode = 3
@@ -61,7 +70,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Card" type="PanelContainer" parent="Center"]
-custom_minimum_size = Vector2(400, 0)
+custom_minimum_size = Vector2(560, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("card")
 
@@ -69,22 +78,26 @@ theme_override_styles/panel = SubResource("card")
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="AccentBar" type="ColorRect" parent="Center/Card/VBox"]
-custom_minimum_size = Vector2(64, 5)
+[node name="AccentBar" type="Panel" parent="Center/Card/VBox"]
+custom_minimum_size = Vector2(72, 6)
 layout_mode = 2
 size_flags_horizontal = 0
-color = Color(1, 0.5, 0.14, 1)
+theme_override_styles/panel = SubResource("accent_pill")
 
 [node name="Title" type="Label" parent="Center/Card/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.55)
+theme_override_constants/outline_size = 8
 theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 60
 text = "PAUSED"
 
 [node name="Subtitle" type="Label" parent="Center/Card/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_colors/font_color = Color(0.82, 0.86, 0.92, 0.95)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.5)
+theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 17
 text = "Catch your breath — your session is safe."
 
