@@ -53,3 +53,16 @@ func _process(delta: float) -> void:
 
 func _on_walking_state_changed(is_walking: bool) -> void:
 	_walking = is_walking
+
+
+## Immediately frames the camera at its ideal follow pose behind the target, with
+## no lerp. Used to frame a freshly-placed player (e.g. at spawn, before the intro
+## countdown, while _process is frozen) so the first rendered frame already looks
+## right instead of easing in from the authored camera position.
+func snap_to_target() -> void:
+	if _target == null:
+		return
+	var target_xform: Transform3D = _target.global_transform
+	global_position = target_xform.origin + target_xform.basis * follow_offset
+	look_at(target_xform.origin + Vector3.UP * look_height, Vector3.UP)
+	fov = base_fov

@@ -7,6 +7,10 @@ extends MiniGame
 ## banked automatically on finish — so a session shows on the Results screen and
 ## in the profile totals exactly like the scored games do.
 ##
+## The world is a sculpted HTerrain heightmap: the player (at the SPAWN_MARKER)
+## and every orb are snapped to the real surface with a downward raycast, so
+## nobody floats or buries in a slope (see [method _ground_y]).
+##
 ## Because there is no fail state, ending is player-driven: Esc opens the shared
 ## pause menu, whose "End & Save" wraps the session up and routes to Results.
 
@@ -15,32 +19,54 @@ extends MiniGame
 const ORB_COUNT: int = 6
 ## Bonus score per orb (steps score 1 each; orbs reward covering distance).
 const ORB_SCORE: int = 10
-## Orbs spawn within ±this many metres of the world centre (inside the ground).
+## Orbs spawn within ±this many metres of the PLAYER (not the world origin) —
+## on a large terrain the player rarely stands at the centre, so anchoring to
+## them keeps every goal a short, reachable walk away.
 const ORB_RANGE: float = 26.0
-## A respawned orb lands at least this far from the player — the point is the
+## A (re)spawned orb lands at least this far from the player — the point is the
 ## walk, so it must never pop up at your feet.
 const ORB_MIN_PLAYER_DIST: float = 8.0
 ## Brand orange, shared with the UI accent, so goals read as "ours" at a glance.
 const ORB_COLOR: Color = Color(1.0, 0.5, 0.14)
 
-## HUD palette — kept in step with the shared menu look (dark chips, orange accent).
-const HUD_ACCENT: Color = Color(1.0, 0.5, 0.14)
-const HUD_TEXT: Color = Color(0.96, 0.97, 0.99)
-const HUD_MUTED: Color = Color(0.72, 0.76, 0.82)
+## Downward ground-probe range: above the tallest plausible peak, past the lowest
+## valley, so the surface is found however the terrain is sculpted.
+const _PROBE_TOP: float = 800.0
+const _PROBE_BOTTOM: float = -800.0
+## Clearance above the surface for the player's capsule centre / a resting orb (m).
+const _PLAYER_CLEARANCE: float = 1.1
+const _ORB_CLEARANCE: float = 1.2
+## Optional Marker3D (direct child of the root) naming where — and which way — the
+## player starts; when absent the player's authored transform is used.
+const SPAWN_MARKER: String = "SpawnPoint"
 
 var _pause_menu: Control
-## Maps a stat key ("time"/"calories"/"steps"/"orbs") to its live value Label so
-## [method _update_hud] can refresh each chip without rebuilding the bar.
-var _hud_values: Dictionary = {}
-var _anton: Font
+var _hud: OpenWorldHud  # the on-screen stat bar (see open_world_hud.gd)
 var _steps_scored: int = 0
 var _orbs_collected: int = 0
 var _rng := RandomNumberGenerator.new()
 
 @onready var _player: CharacterBody3D = $CharacterBody3D
+@onready var _camera: Camera3D = $Camera3D
 
 func get_game_id() -> String:
 	return "open_world"
+
+
+## Stand the player at the spawn marker (and frame the camera on them) before the
+## intro, so the countdown's reveal shows them ready at the start line. The
+## precise ground-snap waits for _start_game: the terrain collider isn't
+## queryable yet while the intro holds the world frozen on its first frame.
+func _prepare_world() -> void:
+	# HTerrain builds its visible chunks lazily in _process, so let it keep running
+	# through the intro freeze — otherwise the countdown reveals the player standing
+	# on nothing (see MiniGame.KEEP_PROCESSING_GROUP).
+	var terrain := get_node_or_null("HTerrain")
+	if terrain != null:
+		terrain.add_to_group(KEEP_PROCESSING_GROUP)
+	_move_player_to_spawn_marker()
+	if _camera != null and _camera.has_method("snap_to_target"):
+		_camera.snap_to_target()
 
 
 ## MiniGame calls this from begin() (after the setup/countdown intro, or
@@ -48,6 +74,10 @@ func get_game_id() -> String:
 func _start_game() -> void:
 	_steps_scored = 0
 	_orbs_collected = 0
+	# Wait one physics tick so HTerrain's collider is live for our ground probes,
+	# then plant the player on the surface before scattering the (also-snapped) orbs.
+	await get_tree().physics_frame
+	_drop_player_to_ground()
 	_build_overlay()
 	_spawn_orbs()
 	_update_hud()
@@ -82,15 +112,14 @@ func _on_end_requested() -> void:
 	finish()  # banks session calories (MiniGame default) + step-based XP
 
 
-## Builds the 2D overlay: a live stats HUD and the shared pause menu (with its
-## "End & Save" option enabled, since this mode has no automatic end).
+## Builds the 2D overlay: the stats HUD (its own CanvasLayer) and the shared pause
+## menu (with its "End & Save" option enabled, since this mode has no automatic end).
 func _build_overlay() -> void:
+	_hud = OpenWorldHud.new()
+	add_child(_hud)
+
 	var layer := CanvasLayer.new()
 	add_child(layer)
-
-	_anton = load("res://assets/fonts/Anton-Regular.ttf")
-	_build_hud(layer)
-
 	_pause_menu = load(SceneManager.PAUSE_MENU).instantiate()
 	_pause_menu.hide()
 	layer.add_child(_pause_menu)
@@ -100,87 +129,11 @@ func _build_overlay() -> void:
 		_pause_menu.end_requested.connect(_on_end_requested)
 
 
-## Lays out the top stat bar (a centred row of chips) and a subtle bottom hint.
-## Built in code so the HUD matches the shared menu look without a paired scene.
-func _build_hud(layer: CanvasLayer) -> void:
-	var bar := HBoxContainer.new()
-	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	bar.offset_top = 22.0
-	bar.offset_bottom = 118.0  # a real height so the container lays chips out
-	bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	bar.add_theme_constant_override("separation", 12)
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(bar)
-
-	bar.add_child(_make_chip("time", "TIME", HUD_TEXT))
-	bar.add_child(_make_chip("calories", "CALORIES", HUD_ACCENT))
-	bar.add_child(_make_chip("steps", "STEPS", HUD_TEXT))
-	bar.add_child(_make_chip("orbs", "ORBS", HUD_ACCENT))
-
-	var hint := Label.new()
-	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	hint.offset_bottom = -22.0
-	hint.offset_top = -52.0
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 16)
-	hint.add_theme_color_override("font_color", Color(0.82, 0.85, 0.9, 0.62))
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hint.text = "ESC — PAUSE  /  END & SAVE"
-	layer.add_child(hint)
-
-
-## One HUD chip: a small caps caption over a large branded value, on a dark
-## rounded card. Registers its value Label under [param key] for live updates.
-func _make_chip(key: String, caption: String, color: Color) -> Control:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(132, 0)
-	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER  # snug height, centred in the bar
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.08, 0.12, 0.72)
-	sb.set_corner_radius_all(14)
-	sb.set_border_width_all(1)
-	sb.border_color = Color(1, 1, 1, 0.09)
-	sb.content_margin_left = 20
-	sb.content_margin_right = 20
-	sb.content_margin_top = 10
-	sb.content_margin_bottom = 12
-	sb.shadow_color = Color(0, 0, 0, 0.3)
-	sb.shadow_size = 10
-	panel.add_theme_stylebox_override("panel", sb)
-
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 0)
-	panel.add_child(vbox)
-
-	var cap := Label.new()
-	cap.text = caption
-	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cap.add_theme_font_size_override("font_size", 13)
-	cap.add_theme_color_override("font_color", HUD_MUTED)
-	vbox.add_child(cap)
-
-	var value := Label.new()
-	value.text = "0"
-	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	value.add_theme_font_override("font", _anton)
-	value.add_theme_font_size_override("font_size", 34)
-	value.add_theme_color_override("font_color", color)
-	vbox.add_child(value)
-
-	_hud_values[key] = value
-	return panel
-
-
 func _update_hud() -> void:
-	if _hud_values.is_empty():
+	if _hud == null:
 		return
-	var seconds: int = int(get_elapsed_sec())
-	_hud_values["time"].text = "%d:%02d" % [seconds / 60, seconds % 60]
-	_hud_values["calories"].text = "%.0f" % MotionManager.get_session_calories()
-	_hud_values["steps"].text = str(MotionManager.get_session_steps())
-	_hud_values["orbs"].text = str(_orbs_collected)
+	_hud.set_stats(int(get_elapsed_sec()), MotionManager.get_session_calories(),
+			MotionManager.get_session_steps(), _orbs_collected)
 
 
 ## Scatters the collectible orbs. Built in code (not the scene) so the count
@@ -218,19 +171,62 @@ func _make_orb() -> Area3D:
 	return orb
 
 
-## Drops [param orb] somewhere new on the ground, never right next to the
-## player — the orb IS the exercise, so it must always demand a walk.
+## Drops [param orb] somewhere new around the player, never right next to them —
+## the orb IS the exercise, so it must always demand a walk — then snaps it onto
+## the terrain surface so it rests on hills / in valleys rather than floating.
 func _place_orb(orb: Area3D) -> void:
-	var pos := Vector3.ZERO
+	var anchor: Vector3 = _player.global_position if _player != null else Vector3.ZERO
+	var pos := anchor
 	for attempt in 16:
-		pos = Vector3(
+		pos = anchor + Vector3(
 			_rng.randf_range(-ORB_RANGE, ORB_RANGE),
-			1.0,
+			0.0,
 			_rng.randf_range(-ORB_RANGE, ORB_RANGE),
 		)
 		if _player == null or pos.distance_to(_player.global_position) >= ORB_MIN_PLAYER_DIST:
 			break
-	orb.position = pos
+	pos.y = _ground_y(pos.x, pos.z, anchor.y) + _ORB_CLEARANCE
+	orb.global_position = pos
+
+
+## Moves the player onto the terrain and re-bases its fall-respawn point there.
+## Starts at [constant SPAWN_MARKER] if present, else the authored position. Then
+## re-writes player.gd's `_spawn_transform` (captured in its _ready, before this)
+## so a fall off the world sends it back to the surface, not beneath it.
+func _drop_player_to_ground() -> void:
+	if _player == null:
+		return
+	_move_player_to_spawn_marker()
+	var p: Vector3 = _player.global_position
+	var gy: float = _ground_y(p.x, p.z, p.y, [_player.get_rid()])
+	_player.global_position = Vector3(p.x, gy + _PLAYER_CLEARANCE, p.z)
+	_player.set("_spawn_transform", _player.global_transform)
+
+
+## Places the player at the [constant SPAWN_MARKER] transform (position + facing)
+## when the marker exists. Shared by the intro preview and the ground-snap.
+func _move_player_to_spawn_marker() -> void:
+	var marker := get_node_or_null(SPAWN_MARKER) as Node3D
+	if marker == null or _player == null:
+		return
+	_player.global_position = marker.global_position
+	_player.rotation.y = marker.global_rotation.y
+
+
+## Terrain surface Y under (x,z) via a downward raycast, or [param fallback] on a
+## miss (off the map, or the collider not ready). [param exclude] drops bodies the
+## probe should ignore (e.g. the player's own capsule). Reaches the physics world
+## through _player: this script's base type is Node (via MiniGame) so `self` has
+## no get_world_3d(), but the player shares the same World3D.
+func _ground_y(x: float, z: float, fallback: float, exclude: Array = []) -> float:
+	if _player == null:
+		return fallback
+	var space := _player.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(
+		Vector3(x, _PROBE_TOP, z), Vector3(x, _PROBE_BOTTOM, z))
+	q.exclude = exclude
+	var hit := space.intersect_ray(q)
+	return hit.position.y if hit else fallback
 
 
 ## A gentle endless bob on the orb's mesh (not its root, which _place_orb
@@ -244,18 +240,6 @@ func _start_orb_bob(orb: Area3D) -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
-## A quick scale pop on the ORBS value when one is banked, so pickups feel felt.
-func _pulse_orbs_chip() -> void:
-	var value: Label = _hud_values.get("orbs")
-	if value == null:
-		return
-	value.pivot_offset = value.size * 0.5
-	value.scale = Vector2(1.4, 1.4)
-	var tween := value.create_tween()
-	tween.tween_property(value, "scale", Vector2.ONE, 0.28) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-
-
 func _on_orb_touched(body: Node3D, orb: Area3D) -> void:
 	if body != _player:
 		return
@@ -263,4 +247,5 @@ func _on_orb_touched(body: Node3D, orb: Area3D) -> void:
 	add_score(ORB_SCORE)
 	_place_orb(orb)  # respawn elsewhere: an endless trail of small goals
 	_update_hud()
-	_pulse_orbs_chip()
+	if _hud != null:
+		_hud.pulse_orbs()

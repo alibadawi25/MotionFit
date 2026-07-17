@@ -1,28 +1,31 @@
-[gd_scene format=3 uid="uid://b0gs7lpyb48ho"]
+[gd_scene load_steps=20 format=3 uid="uid://b0gs7lpyb48ho"]
 
-[ext_resource type="Script" uid="uid://rv8h6jlq031i" path="res://scenes/open-world/player.gd" id="1_numat"]
-[ext_resource type="Script" uid="uid://ww5gd0i3wy4b" path="res://scenes/open-world/camera_controller.gd" id="2_camctl"]
-[ext_resource type="Script" path="res://scenes/open-world/open_world.gd" id="3_game"]
+[ext_resource type="Script" uid="uid://duea1rw5hxpro" path="res://addons/zylann.hterrain/hterrain.gd" id="1_5i1m7"]
+[ext_resource type="Resource" uid="uid://gb2cwugm5q7i" path="res://Terrain/data.hterrain" id="2_knfty"]
+[ext_resource type="Script" uid="uid://cfpwcpr0viwtm" path="res://addons/zylann.hterrain/hterrain_texture_set.gd" id="3_7qf85"]
+[ext_resource type="Texture2D" uid="uid://b6dvskxghx60u" path="res://assets/textures/terrain/grass_albedo_bump.png" id="4_n5o5n"]
+[ext_resource type="Texture2D" uid="uid://bntdfs8x5gtpb" path="res://assets/textures/terrain/stone_albedo_bump.png" id="5_bg08r"]
+[ext_resource type="Texture2D" uid="uid://caofhvrwbicph" path="res://assets/textures/terrain/iced_stone_albedo_bump.png" id="6_xoslx"]
+[ext_resource type="Texture2D" uid="uid://clahrjdjlmf2s" path="res://assets/textures/terrain/grass_normal_rough.png" id="7_xlsp5"]
+[ext_resource type="Texture2D" uid="uid://bcoc48cw5ud4h" path="res://assets/textures/terrain/stone_normal_rough.png" id="8_h0csi"]
+[ext_resource type="Texture2D" uid="uid://c4s30g5tt4cj8" path="res://assets/textures/terrain/iced_stone_normal_rough.png" id="9_j15uk"]
+[ext_resource type="Script" uid="uid://rv8h6jlq031i" path="res://scenes/open-world/player.gd" id="10_plyr"]
+[ext_resource type="Script" uid="uid://ww5gd0i3wy4b" path="res://scenes/open-world/camera_controller.gd" id="11_camc"]
+[ext_resource type="Script" uid="uid://ck5llveknekgo" path="res://scenes/open-world/open_world.gd" id="12_game"]
 
-[sub_resource type="StandardMaterial3D" id="mat_ground"]
-albedo_color = Color(0.32, 0.46, 0.27, 1)
-roughness = 0.95
-
-[sub_resource type="BoxMesh" id="BoxMesh_slbg3"]
-material = SubResource("mat_ground")
-size = Vector3(60, 0.1, 60)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_qwm0u"]
-size = Vector3(60, 0.1, 60)
+[sub_resource type="Resource" id="Resource_xcpkc"]
+script = ExtResource("3_7qf85")
+mode = 0
+textures = [[ExtResource("4_n5o5n"), ExtResource("5_bg08r"), ExtResource("6_xoslx")], [ExtResource("7_xlsp5"), ExtResource("8_h0csi"), ExtResource("9_j15uk")]]
 
 [sub_resource type="StandardMaterial3D" id="mat_player"]
 albedo_color = Color(1, 0.5, 0.14, 1)
 roughness = 0.55
 
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_slbg3"]
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_plyr"]
 material = SubResource("mat_player")
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_slbg3"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_plyr"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
 sky_top_color = Color(0.24, 0.42, 0.67, 1)
@@ -39,151 +42,57 @@ sky = SubResource("sky_res")
 tonemap_mode = 2
 fog_enabled = true
 fog_light_color = Color(0.66, 0.73, 0.82, 1)
-fog_density = 0.006
+fog_density = 0.004
 
-[sub_resource type="StandardMaterial3D" id="mat_toy"]
-albedo_color = Color(0.35, 0.78, 0.9, 1)
-roughness = 0.35
+[node name="OpenWorld" type="Node3D" unique_id=1654159363]
+script = ExtResource("12_game")
 
-[sub_resource type="SphereMesh" id="SphereMesh_slbg3"]
-material = SubResource("mat_toy")
-radius = 0.2
-height = 0.4
+[node name="HTerrain" type="Node3D" parent="." unique_id=750446967]
+script = ExtResource("1_5i1m7")
+centered = true
+_terrain_data = ExtResource("2_knfty")
+chunk_size = 32
+collision_enabled = true
+collision_layer = 1
+collision_mask = 1
+physics_material = null
+shader_type = "Classic4Lite"
+custom_shader = null
+custom_globalmap_shader = null
+texture_set = SubResource("Resource_xcpkc")
+render_layers = 1
+cast_shadow = 1
+shader_params/u_ground_uv_scale = 10.0
+shader_params/u_depth_blending = true
+shader_params/u_triplanar = true
+shader_params/u_tile_reduction = Vector4(0, 0, 0, 0)
+shader_params/u_specular = 0.5
+metadata/_custom_type_script = "uid://duea1rw5hxpro"
 
-[sub_resource type="SphereShape3D" id="SphereShape3D_slbg3"]
-radius = 0.2
+[node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1220668730]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
+script = ExtResource("10_plyr")
 
-[sub_resource type="StandardMaterial3D" id="mat_pillar_red"]
-albedo_color = Color(0.83, 0.3, 0.28, 1)
-roughness = 0.8
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CharacterBody3D" unique_id=1911116529]
+mesh = SubResource("CapsuleMesh_plyr")
 
-[sub_resource type="StandardMaterial3D" id="mat_pillar_blue"]
-albedo_color = Color(0.28, 0.45, 0.83, 1)
-roughness = 0.8
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D" unique_id=1817254752]
+shape = SubResource("CapsuleShape3D_plyr")
 
-[sub_resource type="StandardMaterial3D" id="mat_pillar_yellow"]
-albedo_color = Color(0.9, 0.78, 0.3, 1)
-roughness = 0.8
-
-[sub_resource type="StandardMaterial3D" id="mat_pillar_purple"]
-albedo_color = Color(0.6, 0.36, 0.78, 1)
-roughness = 0.8
-
-[sub_resource type="BoxMesh" id="mesh_pillar_red"]
-material = SubResource("mat_pillar_red")
-size = Vector3(2, 6, 2)
-
-[sub_resource type="BoxMesh" id="mesh_pillar_blue"]
-material = SubResource("mat_pillar_blue")
-size = Vector3(2, 6, 2)
-
-[sub_resource type="BoxMesh" id="mesh_pillar_yellow"]
-material = SubResource("mat_pillar_yellow")
-size = Vector3(2, 6, 2)
-
-[sub_resource type="BoxMesh" id="mesh_pillar_purple"]
-material = SubResource("mat_pillar_purple")
-size = Vector3(2, 6, 2)
-
-[sub_resource type="BoxShape3D" id="shape_pillar"]
-size = Vector3(2, 6, 2)
-
-[node name="OpenWorld" type="Node3D" unique_id=1018446823]
-script = ExtResource("3_game")
-
-[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=580515697]
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D" unique_id=1413065947]
-mesh = SubResource("BoxMesh_slbg3")
-skeleton = NodePath("../..")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="StaticBody3D" unique_id=1612171534]
-shape = SubResource("BoxShape3D_qwm0u")
-
-[node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1879209576]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1017296, 0)
-script = ExtResource("1_numat")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="CharacterBody3D" unique_id=1481935569]
-mesh = SubResource("CapsuleMesh_slbg3")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D" unique_id=1628264062]
-shape = SubResource("CapsuleShape3D_slbg3")
-
-[node name="Camera3D" type="Camera3D" parent="." unique_id=607993938]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6017294, 6)
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1663772096]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 33, 8)
 current = true
 fov = 70.0
-script = ExtResource("2_camctl")
+script = ExtResource("11_camc")
 target_path = NodePath("../CharacterBody3D")
 
-[node name="Light3D" type="DirectionalLight3D" parent="." unique_id=1496572831]
-transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 12, 0)
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=900951875]
+transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 40, 0)
 light_energy = 1.2
 shadow_enabled = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=227136867]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=560313841]
 environment = SubResource("Environment_y5iem")
 
-[node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=110277008]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0257804, 1.6682919, -3.2686121)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D" unique_id=104027853]
-mesh = SubResource("SphereMesh_slbg3")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D" unique_id=407641047]
-shape = SubResource("SphereShape3D_slbg3")
-
-[node name="RigidBody3D2" type="RigidBody3D" parent="." unique_id=2022608468]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.8117073, 1.6682919, 3.4517045)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D2" unique_id=1533105115]
-mesh = SubResource("SphereMesh_slbg3")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D2" unique_id=541751177]
-shape = SubResource("SphereShape3D_slbg3")
-
-[node name="RigidBody3D3" type="RigidBody3D" parent="." unique_id=804681304]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.0674784, 1.6682919, 0.89212847)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D3" unique_id=1624387160]
-mesh = SubResource("SphereMesh_slbg3")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D3" unique_id=525770932]
-shape = SubResource("SphereShape3D_slbg3")
-
-[node name="PillarNorth" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, -24)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarNorth"]
-mesh = SubResource("mesh_pillar_red")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarNorth"]
-shape = SubResource("shape_pillar")
-
-[node name="PillarSouth" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 24)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarSouth"]
-mesh = SubResource("mesh_pillar_blue")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarSouth"]
-shape = SubResource("shape_pillar")
-
-[node name="PillarEast" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 3, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarEast"]
-mesh = SubResource("mesh_pillar_yellow")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarEast"]
-shape = SubResource("shape_pillar")
-
-[node name="PillarWest" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 3, 0)
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarWest"]
-mesh = SubResource("mesh_pillar_purple")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarWest"]
-shape = SubResource("shape_pillar")
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=905473459]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 182.26863, 31.022503, -6.018368)
