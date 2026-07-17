@@ -16,6 +16,13 @@ const MUTED: Color = Color(0.72, 0.76, 0.82)
 ## [method set_stats] can refresh each chip without rebuilding the bar.
 var _values: Dictionary = {}
 var _anton: Font
+## The TURN BACK prompt shown at the world's fog border (see [method set_border_warning]).
+var _warning: Control
+## How deep into the border band the player is (0..1), as last reported. Drives
+## the prompt's fade and its pulse.
+var _haze: float = 0.0
+## The heart-rate chip (hidden until a wearable streams bpm — see set_heart_rate).
+var _hr_chip: Control
 
 
 func _ready() -> void:
@@ -38,6 +45,11 @@ func _build() -> void:
 	bar.add_child(_make_chip("calories", "CALORIES", ACCENT))
 	bar.add_child(_make_chip("steps", "STEPS", TEXT))
 	bar.add_child(_make_chip("orbs", "ORBS", ACCENT))
+	# Live bpm from a heart-rate strap. Hidden until a wearable streams — most
+	# players have none, and an empty chip would read as something broken.
+	_hr_chip = _make_chip("hr", "♥ BPM", Color(0.95, 0.45, 0.5))
+	_hr_chip.visible = false
+	bar.add_child(_hr_chip)
 
 	var hint := Label.new()
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -50,6 +62,9 @@ func _build() -> void:
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.text = "ESC — PAUSE  /  END & SAVE"
 	add_child(hint)
+
+	_warning = _make_warning()
+	add_child(_warning)
 
 
 ## One HUD chip: a small caps caption over a large branded value, on a dark
@@ -95,6 +110,65 @@ func _make_chip(key: String, caption: String, color: Color) -> Control:
 	return panel
 
 
+## The border prompt: a big accent TURN BACK over a quiet line of reason. Built
+## hidden and centred a little above the middle of the screen, clear of the stat
+## bar and of the figure the player is watching.
+func _make_warning() -> Control:
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 2)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	box.position = Vector2(0, -120)
+	box.modulate.a = 0.0
+	box.visible = false
+
+	var title := Label.new()
+	title.text = "TURN BACK"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_override("font", _anton)
+	title.add_theme_font_size_override("font_size", 52)
+	title.add_theme_color_override("font_color", ACCENT)
+	# The fog behind this is near-white at full haze, which is exactly where the
+	# text needs to be readable — so it carries its own shadow rather than trusting
+	# the backdrop.
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+	title.add_theme_constant_override("shadow_offset_y", 3)
+	title.add_theme_constant_override("shadow_outline_size", 8)
+	box.add_child(title)
+
+	var reason := Label.new()
+	reason.text = "THE FOG IS TOO THICK THIS WAY"
+	reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reason.add_theme_font_size_override("font_size", 17)
+	reason.add_theme_color_override("font_color", TEXT)
+	reason.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	reason.add_theme_constant_override("shadow_offset_y", 2)
+	box.add_child(reason)
+	return box
+
+
+## Reports how deep into the world's fog border the player is (0..1, from
+## [method WorldBorder.get_haze]) so the prompt can fade in with it — the same
+## number the fog and the movement resistance run on, so the text arrives exactly
+## as the world starts refusing.
+func set_border_warning(haze: float) -> void:
+	_haze = clampf(haze, 0.0, 1.0)
+	if _warning != null:
+		_warning.visible = _haze > 0.01
+
+
+func _process(_delta: float) -> void:
+	if _warning == null or not _warning.visible:
+		return
+	# Fade in with depth, and breathe once the world is genuinely holding you
+	# back — a static caption reads as scenery, a pulsing one reads as a limit.
+	var pulse: float = 1.0 - 0.18 * _haze * (0.5 - 0.5 * cos(Time.get_ticks_msec() / 260.0))
+	_warning.modulate.a = _haze * pulse
+
+
 ## Refreshes each chip from the values the game measured this frame.
 func set_stats(seconds: int, calories: float, steps: int, orbs: int) -> void:
 	if _values.is_empty():
@@ -103,6 +177,16 @@ func set_stats(seconds: int, calories: float, steps: int, orbs: int) -> void:
 	_values["calories"].text = "%.0f" % calories
 	_values["steps"].text = str(steps)
 	_values["orbs"].text = str(orbs)
+
+
+## Shows live bpm from a heart-rate strap on its own chip; [param bpm] <= 0
+## (no wearable / signal lost) hides the chip entirely.
+func set_heart_rate(bpm: float) -> void:
+	if _hr_chip == null:
+		return
+	_hr_chip.visible = bpm > 0.0
+	if bpm > 0.0:
+		_values["hr"].text = "%d" % roundi(bpm)
 
 
 ## A quick scale pop on the ORBS value when one is banked, so pickups feel felt.

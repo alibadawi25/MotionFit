@@ -10,10 +10,11 @@ extends MiniGame
 ## game rewards exactly the cardio it's meant to.
 ##
 ## Tension is all feedback, and deliberately all FELT rather than read: as the
-## zombie's "gap" closes, the dark squeezes the visible world down to a tunnel and
-## a heartbeat — quickening, throbbing blood into the edges — pulses the camera
-## zoom. There is no proximity gauge; you're told you're in trouble, never how much
-## (see RunnerHud). The chase maths and that tension live here; RunnerTrack owns
+## zombie's "gap" closes, the dark squeezes the visible world down to a tunnel, a
+## heartbeat — quickening, throbbing blood into the edges — pulses the camera
+## zoom, and dragging footsteps rise out of the silence behind you. There is no
+## proximity gauge; you're told you're in trouble, never how much (see RunnerHud
+## and RunnerAudio). The chase maths and that tension live here; RunnerTrack owns
 ## the scrolling world and obstacles.
 ##
 ## Score is distance in metres. It's a scored MiniGame with a real fail state, so
@@ -66,6 +67,7 @@ const CAM_POS: Vector3 = Vector3(0.0, 2.1, 2.8)
 const CAM_LOOK: Vector3 = Vector3(0.0, 1.3, -7.0)
 
 var _track: RunnerTrack
+var _audio: RunnerAudio
 var _hud: RunnerHud
 var _pause_menu: Control
 var _playing: bool = false
@@ -104,6 +106,11 @@ func _prepare_world() -> void:
 	add_child(_track)
 	_track.setup(_player)
 	_track.spacing_scale = _difficulty_spacing()
+	_audio = RunnerAudio.new()
+	_audio.name = "Audio"
+	add_child(_audio)
+	_player.footfall.connect(_on_footfall)
+	_player.landed.connect(_audio.land)
 	_zombie.global_position = Vector3(0.0, 0.0, ZDIST_FAR)
 	if _camera != null:
 		_camera.global_position = CAM_POS
@@ -130,7 +137,8 @@ func _start_cinematic() -> void:
 	var cinematic := RunnerCinematic.new()
 	cinematic.name = "Cinematic"
 	add_child(cinematic)
-	cinematic.setup(_camera, _player, _zombie, _track, CAM_POS, CAM_LOOK, BASE_FOV)
+	cinematic.setup(_camera, _player, _zombie, _track, _audio, CAM_POS, CAM_LOOK,
+			BASE_FOV)
 	cinematic.finished.connect(_on_cinematic_finished)
 
 
@@ -192,9 +200,12 @@ func _tick_briefing(delta: float) -> void:
 	_track.scroll(delta, run_speed, false)  # scenery only — no hazards, no scoring
 	_player.tick(delta, pace)
 	_zombie.set_urgency(0.2)
+	# Tension runs at gap 0 through the briefing: no visible effect (the vignette
+	# and zoom both scale to nothing down there) but you can hear a slow resting
+	# heartbeat under the card, so the quickening later has something to start from.
+	_update_tension(delta)
 	if _hud != null:
 		_hud.set_stats(0, pace)
-		_hud.set_danger(0.0, 0.0)
 		_hud.set_briefing_countdown(_brief_left)
 	_brief_left -= delta
 	if _brief_left <= 0.0:
@@ -239,14 +250,18 @@ func _update_zombie(delta: float, closing: float) -> void:
 	_zombie.set_urgency(clampf(closing / 4.0, 0.0, 1.0))
 
 
-## The danger overlay: a heartbeat whose rate rises with the gap drives both the
-## camera zoom-pulse and the HUD's closing dark. With the gauge gone the beat IS
-## the readout — a slow thud when you're clear, a hammering one when it's on you —
-## so it runs across a wide enough range to be felt without being counted.
+## The danger overlay: a heartbeat whose rate rises with the gap drives the
+## camera zoom-pulse, the HUD's closing dark and the beat you actually hear. With
+## the gauge gone the beat IS the readout — a slow thud when you're clear, a
+## hammering one when it's on you — so it runs across a wide enough range to be
+## felt without being counted. All three read the same phase, so the thump, the
+## clench and the sound are one event.
 func _update_tension(delta: float) -> void:
 	var hz: float = lerpf(0.75, 3.2, _gap)
 	_beat_phase += hz * delta
 	var pulse: float = _heartbeat(_beat_phase)
+	if _audio != null:
+		_audio.tick(delta, _gap, _beat_phase)
 	var intensity: float = smoothstep(0.12, 1.0, _gap)
 	# Camera: base frame + heartbeat zoom-in + a decaying shake from any hit.
 	if _camera != null:
@@ -268,6 +283,7 @@ func _update_scares(delta: float) -> void:
 	_lightning_left -= delta
 	if _lightning_left <= 0.0:
 		_hud.flash_lightning()
+		_audio.lightning()  # rolls in a beat after the flash, as thunder does
 		_lightning_left = randf_range(7.0, 13.0) - _gap * 4.5
 	_groan_left -= delta
 	if _groan_left <= 0.0:
@@ -276,6 +292,7 @@ func _update_scares(delta: float) -> void:
 		# them so the same words never wear the fear off.
 		if _gap > 0.35:
 			_hud.flash_toast(GROANS[randi() % GROANS.size()], RunnerHud.DANGER)
+			_audio.groan()
 		_groan_left = randf_range(6.0, 11.0) - _gap * 3.0
 
 
@@ -300,10 +317,16 @@ func _update_prompt(closing: float) -> void:
 		_hud.set_prompt("KEEP MARCHING", RunnerHud.MUTED)
 
 
+## Each footfall of the visible stride, voiced by how hard the player is marching.
+func _on_footfall() -> void:
+	_audio.footfall(clampf(MotionManager.get_forward(), 0.0, 1.0))
+
+
 func _on_obstacle_hit(_type: int) -> void:
 	_gap = clampf(_gap + STUMBLE_GAP, 0.0, 1.0)
 	_shake = 1.0
 	_player.stumble()
+	_audio.stumble()
 	if _hud != null:
 		_hud.flash_hit()
 
@@ -312,18 +335,25 @@ func _on_obstacle_cleared(_type: int) -> void:
 	add_score(CLEAR_BONUS)
 
 
-## The zombie catches you: it lunges, everything stops, and after a beat the run
-## is banked to the results screen.
+## The zombie catches you: the chase maths stops and the death scene
+## (RunnerCatch — the grab, the lunge at the lens, the smash to black) takes the
+## camera and the actors, banking the run to results once its card has played.
 func _caught() -> void:
 	if not _playing:
 		return
 	_playing = false
-	_zombie.lunge()
 	if _hud != null:
-		_hud.set_danger(1.0, 1.0)
 		_hud.set_prompt("CAUGHT!", RunnerHud.DANGER)
-	var timer := get_tree().create_timer(1.6)
-	timer.timeout.connect(func() -> void: finish())
+	var catch_scene := RunnerCatch.new()
+	catch_scene.name = "CatchScene"
+	add_child(catch_scene)
+	catch_scene.setup(_camera, _player, _zombie, _track, _audio, _hud,
+			get_score())
+	catch_scene.finished.connect(_on_catch_finished)
+
+
+func _on_catch_finished() -> void:
+	finish()
 
 
 func _unhandled_input(event: InputEvent) -> void:

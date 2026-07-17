@@ -17,6 +17,13 @@ extends Node3D
 ## track via RigUtils. Falls back to nothing visible only if the model can't load.
 class_name RunnerPlayer
 
+## Emitted as each foot plants during the run, read off the walk clip itself (see
+## [method _tick_footfalls]) so a step SOUNDS on the frame a foot lands rather
+## than on a parallel timer that slowly drifts out of step with the legs.
+signal footfall
+## Emitted when a jump touches back down.
+signal landed
+
 ## Half-width of the track the runner can strafe across (metres).
 const STRAFE_X_MAX: float = 2.4
 ## How quickly the body slides toward the leaned-to position (higher = snappier).
@@ -58,6 +65,9 @@ var _anim: AnimationPlayer
 var _clips: PackedStringArray
 var _current_clip: String = ""
 var _jumping: bool = false
+## Which half of the stride cycle the walk clip was in last frame; -1 while not
+## running. See [method _tick_footfalls].
+var _stride_half: int = -1
 
 
 func _ready() -> void:
@@ -99,6 +109,7 @@ func tick(delta: float, run: float) -> void:
 		_stumble_t = maxf(0.0, _stumble_t - delta)
 	position = Vector3(_x, _y, 0.0)
 	_update_animation()
+	_tick_footfalls()
 
 
 func _update_strafe(delta: float) -> void:
@@ -124,6 +135,8 @@ func _update_jump(delta: float) -> void:
 	if _y <= 0.0:
 		_y = 0.0
 		_vy = 0.0
+		if not _grounded:
+			landed.emit()
 		_grounded = true
 
 
@@ -163,9 +176,47 @@ func _update_animation() -> void:
 			if want == CLIP_WALK else 1.0)
 
 
+## Emits [signal footfall] each time the run animation plants a foot, so audio
+## can hang off the legs the player is actually watching — at full pace the
+## stride runs at nearly 3× the clip's authored speed, and any sound driven by
+## its own cadence timer instead of this would visibly land between steps.
+##
+## The walk clip is one full gait cycle of two steps, authored so a foot plants
+## at the start of each half (that's where its body-bob bottoms out), so a foot
+## is down exactly when playback crosses into a new half. Silent while airborne,
+## sliding or mid-jump — no feet on the ground to make a sound.
+func _tick_footfalls() -> void:
+	if (_anim == null or _jumping or _sliding or not _grounded
+			or _anim.current_animation != CLIP_WALK):
+		_stride_half = -1
+		return
+	var length: float = _anim.current_animation_length
+	if length <= 0.0:
+		return
+	var half: int = int(_anim.current_animation_position / (length * 0.5))
+	if _stride_half != -1 and half != _stride_half:
+		footfall.emit()
+	_stride_half = half
+
+
 ## A brief hit reaction (visual shove); runner.gd owns the gameplay penalty.
 func stumble() -> void:
 	_stumble_t = 0.35
+
+
+## The zombie has you: crumple out of the stride into the crouch and hold it
+## (the clip loops, so slowed down it reads as cowering under the grab). Only
+## the death scene calls this — normal ticking stops with the chase, so the pose
+## simply stays until the scene is torn down.
+func collapse() -> void:
+	if _anim == null:
+		return
+	_jumping = false
+	_sliding = false
+	if _clips.has(CLIP_CROUCH):
+		_current_clip = CLIP_CROUCH
+		_anim.speed_scale = 0.7
+		_anim.play(CLIP_CROUCH, 0.3)
 
 
 func center_x() -> float:

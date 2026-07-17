@@ -26,6 +26,14 @@ const ORB_RANGE: float = 26.0
 ## A (re)spawned orb lands at least this far from the player — the point is the
 ## walk, so it must never pop up at your feet.
 const ORB_MIN_PLAYER_DIST: float = 8.0
+## Orbs must land on dry ground: candidates whose surface sits less than this
+## far above the sea plane are rejected, so no goal ever bobs in (or under) the
+## water. The margin keeps them clear of the shader's animated wave crests.
+const ORB_SEA_MARGIN: float = 0.6
+## Orbs also keep this far clear of the world's fog border (see world_border.gd).
+## A goal sitting in the murk would be walking the player straight at the one
+## place the world pushes back — the border must never be somewhere you're sent.
+const ORB_BORDER_MARGIN: float = 10.0
 ## Brand orange, shared with the UI accent, so goals read as "ours" at a glance.
 const ORB_COLOR: Color = Color(1.0, 0.5, 0.14)
 
@@ -48,6 +56,10 @@ var _rng := RandomNumberGenerator.new()
 
 @onready var _player: CharacterBody3D = $CharacterBody3D
 @onready var _camera: Camera3D = $Camera3D
+## The sea surface (optional): its height defines the world's water level.
+@onready var _sea: Node3D = get_node_or_null("Sea")
+## The world's fog rim (optional): keeps the player in and the orbs out of it.
+@onready var _border: WorldBorder = get_node_or_null("WorldBorder") as WorldBorder
 
 func get_game_id() -> String:
 	return "open_world"
@@ -91,6 +103,10 @@ func _process(delta: float) -> void:
 		add_score(steps - _steps_scored)
 		_steps_scored = steps
 	_update_hud()
+	# Fade the border's TURN BACK prompt in on the same haze the fog and the
+	# movement resistance use, so the world says it as it starts doing it.
+	if _border != null and _hud != null and _player != null:
+		_hud.set_border_warning(_border.get_haze(_player.global_position))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -134,6 +150,9 @@ func _update_hud() -> void:
 		return
 	_hud.set_stats(int(get_elapsed_sec()), MotionManager.get_session_calories(),
 			MotionManager.get_session_steps(), _orbs_collected)
+	# Live bpm chip — only appears while a heart-rate strap is streaming.
+	_hud.set_heart_rate(
+			MotionManager.get_heart_rate() if MotionManager.is_hr_connected() else 0.0)
 
 
 ## Scatters the collectible orbs. Built in code (not the scene) so the count
@@ -158,10 +177,26 @@ func _make_orb() -> Area3D:
 	mat.albedo_color = ORB_COLOR
 	mat.emission_enabled = true
 	mat.emission = ORB_COLOR
-	mat.emission_energy_multiplier = 1.6
+	# Must clear the environment's glow_hdr_threshold (0.95) with room to spare,
+	# or the orb reads as a flat orange dot instead of a light source. This is what
+	# makes a distant orb findable across a valley.
+	mat.emission_energy_multiplier = 2.4
 	sphere.material = mat
 	mesh.mesh = sphere
+	# An orb is a light source; letting it cast the sun's shadow drops a dark
+	# blot on the hillside right where the glow should be selling it.
+	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	orb.add_child(mesh)
+
+	# A short-range glow spilling onto the ground around it. Bloom alone makes an
+	# orb bright; this makes it belong to the terrain it is resting on, and gives
+	# it a pool of colour visible before the orb itself clears the ridgeline.
+	var lamp := OmniLight3D.new()
+	lamp.light_color = ORB_COLOR
+	lamp.light_energy = 2.0
+	lamp.omni_range = 7.0
+	lamp.shadow_enabled = false  # six of these; the pool reads fine without it
+	mesh.add_child(lamp)  # rides the bob, so the pool breathes with the orb
 	var collider := CollisionShape3D.new()
 	var shape := SphereShape3D.new()
 	shape.radius = 0.9  # generous: brushing past at walking speed still collects
@@ -174,18 +209,35 @@ func _make_orb() -> Area3D:
 ## Drops [param orb] somewhere new around the player, never right next to them —
 ## the orb IS the exercise, so it must always demand a walk — then snaps it onto
 ## the terrain surface so it rests on hills / in valleys rather than floating.
+## Underwater ground is rejected too (see [constant ORB_SEA_MARGIN]), as is the
+## fog border (see [constant ORB_BORDER_MARGIN]); if every attempt fails (player
+## deep in a flooded basin, or pressed right up against the rim), the last
+## candidate is used — a wet orb beats a hung spawner.
 func _place_orb(orb: Area3D) -> void:
 	var anchor: Vector3 = _player.global_position if _player != null else Vector3.ZERO
+	# A player standing IN the fog band would fail every attempt below — the band
+	# is wider than ORB_RANGE, so no candidate around them can be in the free
+	# world — and the fallback would strand the orb somewhere they can't walk to.
+	# Anchor to the reachable side instead: still a short walk, just an inward one.
+	if _border != null:
+		anchor = _border.pull_inside(anchor, ORB_BORDER_MARGIN)
+	var sea_y: float = _sea.global_position.y if _sea != null else -INF
 	var pos := anchor
-	for attempt in 16:
+	var gy: float = anchor.y
+	for attempt in 24:
 		pos = anchor + Vector3(
 			_rng.randf_range(-ORB_RANGE, ORB_RANGE),
 			0.0,
 			_rng.randf_range(-ORB_RANGE, ORB_RANGE),
 		)
-		if _player == null or pos.distance_to(_player.global_position) >= ORB_MIN_PLAYER_DIST:
+		gy = _ground_y(pos.x, pos.z, anchor.y)
+		var far_enough: bool = _player == null \
+				or pos.distance_to(_player.global_position) >= ORB_MIN_PLAYER_DIST
+		var in_world: bool = _border == null \
+				or _border.is_inside(pos, ORB_BORDER_MARGIN)
+		if far_enough and in_world and gy >= sea_y + ORB_SEA_MARGIN:
 			break
-	pos.y = _ground_y(pos.x, pos.z, anchor.y) + _ORB_CLEARANCE
+	pos.y = gy + _ORB_CLEARANCE
 	orb.global_position = pos
 
 

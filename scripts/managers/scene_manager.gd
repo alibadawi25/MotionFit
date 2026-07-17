@@ -23,6 +23,7 @@ var profile_chosen_this_session: bool = false
 # --- Core UI / flow scenes -------------------------------------------------
 const MAIN_MENU: String = "res://scenes/menus/main_menu.tscn"
 const GAME_SELECT: String = "res://scenes/menus/game_select.tscn"
+const DIFFICULTY_SELECT: String = "res://scenes/menus/difficulty_select.tscn"
 const SETTINGS: String = "res://scenes/menus/settings_menu.tscn"
 const PAUSE_MENU: String = "res://scenes/menus/pause_menu.tscn"
 const RESULTS: String = "res://scenes/menus/results_screen.tscn"
@@ -46,16 +47,67 @@ const FOOTBALL: String = "res://scenes/football/football.tscn"
 const TENNIS: String = "res://scenes/tennis/tennis.tscn"
 
 
-## Changes the active scene to the one at [param path]. This is the low-level
-## primitive every other loader routes through. Returns the [enum Error] result.
-func change_scene(path: String) -> int:
+# --- Fade transition -------------------------------------------------------
+# Every scene change dips through a quick black fade so screens hand over
+# smoothly instead of hard-cutting. Owned here because SceneManager is the only
+# place transitions happen — one overlay covers the whole app.
+
+## Seconds to fade to black before the swap, and back out after it.
+const FADE_OUT_SEC: float = 0.16
+const FADE_IN_SEC: float = 0.24
+
+## Full-screen black rect used for the fade; lives on a high CanvasLayer so it
+## covers every scene (including game HUDs on layer 0/1).
+var _fade_rect: ColorRect
+## True while a fade+swap is running; further change_scene calls are ignored so
+## button-mashing can't double-load a scene mid-transition.
+var _transitioning: bool = false
+
+func _ready() -> void:
+	# The fade must keep animating while the tree is paused (a game may pause
+	# during its intro), so the layer processes always and the tweens are made
+	# pause-immune in _fade_to.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var layer := CanvasLayer.new()
+	layer.layer = 120
+	add_child(layer)
+	_fade_rect = ColorRect.new()
+	_fade_rect.color = Color(0.0, 0.0, 0.0, 1.0)
+	_fade_rect.modulate.a = 0.0
+	_fade_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_fade_rect)
+
+
+## Changes the active scene to the one at [param path], dipping through a short
+## black fade. This is the low-level primitive every other loader routes
+## through. Calls made while a transition is already running are ignored.
+func change_scene(path: String) -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	scene_changing.emit(path)
+	# Block clicks on the outgoing scene while it fades.
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
+	await _fade_to(1.0, FADE_OUT_SEC)
 	var result: int = get_tree().change_scene_to_file(path)
 	if result != OK:
 		push_error("SceneManager: failed to change to '%s' (error %d)" % [path, result])
-		return result
-	scene_changed.emit(path)
-	return OK
+	else:
+		scene_changed.emit(path)
+	await _fade_to(0.0, FADE_IN_SEC)
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_transitioning = false
+
+
+## Tweens the fade rect to [param alpha] over [param duration] and completes
+## when it lands. Pause-immune so a paused tree can't wedge the app mid-fade.
+func _fade_to(alpha: float, duration: float) -> void:
+	var tween := create_tween()
+	tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tween.tween_property(_fade_rect, "modulate:a", alpha, duration) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await tween.finished
 
 
 func load_main_menu() -> void:
@@ -64,6 +116,10 @@ func load_main_menu() -> void:
 
 func load_game_select() -> void:
 	change_scene(GAME_SELECT)
+
+
+func load_difficulty_select() -> void:
+	change_scene(DIFFICULTY_SELECT)
 
 
 func load_settings() -> void:

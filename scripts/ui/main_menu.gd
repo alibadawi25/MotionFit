@@ -19,6 +19,10 @@ extends Control
 ## A small camera-service status line, built in code (like the menu's extra
 ## buttons) and polled from [MotionManager] in [method _process].
 var _cam_status: Label
+## Heart-rate strap status line just above the camera one. Hidden unless a
+## wearable is actually streaming bpm — most players have none, and an "absent"
+## row would just be noise.
+var _hr_status: Label
 
 func _ready() -> void:
 	# Boot gate, in order:
@@ -131,10 +135,31 @@ func _build_camera_status() -> void:
 	_cam_status.add_theme_font_size_override("font_size", 18)
 	add_child(_cam_status)
 
+	_hr_status = Label.new()
+	_hr_status.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_hr_status.offset_left = -760.0
+	_hr_status.offset_top = -104.0
+	_hr_status.offset_right = -114.0
+	_hr_status.offset_bottom = -74.0
+	_hr_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hr_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hr_status.add_theme_font_size_override("font_size", 18)
+	_hr_status.add_theme_color_override("font_color", Color(0.95, 0.45, 0.5, 0.92))
+	_hr_status.visible = false
+	add_child(_hr_status)
+
 
 func _process(_delta: float) -> void:
 	if _cam_status == null:
 		return
+	# Heart-rate strap: live bpm when a wearable streams (calories then use the
+	# more accurate HR model — see CONTEXT.md §9); hidden otherwise.
+	if _hr_status != null:
+		var connected: bool = MotionManager.is_hr_connected()
+		_hr_status.visible = connected
+		if connected:
+			_hr_status.text = "♥  %d bpm  —  heart-rate connected" % \
+				roundi(MotionManager.get_heart_rate())
 	if not MotionManager.is_receiving():
 		_cam_status.text = "●  Camera service off  —  run.bat starts it (keyboard still works)"
 		_cam_status.add_theme_color_override("font_color", Color(0.82, 0.85, 0.9, 0.72))

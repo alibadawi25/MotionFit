@@ -265,8 +265,12 @@ func _animate_card(card: Button, target: float) -> void:
 
 func _on_game_pressed(game_id: String) -> void:
 	GameManager.select_game(game_id)
-	# Difficulty selection is a future screen; for now go straight to countdown.
-	GameManager.start_selected_game()
+	# Games that scale with difficulty go through the intensity picker first;
+	# free-roam games (no fail state) start straight away.
+	if GameManager.uses_difficulty(game_id):
+		SceneManager.load_difficulty_select()
+	else:
+		GameManager.start_selected_game()
 
 
 func _on_back_pressed() -> void:

@@ -41,6 +41,7 @@ var _camera: Camera3D
 var _player: RunnerPlayer
 var _zombie: RunnerZombie
 var _track: RunnerTrack
+var _audio: RunnerAudio
 var _settle_pos: Vector3
 var _settle_look: Vector3
 var _settle_fov: float = 74.0
@@ -67,16 +68,18 @@ var _title: Label
 var _hint: Label
 
 
-## Hands over the scene's camera and actors plus the gameplay camera pose the
-## final shot should settle into. Call right after add_child; the sequence
-## starts on the next frame.
+## Hands over the scene's camera and actors (including its sound director, so the
+## movie is scored by the same voices the chase uses) plus the gameplay camera
+## pose the final shot should settle into. Call right after add_child; the
+## sequence starts on the next frame.
 func setup(camera: Camera3D, player: RunnerPlayer, zombie: RunnerZombie,
-		track: RunnerTrack, settle_pos: Vector3, settle_look: Vector3,
-		settle_fov: float) -> void:
+		track: RunnerTrack, audio: RunnerAudio, settle_pos: Vector3,
+		settle_look: Vector3, settle_fov: float) -> void:
 	_camera = camera
 	_player = player
 	_zombie = zombie
 	_track = track
+	_audio = audio
 	_settle_pos = settle_pos
 	_settle_look = settle_look
 	_settle_fov = settle_fov
@@ -189,14 +192,20 @@ func _apply_camera(shot: Dictionary) -> void:
 
 
 ## One-off beats timed within a shot: the establishing shot's distant lightning,
-## and the red slam as the lunge reaches the lens.
+## and the red slam as the lunge reaches the lens. Both are scored — the storm
+## rolls in behind its flash, and the grab arrives with the full scream, the one
+## sound the run otherwise saves for being caught.
 func _tick_events() -> void:
 	if _shot == 0 and not _lightning_done and _t >= 1.1:
 		_lightning_done = true
 		_lightning()
+		if _audio != null:
+			_audio.lightning()
 	if _shot == 2 and not _lunge_flash_done and _t >= 0.45:
 		_lunge_flash_done = true
 		_flash(RED_FLASH, 0.4)
+		if _audio != null:
+			_audio.scream()
 
 
 ## Raise-both-hands skip, for players standing at the camera with no keyboard.
@@ -223,12 +232,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Ends the sequence (naturally or skipped): snaps the camera to its gameplay
-## pose, hands back a shambling zombie, and frees everything after emitting
-## [signal finished]. Idempotent, so a skip racing the natural end is safe.
+## pose, hands back a shambling zombie, silences the movie's own sounds and frees
+## everything after emitting [signal finished]. Idempotent, so a skip racing the
+## natural end is safe.
 func _finish() -> void:
 	if _finished:
 		return
 	_finished = true
+	# A skip mid-scare would otherwise leave the scream or the thunder rolling on
+	# under the briefing card, seconds after the shot they belonged to is gone.
+	if is_instance_valid(_audio):
+		_audio.hush()
 	if is_instance_valid(_zombie):
 		_zombie.recover()
 		_zombie.set_urgency(0.2)

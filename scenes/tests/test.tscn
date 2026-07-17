@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://b0gs7lpyb48ho"]
+[gd_scene format=3 uid="uid://dakturf87igiv"]
 
 [ext_resource type="Script" uid="uid://duea1rw5hxpro" path="res://addons/zylann.hterrain/hterrain.gd" id="1_5i1m7"]
 [ext_resource type="Resource" uid="uid://gb2cwugm5q7i" path="res://Terrain/data.hterrain" id="2_knfty"]
@@ -11,46 +11,12 @@
 [ext_resource type="Texture2D" uid="uid://c4s30g5tt4cj8" path="res://assets/textures/terrain/iced_stone_normal_rough.png" id="9_j15uk"]
 [ext_resource type="Script" uid="uid://rv8h6jlq031i" path="res://scenes/open-world/player.gd" id="10_plyr"]
 [ext_resource type="Script" uid="uid://ww5gd0i3wy4b" path="res://scenes/open-world/camera_controller.gd" id="11_camc"]
-[ext_resource type="Script" uid="uid://ck5llveknekgo" path="res://scenes/open-world/open_world.gd" id="12_game"]
-[ext_resource type="Shader" uid="uid://tl704mnh46kv" path="res://scenes/open-world/water.gdshader" id="13_sea"]
-[ext_resource type="Script" uid="uid://b7xee63xfwsp6" path="res://scenes/open-world/world_border.gd" id="14_brdr"]
-[ext_resource type="Script" path="res://scenes/open-world/day_night_cycle.gd" id="15_dnc"]
-[ext_resource type="Script" path="res://scenes/open-world/altitude_effects.gd" id="16_alt"]
+[ext_resource type="Script" path="res://scenes/tests/open_world_terrain.gd" id="12_game"]
 
 [sub_resource type="Resource" id="Resource_xcpkc"]
 script = ExtResource("3_7qf85")
 mode = 0
 textures = [[ExtResource("4_n5o5n"), ExtResource("5_bg08r"), ExtResource("6_xoslx")], [ExtResource("7_xlsp5"), ExtResource("8_h0csi"), ExtResource("9_j15uk")]]
-
-[sub_resource type="FastNoiseLite" id="noise_sea"]
-frequency = 0.012
-
-[sub_resource type="NoiseTexture2D" id="noisetex_sea"]
-noise = SubResource("noise_sea")
-seamless = true
-as_normal_map = true
-bump_strength = 10.0
-
-[sub_resource type="ShaderMaterial" id="mat_sea"]
-render_priority = 0
-shader = ExtResource("13_sea")
-shader_parameter/shallow_color = Color(0.22, 0.55, 0.58, 1)
-shader_parameter/deep_color = Color(0.03, 0.14, 0.26, 1)
-shader_parameter/foam_color = Color(0.92, 0.96, 0.97, 1)
-shader_parameter/depth_fade = 10.0
-shader_parameter/foam_depth = 0.9
-shader_parameter/wave_height = 0.3
-shader_parameter/wave_speed = 1.0
-shader_parameter/ripple_scale = 0.05
-shader_parameter/ripple_strength = 0.6
-shader_parameter/roughness_value = 0.08
-shader_parameter/wave_noise = SubResource("noisetex_sea")
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_sea"]
-material = SubResource("mat_sea")
-size = Vector2(1600, 1600)
-subdivide_width = 160
-subdivide_depth = 160
 
 [sub_resource type="StandardMaterial3D" id="mat_player"]
 albedo_color = Color(1, 0.5, 0.14, 1)
@@ -62,13 +28,10 @@ material = SubResource("mat_player")
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_plyr"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
-sky_top_color = Color(0.19, 0.38, 0.66, 1)
-sky_horizon_color = Color(0.68, 0.76, 0.84, 1)
-sky_curve = 0.18
+sky_top_color = Color(0.24, 0.42, 0.67, 1)
+sky_horizon_color = Color(0.65, 0.73, 0.82, 1)
 ground_bottom_color = Color(0.2, 0.24, 0.28, 1)
 ground_horizon_color = Color(0.65, 0.71, 0.76, 1)
-sun_angle_max = 12.0
-sun_curve = 0.08
 
 [sub_resource type="Sky" id="sky_res"]
 sky_material = SubResource("sky_mat")
@@ -76,47 +39,15 @@ sky_material = SubResource("sky_mat")
 [sub_resource type="Environment" id="Environment_y5iem"]
 background_mode = 2
 sky = SubResource("sky_res")
-ambient_light_source = 3
-ambient_light_energy = 1.15
 tonemap_mode = 2
-tonemap_white = 1.6
-ssao_enabled = true
-ssao_radius = 1.4
-ssao_intensity = 1.6
-ssao_detail = 0.4
-ssao_light_affect = 0.2
-glow_enabled = true
-glow_levels/2 = 0.2
-glow_levels/4 = 0.6
-glow_levels/6 = 0.3
-glow_normalized = true
-glow_intensity = 0.85
-glow_strength = 1.1
-glow_bloom = 0.08
-glow_hdr_threshold = 0.95
 fog_enabled = true
 fog_light_color = Color(0.66, 0.73, 0.82, 1)
-fog_sun_scatter = 0.25
-fog_density = 0.0022
-fog_aerial_perspective = 0.55
-fog_sky_affect = 0.35
-fog_height = 16.0
-fog_height_density = 0.05
-adjustment_enabled = true
-adjustment_contrast = 1.08
-adjustment_saturation = 1.12
+fog_density = 0.004
 
-[sub_resource type="CameraAttributesPractical" id="cam_attrs"]
-dof_blur_far_enabled = true
-dof_blur_far_distance = 90.0
-dof_blur_far_transition = 60.0
-dof_blur_amount = 0.06
-
-[node name="OpenWorld" type="Node3D" unique_id=1654159363]
+[node name="Node3D" type="Node3D" unique_id=1654159363]
 script = ExtResource("12_game")
 
 [node name="HTerrain" type="Node3D" parent="." unique_id=750446967]
-transform = Transform3D(2, 0, 0, 0, 1.5, 0, 0, 0, 2, 0, 0, 0)
 script = ExtResource("1_5i1m7")
 centered = true
 _terrain_data = ExtResource("2_knfty")
@@ -138,16 +69,9 @@ shader_params/u_tile_reduction = Vector4(0, 0, 0, 0)
 shader_params/u_specular = 0.5
 metadata/_custom_type_script = "uid://duea1rw5hxpro"
 
-[node name="Sea" type="MeshInstance3D" parent="." unique_id=1449021337]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 13.5, 0)
-cast_shadow = 0
-extra_cull_margin = 4.0
-mesh = SubResource("PlaneMesh_sea")
-
 [node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1220668730]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
 script = ExtResource("10_plyr")
-border_path = NodePath("../WorldBorder")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="CharacterBody3D" unique_id=1911116529]
 mesh = SubResource("CapsuleMesh_plyr")
@@ -164,35 +88,11 @@ target_path = NodePath("../CharacterBody3D")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=900951875]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 40, 0)
-light_color = Color(1, 0.96, 0.89, 1)
-light_energy = 1.35
-light_angular_distance = 1.2
+light_energy = 1.2
 shadow_enabled = true
-shadow_bias = 0.03
-shadow_normal_bias = 1.5
-directional_shadow_split_1 = 0.06
-directional_shadow_split_2 = 0.16
-directional_shadow_split_3 = 0.4
-directional_shadow_blend_splits = true
-directional_shadow_max_distance = 220.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=560313841]
 environment = SubResource("Environment_y5iem")
-camera_attributes = SubResource("cam_attrs")
-
-[node name="WorldBorder" type="Node3D" parent="." unique_id=112888647]
-script = ExtResource("14_brdr")
-player_path = NodePath("../CharacterBody3D")
-environment_path = NodePath("../WorldEnvironment")
-
-[node name="DayNightCycle" type="Node" parent="."]
-script = ExtResource("15_dnc")
-sun_path = NodePath("../Sun")
-environment_path = NodePath("../WorldEnvironment")
-
-[node name="AltitudeEffects" type="Node3D" parent="."]
-script = ExtResource("16_alt")
-player_path = NodePath("../CharacterBody3D")
 
 [node name="SpawnPoint" type="Marker3D" parent="." unique_id=905473459]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 182.26863, 31.022503, -6.018368)

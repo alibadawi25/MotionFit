@@ -37,7 +37,7 @@ func _ready() -> void:
 
 
 ## Returns the full list of registered games. Each entry is a Dictionary:
-## { id, title, description, scene, available }.
+## { id, title, description, scene, available, uses_difficulty }.
 func get_games() -> Array[Dictionary]:
 	return _games
 
@@ -69,6 +69,14 @@ func set_difficulty(difficulty: Difficulty) -> void:
 
 func get_difficulty() -> Difficulty:
 	return _difficulty
+
+
+## Whether [param game_id] wants the difficulty-select step before starting.
+## Free-roam games with no fail state (Open World) skip it; defaults to true so
+## a new registry entry gets the full flow unless it opts out.
+func uses_difficulty(game_id: String) -> bool:
+	var game: Dictionary = get_game(game_id)
+	return bool(game.get("uses_difficulty", true))
 
 
 ## Begins the currently selected game by loading its scene directly. The game's
@@ -142,6 +150,9 @@ func _build_registry() -> void:
 			"description": "Free-roam and vibe. Move your body to explore — it counts your steps and calories the whole time.",
 			"scene": SceneManager.OPEN_WORLD,
 			"available": true,
+			# Free-roam with no fail state — difficulty would change nothing, so
+			# the flow skips straight from Game Select to the intro.
+			"uses_difficulty": false,
 		},
 		{
 			"id": "runner",
@@ -149,6 +160,7 @@ func _build_registry() -> void:
 			"description": "A zombie is chasing you — march hard to escape, jump, slide and dodge. Pure cardio panic.",
 			"scene": SceneManager.RUNNER,
 			"available": true,
+			"uses_difficulty": true,
 		},
 		{
 			"id": "boxing",

@@ -127,7 +127,7 @@ Initialisation order (and dependencies):
 | 2 | `SceneManager`  | —                         | Owns **every** scene path; the only place scene transitions happen. |
 | — | `MotionManager` | —                         | Receives body-movement data from the Python pose service over UDP; exposes `get_forward()`/`get_turn()`. The AI-input boundary (§9). |
 | — | `CameraPreview` | —                         | Receives the webcam **preview image** from the pose service over a second UDP port (9991) and exposes it as a `Texture2D` for the setup/countdown screen. Still §9-clean: Python owns the camera; Godot only blits the pixels, never inspects them. |
-| 3 | `AudioManager`  | —                         | Music/SFX playback and audio bus volumes. |
+| 3 | `AudioManager`  | —                         | Music/SFX playback and audio bus volumes. `play_sfx(stream, volume_db, pitch, from_position)` hands out one of a **pool** of voices (so effects layer instead of cutting each other) and returns the player; `fade_out_sfx()` retires a long one-shot early. |
 | 4 | `SettingsManager`| SaveManager, AudioManager| User prefs (volumes, fullscreen); loads, applies, persists them. |
 | 5 | `ProfileManager`| SaveManager               | Player profile: XP/level, calories, achievements, per-game stats, character appearance. |
 | — | `CharacterFactory` | ProfileManager (at call time, not init) | Personalised character model: runs the Python generator (`assets/models/generated_human/export_glb.py`) with the active profile's body attributes + appearance, caches the GLB per profile under `user://characters/`, loads it at runtime via `GLTFDocument`. Falls back to the bundled `human.glb`. Body shape is always derived from weight/height/age/sex — never chosen directly. |
@@ -143,6 +143,12 @@ Initialisation order (and dependencies):
 ### SceneManager — the path authority
 - Holds a `const` for every scene path (UI scenes **and** game scenes).
 - Exposes `change_scene(path)` plus named loaders (`load_main_menu()`, …).
+- Every `change_scene` dips through a short black **fade** (out `0.16 s` → swap →
+  in `0.24 s`) on a high CanvasLayer owned by SceneManager, so screens hand over
+  smoothly app-wide with zero per-screen wiring. Calls made while a fade is
+  running are ignored (button-mash guard); the fade tweens are pause-immune so a
+  paused tree can't wedge the transition. `change_scene` is now `void`/async —
+  the swap lands a fade later, which no caller depended on.
 - **No other file may contain a `res://….tscn` literal or call
   `get_tree().change_scene_*` directly.** Games are launched generically from a
   path stored in the GameManager registry, which itself references SceneManager
@@ -200,7 +206,9 @@ Main Menu ── Settings
    ↓ (Play)
 Game Select   ← builds cards from GameManager registry (data-driven)
    ↓ (pick a game)
-[Difficulty]  ← FUTURE screen; currently skipped
+Difficulty    ← intensity picker (EASY/NORMAL/HARD); only for games whose
+			   registry entry has uses_difficulty:true — free-roam games
+			   (Open World) skip straight to the intro
    ↓
 Game scene loads (a MiniGame), frozen on its first frame
    ↓
@@ -389,7 +397,8 @@ by design — with no service running the texture is null and the UI falls back 
   (`open_world.gd`) `extends MiniGame`, so it plugs into the normal
   countdown → play → results pipeline; a `CharacterBody3D` (`player.gd`) reads
   `MotionManager` (march → walk/run on a curved speed ramp, lean → turn,
-  leap → jump), with a follow camera, sun shadows, and procedural sky + fog.
+  leap → jump), with a spring-arm follow camera and a lit, fogged sky (see the
+  feel & atmosphere pass below).
   The world is a **sculpted HTerrain heightmap** (`addons/zylann.hterrain`,
   data in `Terrain/`, grass/stone/iced-stone splat textures) — real hills and
   valleys to roam. `open_world.gd` handles the terrain plumbing itself: in
@@ -411,6 +420,118 @@ by design — with no service running the texture is null and the UI falls back 
   as the proof of the motion loop. (The earlier flat box-ground sandbox and a
   separate `scenes/tests/` terrain subclass were consolidated into this one
   scene + script.)
+  **Feel & atmosphere pass (2026-07-17):** the guiding rule is that pose data is
+  a noisy ~20-30 Hz estimate of a human body, so nothing reads it and assigns —
+  everything eases.
+  *Camera* (`camera_controller.gd`): rebuilt from a world-position lerp into a
+  **spring arm** — an anchor tracks the player, a yaw tracks their facing, and the
+  camera hangs off that. This buys three things the lerp could not: (1) the arm is
+  raycast each frame and shortened to what's actually clear, so it never renders
+  from inside the heightmap (verified: forced to 40 m it clamped 329× on a run;
+  at the stock 6 m it never fires on the current gentle hills — the collision is
+  insurance for steeper terrain, not everyday behaviour); (2) smoothing the yaw
+  instead of a world position stops the camera cutting the inside of every turn;
+  (3) the anchor smooths vertically far slower than horizontally (`rise_speed` vs
+  `follow_speed`) so sculpted ground doesn't shake the frame. Framing is now
+  continuous off the player's `get_run_ratio()` (arm eases back + FOV 70→78), not
+  a binary walk/idle toggle — the old `walking_state_changed` signal is **gone**,
+  replaced by that getter plus a `landed(impact)` signal driving a landing dip.
+  *Player* (`player.gd`): ground speed ramps through `ACCEL`/`DECEL` instead of
+  being assigned (a march is noisy; direct assignment starts/stops like a switch);
+  `floor_snap_length` is raised to 0.6 because the 0.1 default launches the capsule
+  off every hummock, which drops `is_on_floor()` and stutters both the ground-align
+  and the camera. The walk clip is now paced and gated on **actual** ground speed,
+  not raw march intensity, or the feet slide while coasting to a halt. The visible
+  model hangs off a `ModelPivot` planted at the soles (so tilt rotates about the
+  feet, not the waist) that banks into turns, pitches into runs, and partially
+  matches the slope (`GROUND_ALIGN` 0.65 — full alignment reads as falling over).
+  All of it is presentation: the physics capsule stays upright.
+  *Environment* (`open-world.tscn`): glow (the orbs were emissive but nothing
+  bloomed — they now carry an OmniLight3D and `cast_shadow` OFF, since a light
+  source dropping a shadow blotted the hillside), SSAO, sky ambient, height fog +
+  aerial perspective, a sun disk with soft cascaded shadows, and a
+  `CameraAttributesPractical` far-DOF. Orb `emission_energy_multiplier` must stay
+  above `glow_hdr_threshold` (0.95) or orbs go back to being flat dots.
+  **Fog border pass (2026-07-17):** the terrain is a finite 512 m square, so
+  `world_border.gd` (`WorldBorder`, a node in the scene) closes it off the Black Flag
+  way — the world doesn't end, it gets too thick to walk into. The boundary is a
+  **square hugging the terrain's own rim**: `HALF_EXTENT` 248 caps |x| and |z|, so
+  ~94% of the map stays walkable and you can reach the coast on every side. It was a
+  circle first and that was wrong — a circle inscribed in a square cuts every corner
+  (r=224 kept ~60% of the map and left only ~40 m between the spawn and the wall).
+  **The boundary must follow the shape of the thing it bounds.** Four systems keyed
+  off ONE number — `get_haze(pos)`, 0 inside `SOFT_EXTENT` (218 m) → 1 at
+  `HALF_EXTENT` — so they always agree:
+  (1) two nested square rings of `border_fog.gdshader` walls at ±254/±266 (three
+  octaves of seamless noise, thresholded into clumps; the OUTER carries
+  `floor_density` 0.8 so it genuinely occludes, the INNER is pure wisps drifting
+  across it at a different rate — the parallax between them is what reads as volume).
+  Rings, not cylinders: a cylinder big enough to clear the corners would stand 100 m
+  out to sea at the edge midpoints, leaving the rim it exists to hide in plain view;
+  (2) the WorldEnvironment's own `fog_density` ramped 0.0022 → 0.05, which is what
+  actually sells it (geometry alone always looks like a thing you stand *next to*,
+  never weather you are *inside*);
+  (3) `limit_velocity()`, called from `player.gd` right before `move_and_slide`,
+  plus `clamp_position()` right after as the guaranteed backstop;
+  (4) `OpenWorldHud.set_border_warning()`'s TURN BACK prompt.
+  Non-obvious things that cost real time here, all load-bearing:
+  * The walls **must** out-rank the sea in `render_priority` (sea 0 → outer 1 →
+	inner 2). They share a centre with the sea plane, so Godot's transparent sort
+	can't order them and drew 800 m of open water straight over the bank.
+  * `limit_velocity` **caps** outward speed at `room / STOP_TIME`; it must not
+	*scale* it. Scaling by `(1 - haze)` each frame compounds against `player.gd`'s
+	ACCEL ramp and settles at ~0.3 m/s — entering the band nailed you to the spot.
+	The cap decays to an exponential glide instead. The two axes are capped
+	**separately**, which is what makes corners need no special case. Verified by
+	driving the maths diagonally at a corner for 60 s: converges to 247.999 on both
+	axes, never crosses 248, and turning back is released untouched (8.0 of 8.0).
+  * The fog/prompt start at SOFT_EXTENT but the cap only bites in the last ~16 m,
+	so you are always WARNED before you are HELD.
+  * A wall is ~5× wider than it is tall, so `tiles_up` is derived from the wall's
+    real width (`across / width`) to keep a noise tile SQUARE in world metres. Any
+    fixed vertical rate stretches the clumps into vertical streaks.
+  * `_place_orb` pulls its anchor back inside (`pull_inside`) when the player is in
+    the band — the band is wider than `ORB_RANGE`, so otherwise every candidate
+	fails and the fallback strands a goal in the fog where it can't be reached.
+  * Shader noise tiling must stay on WHOLE numbers (`tiles_around`, and the 1/2/4
+	octave scales) — no longer a seam constraint now the walls are flat, but the noise texture stays `seamless` so a wall tiles without a join.
+  Tuning rule: the player must never feel the moment they were stopped. A change
+  that makes the boundary crisper is wrong.
+  **Climate & day/night pass (2026-07-17):** two more scene-level systems, both
+  following the fog border's one-driver rule.
+  *Altitude weather* (`altitude_effects.gd`, `AltitudeEffects` node): climbing is
+  the hardest exercise the mode offers, so height gets its own reward register —
+  wind and cold, all presentational (nothing slows the player; a cardio game must
+  never punish the climb). One eased number — `get_factor()`,
+  `smoothstep(COLD_START 55, COLD_FULL 105, player.y)`; summits top out ~129 m,
+  valley floors ~20-50 — drives: a looping wind bed
+  (`assets/audio/wind_loop.wav`, spectrally-synthesized in numpy so the loop is
+  periodic by construction; a dedicated `AudioStreamPlayer` on the SFX bus, NOT
+  an AudioManager voice, which would get stolen under pool pressure) with
+  two-incommensurate-sine gusting shared between what you hear and the streak
+  speed you see; velocity-stretched wind-streak particles
+  (`TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY` on Y-long sliver quads); summit
+  snow above factor 0.55; and a frost vignette (`frost_overlay.gdshader`, a
+  pure alpha overlay on CanvasLayer **0** — above the 3D view, below the HUD's
+  layer 1) whose noise-serrated frontier creeps in from the frame corners.
+  *Day/night* (`day_night_cycle.gd`, `DayNightCycle` node): a full 24 h day per
+  `day_length_sec` (720 s) from `start_hour` 8.5, everything a function of the
+  sun's elevation (sine of its arc): sun energy/colour (reddening at the
+  horizon), a code-built moon (opposite point of the arc, cool, shadowless —
+  and with `light_angular_distance` 2.0, because ProceduralSky draws every
+  directional light's disc and a 0°-size light blooms into a hard square blob),
+  ambient floor `NIGHT_AMBIENT` 0.34 (never unreadably dark — no fail states,
+  no unreadable ones either), and dawn/dusk tints as a bell band around
+  elevation 0. The DAY palette is **captured from the authored scene at
+  `_ready`**, so editor tuning of sky/sun/fog keeps working; only night/dusk
+  live as constants. Two non-obvious constraints: the WorldEnvironment's
+  `environment` must be **deep-duplicated** at `_ready` (scene-cache resources
+  are shared, so tonight's mutated sky would otherwise leak into the next
+  session's captured "day" palette), and it coexists with `world_border.gd` by
+  property split — the border owns fog *density*, the cycle owns fog *colour*.
+  Verified via `scenes/tests/climate_view.tscn` (raycast-scans for the summit,
+  parks the player on it; `VIEW_HOUR=18.4 bash tools/shot.sh climate
+  scenes/tests/climate_view.tscn` picks the time of day).
 
 **How to run the camera control:**
 1. `pip install -r python/requirements.txt` (once).
@@ -499,9 +620,10 @@ same controller works with the camera today or another input source later.
 	  you jump low barriers (`consume_jump`), slide under bars (`get_crouch`) and lean
 	  to dodge side wreckage (`get_turn`) — a hit stumbles you and lets the zombie
 	  gain. Score = distance in metres. **Tension is all feedback, and deliberately
-	  unquantified** (sounds TODO): as the gap closes the vignette squeezes the
+	  unquantified**: as the gap closes the vignette squeezes the
 	  visible world down to a narrow tunnel and a heartbeat — quickening, throbbing
-	  blood into the edges — pulses the camera zoom. There is NO proximity gauge and
+	  blood into the edges — pulses the camera zoom, and dragging footsteps rise out
+	  of the silence behind you. There is NO proximity gauge and
 	  NO escape-route map (both existed and were cut on 2026-07-17, see below). The world scrolls PAST a
 	  stationary player (`RunnerTrack` recycles a handful of graveyard-corridor tiles
 	  + streams obstacles), so "infinite" is cheap and origin-stable. The rear camera
@@ -512,7 +634,7 @@ same controller works with the camera today or another input source later.
 	  `runner_player.gd` (`RunnerPlayer`: strafe/jump/slide, personalised model),
 	  `zombie.gd` (`RunnerZombie`: loads the zombie GLB, shamble/lunge, self-glow),
 	  `runner_hud.gd` (`RunnerHud`: closing-dark vignette + stats + prompts),
-	  `runner.tscn`.
+	  `runner_audio.gd` (`RunnerAudio`: the sound director), `runner.tscn`.
 	  The **zombie model** is generated by `assets/models/generated_human/
 	  export_zombie_glb.py` → `assets/models/zombie/zombie.glb`: it reuses the player
 	  rig from `export_glb.py` (now takes a `clip_builders` arg) with a gaunt green
@@ -547,8 +669,41 @@ same controller works with the camera today or another input source later.
 	  broken pillars / crypts / broken fences / dead trees per tile + a low
 	  ground-fog slab — no crosses or other religious imagery, by request)
 	  and `runner.tscn` (a pale emissive **moon** in the upper-left fog, deeper fog).
-- [ ] **Difficulty select screen** between Game Select and Countdown (flow §7
-	  currently skips it; `GameManager` already stores difficulty).
+	  **Sound pass (2026-07-17):** `runner_audio.gd` (`RunnerAudio`) is the run's
+	  sound director — four one-shot clips in `assets/audio/` (`heartbeat_single`,
+	  `step_single`, `thunder`, `zombie_scream`) re-voiced by pitch/volume/seek into
+	  a whole scene, played through AudioManager's voice pool. Sound is the THIRD
+	  channel of the unquantified tension and obeys the same rule — nothing reports a
+	  distance; the mix just creeps. The heartbeat is **phase-locked** to `runner.gd`'s
+	  `_beat_phase` (the same one driving the camera zoom and the vignette clench), so
+	  the thump you hear is the thump you see — don't give it a private clock — and it
+	  hardens `-17→-2 dB` / `0.9→1.45` pitch with the gap (seeked past the clip's
+	  0.19 s of lead silence so the "lub" lands ON the beat). `step_single` covers
+	  four things by re-voicing: player strides, jump landings, the hazard crash
+	  (pitch 0.45) and the **zombie's drag** (pitch 0.58, inaudible below gap 0.22 then
+	  climbing to −8 dB — the creep that replaces a proximity number). Player steps
+	  hang off a new `RunnerPlayer.footfall` signal read from the walk clip's own
+	  playback position (a foot plants at the start of each half-cycle), not a
+	  parallel cadence timer, because the stride runs up to ~3× authored speed and
+	  anything else visibly drifts off the legs. `zombie_scream` is the catch and the
+	  cinematic's lunge-at-lens (full), and the groan cues (−21 dB, pitch 0.7, seeked
+	  0.9 s past its attack so it reads as already-howling, then faded). Thunder
+	  trails its flash by 0.35-1.1 s. Long clips (8 s scream, 5.5 s thunder) are
+	  tracked and `hush()`ed on teardown/cinematic-skip or they follow the player into
+	  the results screen. Verified headless by logging every voice through a full run
+	  (fake UDP pace ~0.19 keeps the gap climbing slowly enough to reach the groans).
+- [x] **Difficulty select screen** (`scenes/menus/difficulty_select.tscn`,
+	  `scripts/ui/difficulty_select.gd`) between Game Select and the game intro.
+	  Three cards (EASY "WARM-UP" / NORMAL "STEADY BURN" / HARD "ALL OUT") with a
+	  3-pip intensity meter; copy frames difficulty as EFFORT, not skill — this is
+	  a fitness platform. The card matching the current difficulty is pre-focused
+	  so Enter keeps it; the header names the selected game ("ZOMBIE RUN — HOW
+	  HARD?"). Routing is data-driven: a registry entry's `uses_difficulty` flag
+	  (default true) decides whether Game Select routes through it — Open World
+	  (free-roam, no fail state) sets false and starts directly. Picking a card
+	  stores the difficulty and calls `start_selected_game()`.
+- [x] **Scene fade transitions** — every `SceneManager.change_scene` dips through
+	  a short black fade (see §5 SceneManager). One overlay, whole app.
 - [ ] Real calorie value in `MiniGame.finish()` (currently a time-based stub).
 - [ ] Extend the Python pipeline (§9) beyond movement — same UDP boundary:
 	  - ✅ calorie/effort estimation (motion MET), heart-rate field wired.
@@ -562,7 +717,13 @@ same controller works with the camera today or another input source later.
 - [ ] Tune pose thresholds in `pose_server.py` for the target play space/camera.
 - [ ] Achievements definitions + unlock triggers (ProfileManager supports the
 	  storage; no achievements defined yet).
-- [ ] Heart-rate display/HUD (data source is future Python).
+- [x] Heart-rate display/HUD (first pass): a live "♥ BPM" chip in the Open World
+	  HUD (`OpenWorldHud.set_heart_rate`, fed from `_update_hud`) and a "♥ N bpm —
+	  heart-rate connected" status line on the main menu, both hidden unless a
+	  wearable is actually streaming (`MotionManager.is_hr_connected()`) — most
+	  players have no strap, and an absent-state row would be noise. Still open:
+	  an HR chip in the Zombie Run HUD (kept out for now — that HUD's rule is
+	  "no numbers that quantify the tension") and per-day HR on the dashboard.
 - [ ] Async loading via `LoadingScreen` for heavy game scenes.
 - [x] Global UI `Theme` in `assets/ui/` for consistent styling — `assets/ui/main_theme.tres`
 	  styles Button (+ a `PrimaryButton` type variation) and sets a default Rajdhani
@@ -609,9 +770,10 @@ same controller works with the camera today or another input source later.
 	  views + consistency heat-calendar, steps/active-minutes charts, per-day HR.
 - [ ] **Watch / heart-rate connection UX.** BLE stays Python-side (§9); `hr` already
 	  flows through `MotionManager.get_heart_rate()`, `is_hr_connected()` exists, and
-	  Keytel HR→kcal fusion is live (§9 Calories). Next: a connection-status
-	  indicator in the UI, then optionally a Godot→Python control channel
-	  for in-app scan/pair (the current UDP is one-way). NB only live BLE HRS devices
+	  Keytel HR→kcal fusion is live (§9 Calories), and the connection-status
+	  indicator now exists (main-menu status line + Open World HUD chip — see the
+	  heart-rate display TODO above). Next: optionally a Godot→Python control
+	  channel for in-app scan/pair (the current UDP is one-way). NB only live BLE HRS devices
 	  (chest straps / broadcast-mode watches) work — Apple Watch/Fitbit don't expose
 	  real-time HR to third parties.
 - [ ] Boxing / Football / Tennis game scenes (flip `available` to true).
