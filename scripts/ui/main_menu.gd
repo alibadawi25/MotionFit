@@ -44,10 +44,11 @@ func _ready() -> void:
 	_play_button.pressed.connect(_on_play_pressed)
 	_settings_button.pressed.connect(_on_settings_pressed)
 	_quit_button.pressed.connect(_on_quit_pressed)
-	# FITNESS is the only extra button, inserted just below PLAY (above Settings).
-	# Profile and Switch Profile live in the top-left card; Test Camera moved into
+	# Extra buttons inserted below PLAY (above Settings), in call order. Profile
+	# and Switch Profile live in the top-left card; Test Camera moved into
 	# Settings.
 	_add_menu_button("FITNESS", SceneManager.load_fitness)
+	_add_menu_button("ACHIEVEMENTS", SceneManager.load_achievements)
 	_build_profile_card()
 	_build_camera_status()
 
@@ -99,7 +100,29 @@ func _build_profile_card() -> void:
 	switch_link.pressed.connect(SceneManager.load_profile_picker)
 	card.add_child(switch_link)
 
+	card.add_child(_build_today_line())
 	add_child(card)
+
+
+## The "why play today" line under the greeting: current streak and today's
+## calories against the daily goal — the platform's purpose made visible the
+## moment the menu opens, so a session always has a today-sized reason.
+func _build_today_line() -> Label:
+	var line := Label.new()
+	line.add_theme_font_size_override("font_size", 16)
+	var streak: int = ActivityManager.get_streak()
+	var today: int = int(ActivityManager.get_today_calories())
+	var goal: int = int(ActivityManager.get_daily_calorie_goal())
+	if today >= goal:
+		line.text = "★  Daily goal done — %d / %d kcal. Anything more is a bonus." % [today, goal]
+		line.add_theme_color_override("font_color", Color(1, 0.79, 0.28, 0.95))
+	elif streak > 0:
+		line.text = "▲  %d-day streak   ·   today %d / %d kcal" % [streak, today, goal]
+		line.add_theme_color_override("font_color", Color(1, 0.64, 0.3, 0.9))
+	else:
+		line.text = "●  Today %d / %d kcal — one session starts a streak" % [today, goal]
+		line.add_theme_color_override("font_color", Color(0.78, 0.82, 0.88, 0.85))
+	return line
 
 
 ## Builds a rounded, translucent chip StyleBox for the tappable profile greeting.

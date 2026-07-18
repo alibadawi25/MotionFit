@@ -311,6 +311,16 @@ func add_calories(calories: float) -> void:
 	_save()
 
 
+## Ids of every achievement the active profile has unlocked (a copy).
+func get_achievements() -> Array:
+	return (_active().get("achievements", []) as Array).duplicate()
+
+
+## True when the active profile has unlocked [param achievement_id].
+func has_achievement(achievement_id: String) -> bool:
+	return achievement_id in (_active().get("achievements", []) as Array)
+
+
 ## Unlocks [param achievement_id] if not already unlocked.
 func unlock_achievement(achievement_id: String) -> void:
 	if not has_active():

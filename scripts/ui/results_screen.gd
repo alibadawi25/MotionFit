@@ -57,7 +57,9 @@ func _build(result: Dictionary) -> void:
 		column.add_child(none)
 	else:
 		_build_stat_grid(column, result)
+		_build_unlocks(column)
 		_build_progression(column, result)
+		_build_next_goal(column)
 
 	_build_buttons(column)
 
@@ -111,6 +113,68 @@ func _build_header(parent: VBoxContainer, result: Dictionary) -> void:
 		var badge := _pill_badge("★  NEW PERSONAL BEST", GOLD)
 		badge.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		header.add_child(badge)
+
+	if not result.is_empty():
+		var cheer := _label(_encouragement(result), 22, Color(0.85, 0.88, 0.94))
+		cheer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		header.add_child(cheer)
+
+
+## One warm line under the title, picked from what actually happened — a level
+## up, a record, the daily goal, the streak — falling back to honest praise for
+## simply moving. Every workout ends on encouragement, never on a bare number.
+func _encouragement(result: Dictionary) -> String:
+	if bool(result.get("leveled_up", false)):
+		return "You're getting stronger — that session pushed you up a level."
+	if bool(result.get("new_best", false)) and int(result.get("prev_best", 0)) > 0:
+		return "Your best ever. That version of you didn't exist last week."
+	var goal: float = ActivityManager.get_daily_calorie_goal()
+	if ActivityManager.get_today_calories() >= goal:
+		return "That's your daily goal done. Your future self says thanks."
+	var streak: int = ActivityManager.get_streak()
+	if streak >= 2:
+		return "Day %d in a row — showing up is the whole game, and you keep showing up." % streak
+	var lines: Array[String] = [
+		"Every one of those steps was real movement. Well done.",
+		"Good work — that burn was earned, not tapped on a screen.",
+		"Nice session. Come back tomorrow and it becomes a streak.",
+	]
+	return lines[ActivityManager.get_total_sessions() % lines.size()]
+
+
+## Gold pills for achievements earned since the last summary (this session's
+## unlocks, plus any find from a session that never reached Results). Capped so
+## a big day doesn't push the buttons off-screen.
+func _build_unlocks(parent: VBoxContainer) -> void:
+	var unlocks: Array[Dictionary] = AchievementManager.take_recent_unlocks()
+	if unlocks.is_empty():
+		return
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 14)
+	parent.add_child(row)
+	var shown: int = mini(unlocks.size(), 3)
+	for i in shown:
+		row.add_child(_pill_badge("%s  %s" % [String(unlocks[i]["icon"]),
+				String(unlocks[i]["title"])], GOLD))
+	if unlocks.size() > shown:
+		row.add_child(_label("+%d more" % (unlocks.size() - shown), 20, MUTED))
+
+
+## A quiet "here's what to chase next" line — the nearest locked career
+## achievement with live progress, so leaving the screen always hands the
+## player a next purpose.
+func _build_next_goal(parent: VBoxContainer) -> void:
+	var goal: Dictionary = AchievementManager.get_next_goal()
+	if goal.is_empty():
+		return
+	var defn: Dictionary = goal["defn"]
+	var text: String = "NEXT GOAL — %s · %d / %d %s" % [String(defn["title"]),
+			int(goal["value"]), int(goal["target"]), String(defn["unit"])]
+	var line := _label(text, 18, MUTED)
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	parent.add_child(line)
 
 
 func _build_stat_grid(parent: VBoxContainer, result: Dictionary) -> void:
