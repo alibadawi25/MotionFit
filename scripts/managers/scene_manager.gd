@@ -56,9 +56,18 @@ const TENNIS: String = "res://scenes/tennis/tennis.tscn"
 const FADE_OUT_SEC: float = 0.16
 const FADE_IN_SEC: float = 0.24
 
+## Seconds a threaded scene load may run (behind the black fade) before the
+## loading screen fades in over it. Menu scenes load far quicker than this, so
+## only genuinely heavy scenes (games) ever show the loading UI.
+const LOADING_UI_DELAY_SEC: float = 0.2
+
 ## Full-screen black rect used for the fade; lives on a high CanvasLayer so it
 ## covers every scene (including game HUDs on layer 0/1).
 var _fade_rect: ColorRect
+## The CanvasLayer hosting the fade rect (and, during slow loads, the loading UI).
+var _overlay_layer: CanvasLayer
+## Instanced loading_screen.tscn shown over the black while a slow load runs.
+var _loading_ui: Node = null
 ## True while a fade+swap is running; further change_scene calls are ignored so
 ## button-mashing can't double-load a scene mid-transition.
 var _transitioning: bool = false
@@ -68,20 +77,23 @@ func _ready() -> void:
 	# during its intro), so the layer processes always and the tweens are made
 	# pause-immune in _fade_to.
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	var layer := CanvasLayer.new()
-	layer.layer = 120
-	add_child(layer)
+	_overlay_layer = CanvasLayer.new()
+	_overlay_layer.layer = 120
+	add_child(_overlay_layer)
 	_fade_rect = ColorRect.new()
 	_fade_rect.color = Color(0.0, 0.0, 0.0, 1.0)
 	_fade_rect.modulate.a = 0.0
 	_fade_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(_fade_rect)
+	_overlay_layer.add_child(_fade_rect)
 
 
 ## Changes the active scene to the one at [param path], dipping through a short
-## black fade. This is the low-level primitive every other loader routes
-## through. Calls made while a transition is already running are ignored.
+## black fade. The scene is loaded on a background thread so the app never
+## freezes; if the load outlasts [constant LOADING_UI_DELAY_SEC] the loading
+## screen appears over the black with real progress. This is the low-level
+## primitive every other loader routes through. Calls made while a transition
+## is already running are ignored.
 func change_scene(path: String) -> void:
 	if _transitioning:
 		return
@@ -90,14 +102,69 @@ func change_scene(path: String) -> void:
 	# Block clicks on the outgoing scene while it fades.
 	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	await _fade_to(1.0, FADE_OUT_SEC)
-	var result: int = get_tree().change_scene_to_file(path)
-	if result != OK:
-		push_error("SceneManager: failed to change to '%s' (error %d)" % [path, result])
+	var packed: PackedScene = await _load_scene_async(path)
+	if packed == null:
+		push_error("SceneManager: failed to load '%s'" % path)
 	else:
-		scene_changed.emit(path)
+		var result: int = get_tree().change_scene_to_packed(packed)
+		if result != OK:
+			push_error("SceneManager: failed to change to '%s' (error %d)" % [path, result])
+		else:
+			scene_changed.emit(path)
+	_hide_loading_ui()
 	await _fade_to(0.0, FADE_IN_SEC)
 	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_transitioning = false
+
+
+## Loads [param path] on a background thread, surfacing the loading UI if it
+## takes long enough to notice. Returns null on failure.
+func _load_scene_async(path: String) -> PackedScene:
+	# NB use_sub_threads stays false: parallel sub-thread loading can fail to
+	# compile scripts that reference autoloads ("Parse Error: Failed" on any
+	# scene whose script uses a manager). One background thread is plenty.
+	if ResourceLoader.load_threaded_request(path) != OK:
+		# Request refused (bad path); fall back to a plain load so the error
+		# surfaces through the normal channel.
+		return load(path) as PackedScene
+	var progress: Array = []
+	var elapsed: float = 0.0
+	while true:
+		var status: int = ResourceLoader.load_threaded_get_status(path, progress)
+		match status:
+			ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				if elapsed >= LOADING_UI_DELAY_SEC:
+					_show_loading_ui()
+					if _loading_ui != null and not progress.is_empty():
+						_loading_ui.call("set_progress", float(progress[0]) * 100.0)
+				await get_tree().process_frame
+				elapsed += get_process_delta_time()
+			ResourceLoader.THREAD_LOAD_LOADED:
+				if _loading_ui != null:
+					_loading_ui.call("set_progress", 100.0)
+				return ResourceLoader.load_threaded_get(path) as PackedScene
+			_:
+				return null
+	return null
+
+
+## Instances the loading screen over the black fade (idempotent).
+func _show_loading_ui() -> void:
+	if _loading_ui != null:
+		return
+	var scene := load(LOADING) as PackedScene
+	if scene == null:
+		return
+	_loading_ui = scene.instantiate()
+	# Added after the fade rect so it draws above the black.
+	_overlay_layer.add_child(_loading_ui)
+
+
+func _hide_loading_ui() -> void:
+	if _loading_ui == null:
+		return
+	_loading_ui.queue_free()
+	_loading_ui = null
 
 
 ## Tweens the fade rect to [param alpha] over [param duration] and completes
