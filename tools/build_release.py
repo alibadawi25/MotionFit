@@ -12,10 +12,12 @@ Godot install required on their machine):
     game/MotionFit.pck           the packed game (all scenes/scripts/assets)
     pose_server/pose_server.exe  camera -> movement service (MediaPipe bundled)
 
-Why a .pck + runtime copy instead of a one-file Godot export: a template export
-needs the ~1 GB Godot 4.7 export-template download, which isn't installed. The
-.pck route needs nothing extra and behaves identically. Swap in a proper export
-later by installing templates and replacing the export step.
+The runtime next to the .pck is the official windows_release_x86_64 export
+template (~109 MB, vs ~178 MB for a copy of the editor exe). It is fetched
+once via tools/fetch_template.py, which pulls JUST that member out of the
+~1 GB export-templates .tpz with HTTP range requests (a ~38 MB transfer) and
+caches it in build/templates/. If the fetch fails (offline build machine),
+the script falls back to copying the editor exe so a build always succeeds.
 
 Requirements on the BUILD machine (this one): Godot 4.7 exe (GODOT env var or
 the default path below) and Python 3.12. The pose service is bundled from a
@@ -45,6 +47,14 @@ OUT = REPO / "build" / "MotionFit"
 WORK = REPO / "build" / "pyinstaller"  # PyInstaller spec/work dirs (throwaway)
 VENV = REPO / "build" / "venv"  # clean bundling env; survives clean_output()
 MODEL = REPO / "python" / "pose" / "models" / "pose_landmarker_full.task"
+# Cached player runtime (fetched once by tools/fetch_template.py) and the
+# system-wide install location Godot's editor would put templates in.
+TEMPLATE_CACHE = REPO / "build" / "templates" / "windows_release_x86_64.exe"
+TEMPLATE_INSTALLED = (
+    Path(os.environ.get("APPDATA", ""))
+    / "Godot" / "export_templates" / "4.7.stable" / "windows_release_x86_64.exe"
+)
+ICON_ICO = REPO / "build" / "icons" / "motionfit.ico"
 
 
 def step(title: str) -> None:
@@ -111,8 +121,35 @@ def export_pck() -> None:
 
 
 def copy_runtime() -> None:
-    step("Copying the Godot runtime to game/MotionFit.exe")
-    shutil.copy2(GODOT, OUT / "game" / "MotionFit.exe")
+    """Places the player runtime at game/MotionFit.exe (it auto-loads the
+    same-named MotionFit.pck beside it).
+
+    Preference order: the official release export template (installed copy,
+    then our cached ranged-download), falling back to a copy of the editor exe
+    (~70 MB bigger, but always available) so an offline machine still builds.
+    """
+    step("Placing the Godot runtime at game/MotionFit.exe")
+    runtime: Path | None = None
+    for candidate in (TEMPLATE_INSTALLED, TEMPLATE_CACHE):
+        if candidate.exists():
+            runtime = candidate
+            break
+    if runtime is None:
+        try:
+            sys.path.insert(0, str(REPO / "tools"))
+            import fetch_template
+
+            runtime = fetch_template.fetch_member(
+                fetch_template.TPZ_URL, fetch_template.MEMBER, TEMPLATE_CACHE
+            )
+        except Exception as exc:  # noqa: BLE001 - any network failure
+            print(f"  template fetch failed ({exc}); falling back to the editor exe")
+            runtime = None
+    if runtime is not None:
+        print(f"  using release template: {runtime}")
+        shutil.copy2(runtime, OUT / "game" / "MotionFit.exe")
+    else:
+        shutil.copy2(GODOT, OUT / "game" / "MotionFit.exe")
 
 
 def venv_python() -> Path:
@@ -135,6 +172,18 @@ def ensure_venv() -> None:
             "pyinstaller",
         ]
     )
+    # Swap the fat GUI/contrib OpenCV that mediapipe drags in for the headless
+    # build (~70 MB smaller; the shipped service never opens a window - the
+    # --window debug flag downgrades gracefully, see pose_server.py). Also drop
+    # matplotlib + pillow: mediapipe only imports matplotlib for an unused
+    # plotting helper, which pose_server stubs out before `import mediapipe`.
+    run(
+        [
+            venv_python(), "-m", "pip", "uninstall", "-y",
+            "opencv-contrib-python", "opencv-python", "matplotlib", "pillow",
+        ]
+    )
+    run([venv_python(), "-m", "pip", "install", "opencv-python-headless>=4.8"])
 
 
 def build_pose_server() -> None:
@@ -158,6 +207,11 @@ def build_pose_server() -> None:
         # in the whole package so none are missed.
         "--collect-all",
         "mediapipe",
+        # Never used at runtime (matplotlib is stubbed in pose_server.py);
+        # excluding keeps stray imports from sweeping them back in.
+        "--exclude-module", "matplotlib",
+        "--exclude-module", "PIL",
+        "--exclude-module", "tkinter",
     ]
     if MODEL.exists():
         # pose_server resolves the model as <script dir>/models/, which in a
@@ -172,27 +226,127 @@ def build_pose_server() -> None:
     run(cmd)
 
 
+def prune_pose_server() -> None:
+    """Removes bundle payload the pose service never loads.
+
+    - cv2's ffmpeg dll (30 MB): only backs file/stream decoding; the webcam
+      capture path uses the MSMF/DSHOW backends built into cv2 itself.
+    - tcl/tk data dirs, if the tkinter exclude left any behind.
+    Do NOT prune mediapipe/tasks/c: since mediapipe ~0.10.3x the Python
+    pose landmarker loads libmediapipe.dll through those C bindings — without
+    it the service dies at startup ("No module named 'mediapipe.tasks.c'").
+    verify_pose_server() below guards against this class of mistake.
+    """
+    step("Pruning unused payload from pose_server/")
+    internal = OUT / "pose_server" / "_internal"
+    doomed: list[Path] = [
+        internal / "_tcl_data",
+        internal / "_tk_data",
+    ]
+    doomed += list((internal / "cv2").glob("opencv_videoio_ffmpeg*.dll"))
+    reclaimed = 0
+    for path in doomed:
+        if not path.exists():
+            continue
+        if path.is_dir():
+            reclaimed += sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+            _rmtree_retry(path)
+        else:
+            reclaimed += path.stat().st_size
+            path.unlink()
+    print(f"  reclaimed {reclaimed / 1e6:.0f} MB")
+
+
+def verify_pose_server() -> None:
+    """Smoke-tests the bundled service: spawn it in --game mode and require a
+    status heartbeat on UDP 9990 within 40 s. Catches missing-module/pruned-dll
+    breakage at build time instead of on a friend's machine."""
+    step("Verifying pose_server.exe heartbeats")
+    import json
+    import socket
+
+    exe = OUT / "pose_server" / "pose_server.exe"
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.bind(("127.0.0.1", 9990))
+    except OSError:
+        sock.close()
+        print("  port 9990 is busy (a pose service is already running?) - skipping")
+        return
+    sock.settimeout(1.0)
+    proc = subprocess.Popen(
+        [str(exe), "--game"],
+        cwd=str(exe.parent),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    ok = False
+    try:
+        deadline = time.time() + 40
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                out = (proc.stdout.read() or b"").decode(errors="replace")
+                sys.exit(
+                    "pose_server.exe exited at startup (code "
+                    f"{proc.returncode}):\n{out[-2000:]}"
+                )
+            try:
+                data, _ = sock.recvfrom(65536)
+            except socket.timeout:
+                continue
+            packet = json.loads(data.decode())
+            print(f"  heartbeat OK (status={packet.get('status')!r})")
+            ok = True
+            break
+    finally:
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        sock.close()
+    if not ok:
+        sys.exit("pose_server.exe produced no UDP heartbeat within 40 s")
+
+
+def ensure_icon() -> None:
+    """Renders icon.svg to build/icons/motionfit.ico (launcher + installer icon)."""
+    step("Building the app icon")
+    if ICON_ICO.exists():
+        print(f"  using cached {ICON_ICO}")
+        return
+    project_godot = REPO / "project.godot"
+    before = project_godot.read_bytes()
+    try:
+        run([GODOT, "--headless", "--path", REPO, "-s", "res://tools/render_icon.gd"])
+    finally:
+        if project_godot.read_bytes() != before:
+            project_godot.write_bytes(before)
+    run([sys.executable, REPO / "tools" / "make_ico.py", ICON_ICO])
+
+
 def build_launcher() -> None:
     step("Building the MotionFit.exe launcher")
-    run(
-        [
-            venv_python(),
-            "-m",
-            "PyInstaller",
-            "--noconfirm",
-            "--onefile",
-            "--noconsole",
-            "--name",
-            "MotionFit",
-            "--distpath",
-            OUT,
-            "--workpath",
-            WORK / "build",
-            "--specpath",
-            WORK,
-            REPO / "tools" / "launcher.py",
-        ]
-    )
+    cmd = [
+        venv_python(),
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--onefile",
+        "--noconsole",
+        "--name",
+        "MotionFit",
+        "--distpath",
+        OUT,
+        "--workpath",
+        WORK / "build",
+        "--specpath",
+        WORK,
+    ]
+    if ICON_ICO.exists():
+        cmd += ["--icon", ICON_ICO]
+    cmd.append(REPO / "tools" / "launcher.py")
+    run(cmd)
 
 
 def find_iscc() -> Path | None:
@@ -268,6 +422,9 @@ def main() -> None:
     copy_runtime()
     ensure_venv()
     build_pose_server()
+    prune_pose_server()
+    verify_pose_server()
+    ensure_icon()
     build_launcher()
     write_readme()
     build_installer()

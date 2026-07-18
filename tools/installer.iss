@@ -17,15 +17,30 @@ DefaultDirName={localappdata}\MotionFit
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 OutputBaseFilename=MotionFit-Setup
-; The payload is mostly already-compressed exes and a .pck; fast lzma2 keeps
-; the compile quick for a near-identical size.
-Compression=lzma2/fast
-SolidCompression=no
+; Max lzma2 + solid: the payload is a few hundred MB of exe/dll (compresses
+; well) and a friend downloads this file - a few extra build minutes buys a
+; meaningfully smaller transfer.
+Compression=lzma2/max
+SolidCompression=yes
+; Compress in parallel blocks: costs ~1-2% ratio, cuts an ~86 min single-
+; threaded compile on this machine down to minutes.
+LZMAUseSeparateProcess=yes
+LZMANumBlockThreads=6
 WizardStyle=modern
 UninstallDisplayIcon={app}\MotionFit.exe
+#define IconFile "..\build\icons\motionfit.ico"
+#if FileExists(IconFile)
+SetupIconFile={#IconFile}
+#endif
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"
+
+[InstallDelete]
+; The PyInstaller bundle's file set changes between releases and Inno never
+; removes superseded files on upgrade - stale dlls/pyds bloat the install and
+; can shadow the new bundle. Wipe it and let this install lay it down fresh.
+Type: filesandordirs; Name: "{app}\pose_server\_internal"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "pose_server.log"; Flags: recursesubdirs ignoreversion

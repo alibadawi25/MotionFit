@@ -70,8 +70,11 @@ def main() -> None:
         )
 
     try:
+        # No --main-pack: the runtime auto-loads the MotionFit.pck sitting next
+        # to it, and the 4.7 release template actively refuses path-override
+        # flags (built with disable_path_overrides).
         subprocess.run(
-            [str(game_exe), "--main-pack", str(game_pck)],
+            [str(game_exe)],
             cwd=str(game_exe.parent),
         )
     finally:

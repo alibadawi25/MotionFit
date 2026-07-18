@@ -69,6 +69,20 @@ class _HideTensorFlow:
 
 sys.meta_path.insert(0, _HideTensorFlow())
 
+# --- Stub matplotlib (pulled in by mediapipe, never used) --------------------
+# mediapipe.tasks.python.vision.drawing_utils does `import matplotlib.pyplot`
+# unconditionally, but the only thing that needs it (plot_landmarks) is never
+# called here. Registering empty stub modules satisfies the import so the
+# release bundle can drop matplotlib + PIL + tkinter (~30 MB). setdefault keeps
+# a real matplotlib working if something imported it first.
+import types
+
+_mpl_stub = types.ModuleType("matplotlib")
+_plt_stub = types.ModuleType("matplotlib.pyplot")
+_mpl_stub.pyplot = _plt_stub  # type: ignore[attr-defined]
+sys.modules.setdefault("matplotlib", _mpl_stub)
+sys.modules.setdefault("matplotlib.pyplot", _plt_stub)
+
 import mediapipe as mp
 
 import recording  # sibling module: JSONL recorder, metronome, label + feature schema
@@ -1145,6 +1159,15 @@ def main(args: argparse.Namespace | None = None) -> None:
     # than opening immediately, so the webcam LED is dark in menus.
     managed = args.game
     show_window = (not managed) or args.window
+    if show_window:
+        # The release bundle ships opencv-headless (no GUI). Downgrade cleanly
+        # instead of crashing if a window was requested anyway.
+        try:
+            cv2.namedWindow("MotionFit Pose (press q to quit, c to calibrate)")
+        except cv2.error:
+            print("OpenCV has no GUI support (headless build); "
+                  "continuing without the preview window.")
+            show_window = False
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     dest = (UDP_HOST, UDP_PORT)
