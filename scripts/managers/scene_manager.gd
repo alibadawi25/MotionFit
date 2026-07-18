@@ -42,6 +42,7 @@ const CAMERA_TEST: String = "res://scenes/menus/camera_test.tscn"
 # tracked), so it lives here alongside the scored games.
 const OPEN_WORLD: String = "res://scenes/open-world/open-world.tscn"
 const RUNNER: String = "res://scenes/runner/runner.tscn"
+const SPRINT: String = "res://scenes/sprint/sprint.tscn"
 const BOXING: String = "res://scenes/boxing/boxing.tscn"
 const FOOTBALL: String = "res://scenes/football/football.tscn"
 const TENNIS: String = "res://scenes/tennis/tennis.tscn"

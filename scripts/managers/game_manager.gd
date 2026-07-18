@@ -163,6 +163,14 @@ func _build_registry() -> void:
 			"uses_difficulty": true,
 		},
 		{
+			"id": "sprint",
+			"title": "Hurdle Dash",
+			"description": "Race three rivals to the line — sprint on the spot and leap the hurdles. Short, breathless, all-out.",
+			"scene": SceneManager.SPRINT,
+			"available": true,
+			"uses_difficulty": true,
+		},
+		{
 			"id": "boxing",
 			"title": "Boxing",
 			"description": "Throw punches to hit targets. Upper-body burn.",

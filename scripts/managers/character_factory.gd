@@ -87,6 +87,22 @@ func get_character() -> Node3D:
 	return packed.instantiate() as Node3D if packed != null else null
 
 
+## Builds a stock (non-profile) figure — e.g. an AI race rival — from explicit
+## [param body] and [param appearance] (same shapes as [method build_preview]),
+## cached under user://characters/<slot>.glb like profile models (same inputs →
+## no regeneration). Falls back to the bundled default model when generation or
+## loading fails, so callers always get a figure unless even that is missing.
+func build_stock(body: Dictionary, appearance: Dictionary, slot: String) -> Node3D:
+	var path: String = _ensure_generated(body, appearance,
+			"%s/%s.glb" % [OUT_DIR, slot])
+	if path != "":
+		var figure: Node3D = _load_glb(path)
+		if figure != null:
+			return figure
+	var packed: PackedScene = load(FALLBACK_MODEL)
+	return packed.instantiate() as Node3D if packed != null else null
+
+
 ## Builds a throwaway preview figure from UNSAVED editor state — [param body]
 ## ({sex, age, height_cm, weight_kg}) and [param appearance] (the keys of
 ## ProfileManager.DEFAULT_APPEARANCE) — so a customization screen can show the
