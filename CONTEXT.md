@@ -133,6 +133,7 @@ Initialisation order (and dependencies):
 | — | `CharacterFactory` | ProfileManager (at call time, not init) | Personalised character model: runs the Python generator (`assets/models/generated_human/export_glb.py`) with the active profile's body attributes + appearance, caches the GLB per profile under `user://characters/`, loads it at runtime via `GLTFDocument`. Falls back to the bundled `human.glb`. Body shape is always derived from weight/height/age/sex — never chosen directly. |
 | 6 | `GameManager`   | SceneManager, ProfileManager | Game registry + session state + play flow + awards progression. |
 | 7 | `ActivityManager`| SaveManager, GameManager | Day-by-day fitness history (time series). Listens to `game_finished`, rolls each session into today's bucket; derives weekly totals/averages/streaks on read (never stores them). Feeds the Fitness dashboard. |
+| 8 | `AchievementManager`| GameManager, ProfileManager, ActivityManager | Achievement + discovery system. Definitions are DATA (career/session/streak/discovery entries, ~25); unlocks are evaluated automatically on `game_finished` against stats the other managers already track, so no game contains achievement code. Storage stays in ProfileManager (`get_achievements`/`has_achievement`/`unlock_achievement`). Registered AFTER ActivityManager so evaluated streaks/totals include the session that just ended. Retroactive: re-evaluates at boot and on profile switch, so definitions added in an update unlock from stored stats. Open World finds persist via `report_discovery(id)` (achievement ids `secret_*`, built at _ready from WorldScatter's SECRETS so the page can't drift from the world). `take_recent_unlocks()` is the not-yet-celebrated queue the Results screen drains for its gold pills; `get_next_goal()` returns the closest locked career achievement (the "chase this next" line). |
 
 **Rules**
 - Use managers instead of loose global variables.
@@ -588,7 +589,7 @@ by design — with no service running the texture is null and the UI falls back 
   OmniLight + emissive crystal clusters (`ScatterMeshes.build_crystal`) inside.
   It rides the existing boulder MultiMesh + PhysicsServer collider path and is
   appended AFTER the MAX_ROCKS cap so thinning can never delete the landmark;
-  ordinary scatter keeps `GROTTO_CLEAR_RADIUS` (15 m) away. Site found with
+  ordinary scatter keeps clear (per-secret `clear` radius). Site found with
   `tools/probe_spot.gd` (`SPOTS="x,z;..."` prints height/slope/downhill). Verified via
   `scenes/tests/ground_view.tscn` (`GV_POS="x,y,z" GV_AT="x,y,z" bash
   tools/shot.sh name scenes/tests/ground_view.tscn` — head-height camera,
@@ -597,6 +598,22 @@ by design — with no service running the texture is null and the UI falls back 
   "standing at a shoreline" and cost a debugging detour; probe heights first
   (`tools/probe_height.gd` conventions: world ≈ (pixel − 256) × 2, world y =
   map value × 1.5).
+  *Hidden secrets (2026-07-18)*: five discoverable landmarks, listed in
+  `world_scatter.gd` `SECRETS` (id/name/pos/trigger `radius`/scatter `clear`) —
+  the grotto plus the summit cairn (−60, −120, y≈80: stacked boulders, pale
+  crystal + cold beacon light), the standing stones (−240, 240: eight menhirs =
+  tall-anisotropic boulders + fallen slab on the west plateau), the castaway
+  camp (60, 250: `build_driftwood` lean-to, ember glow, stone fire ring in a
+  beach cove) and the glowing hollow (−405, −285: `build_mushroom` ring +
+  violet light in the far-corner woods). Landmark stones ride the same
+  post-cap boulder MultiMesh; because menhirs are scaled thin-x/z tall-y,
+  `_build_colliders` sizes rock spheres from the HORIZONTAL scale (y only
+  gates the ≥0.75 "big enough to block" check). `open_world.gd` reads
+  `SECRETS`, plants silent Area3D triggers (`_spawn_secret_triggers`), and a
+  find = +50 score, a SECRETS x/5 HUD chip pulse and a fading "DISCOVERED —
+  NAME" banner (`OpenWorldHud.show_discovery`); finds are per-session on
+  purpose (rediscovery = another walk). Verified headless by teleporting the
+  player into a trigger and checking `_secrets_found`.
 
 **How to run the camera control:**
 1. `pip install -r python/requirements.txt` (once).
@@ -782,8 +799,31 @@ same controller works with the camera today or another input source later.
 	  - [ ] Per-user runtime calibration (stand → march → squat) for thresholds.
 	  - [ ] Validate the calorie numbers against a reference (HR / calorimetry).
 - [ ] Tune pose thresholds in `pose_server.py` for the target play space/camera.
-- [ ] Achievements definitions + unlock triggers (ProfileManager supports the
-	  storage; no achievements defined yet).
+- [x] **Achievements + discoveries (2026-07-18).** `AchievementManager` (§5 #8)
+	  holds the data-driven catalog and unlock triggers; the ACHIEVEMENTS screen
+	  (`scenes/menus/achievements_screen.tscn`, `scripts/ui/achievements_screen.gd`
+	  on the PanelScreen base, reachable from the main menu) shows a WORLD
+	  DISCOVERIES shelf (the five Open World landmarks — an unfound one shows
+	  "???" but its treasure-hunt HINT is always visible, because the hint is the
+	  invitation to go walking) over a two-column achievement grid (earned = gold
+	  edge; locked = dimmed but always shows how to earn it + live progress for
+	  career stats, e.g. "36 / 100 workouts" — a menu of things to do, never a
+	  wall of failure). **Encouragement pass, same date:** the Results screen
+	  gained a warm one-liner picked from what actually happened (level-up >
+	  record > daily goal > streak > honest rotating praise), gold "achievement
+	  earned" pills (capped at 3 + "+N more"; drained from `take_recent_unlocks`,
+	  so a find from a session that never reached Results is celebrated on the
+	  next one rather than lost), and a quiet "NEXT GOAL — FULL WEEK · 5 / 7
+	  days" line so leaving the screen always hands the player a next purpose.
+	  The main menu profile card gained a "why play today" line (streak + today
+	  vs daily-goal kcal, goal-done variant in gold). All copy frames effort and
+	  consistency, never skill. Verified by
+	  `scenes/tests/achievement_probe.tscn` (headless self-test: pushes a fake
+	  GameResult through the real finish pipeline, asserts unlocks/non-unlocks/
+	  queue/discoveries, then deletes its throwaway profile — 14 PASS) plus
+	  shot.sh view scenes `results_view.tscn` (stages a result + pills with NO
+	  writes to real saves) and `menu_view.tscn` (skips the profile-picker boot
+	  gate).
 - [x] Heart-rate display/HUD (first pass): a live "♥ BPM" chip in the Open World
 	  HUD (`OpenWorldHud.set_heart_rate`, fed from `_update_hud`) and a "♥ N bpm —
 	  heart-rate connected" status line on the main menu, both hidden unless a
@@ -845,6 +885,28 @@ same controller works with the camera today or another input source later.
 	  channel for in-app scan/pair (the current UDP is one-way). NB only live BLE HRS devices
 	  (chest straps / broadcast-mode watches) work — Apple Watch/Fitbit don't expose
 	  real-time HR to third parties.
+- [ ] **Open World wildlife (models + behaviour DONE 2026-07-18, sound pending).**
+	  `scenes/open-world/animal_meshes.gd` is a ScatterMeshes-style companion
+	  (chunky primitives, vertex-color-as-albedo for MultiMesh tints, metres,
+	  ground origin — birds are authored around the BODY CENTRE since a flyer
+	  has no ground) with six species, one per biome: deer + songbird (woods),
+	  fox (dusk treeline), rabbit (meadows), gull (shore, mid-glide pose),
+	  butterfly (grass/flower bands, faint self-glow for dusk). All face +Z.
+	  `scenes/open-world/wildlife.gd` (a node in open-world.tscn) spawns ~50 of
+	  them into the right biomes — same height/splat/clump-noise sources as
+	  world_scatter.gd, deterministic seed — and drives them per physics frame
+	  as records behind one MultiMesh per species: ground animals wander a
+	  leash and FLEE the player (walk/flee speeds per species), songbirds
+	  flush into a flight arc and re-perch 20-35 m away, gulls fly banked
+	  soaring loops off the shore, butterflies drift a Lissajous wander with a
+	  wing-beat roll. All motion is whole-body (yaw, hop/trot bob) — parts are
+	  never re-posed. Ground animals >160 m from the player freeze (LOD).
+	  Verified by `scenes/tests/animals_view.tscn` (static lineup) and
+	  `scenes/tests/wildlife_view.tscn` (LIVE system: frames a species chosen
+	  via WL_SPECIES env, prints populations + wander/flee displacement probes
+	  to the shot log — needs WAIT=17). Still to build: the ambient sound
+	  layer keyed to the same biomes (birdsong in the woods, surf + gulls on
+	  the shore).
 - [ ] Boxing / Football / Tennis game scenes (flip `available` to true).
 
 ## 13. Rules for Adding a Future Game
