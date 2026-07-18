@@ -37,6 +37,13 @@ const ORB_BORDER_MARGIN: float = 10.0
 ## Brand orange, shared with the UI accent, so goals read as "ours" at a glance.
 const ORB_COLOR: Color = Color(1.0, 0.5, 0.14)
 
+## The hidden landmarks (built by WorldScatter — its SECRETS list is the single
+## source of where they are and how close counts as finding one).
+const WorldScatterScript := preload("res://scenes/open-world/world_scatter.gd")
+## Bonus per secret found — a real prize next to the 10-point orbs, because a
+## secret is a one-per-session reward at the end of a genuine expedition.
+const SECRET_SCORE: int = 50
+
 ## Downward ground-probe range: above the tallest plausible peak, past the lowest
 ## valley, so the surface is found however the terrain is sculpted.
 const _PROBE_TOP: float = 800.0
@@ -52,6 +59,9 @@ var _pause_menu: Control
 var _hud: OpenWorldHud  # the on-screen stat bar (see open_world_hud.gd)
 var _steps_scored: int = 0
 var _orbs_collected: int = 0
+## Which secret ids have been found this session (rediscovery next session is
+## another walk earned — nothing persists on purpose).
+var _secrets_found: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 
 @onready var _player: CharacterBody3D = $CharacterBody3D
@@ -86,12 +96,14 @@ func _prepare_world() -> void:
 func _start_game() -> void:
 	_steps_scored = 0
 	_orbs_collected = 0
+	_secrets_found.clear()
 	# Wait one physics tick so HTerrain's collider is live for our ground probes,
 	# then plant the player on the surface before scattering the (also-snapped) orbs.
 	await get_tree().physics_frame
 	_drop_player_to_ground()
 	_build_overlay()
 	_spawn_orbs()
+	_spawn_secret_triggers()
 	_update_hud()
 
 
@@ -133,6 +145,7 @@ func _on_end_requested() -> void:
 func _build_overlay() -> void:
 	_hud = OpenWorldHud.new()
 	add_child(_hud)
+	_hud.set_secrets(0, WorldScatterScript.SECRETS.size())
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -290,6 +303,39 @@ func _start_orb_bob(orb: Area3D) -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.tween_property(mesh, "position:y", 0.0, 1.2) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+## Plants one silent trigger sphere on each hidden landmark. The landmarks
+## themselves are scenery built by WorldScatter; walking into one is what turns
+## it into a discovery — banner, secrets chip and a score bonus.
+func _spawn_secret_triggers() -> void:
+	for secret in WorldScatterScript.SECRETS:
+		var area := Area3D.new()
+		var collider := CollisionShape3D.new()
+		var ball := SphereShape3D.new()
+		ball.radius = secret.radius
+		collider.shape = ball
+		area.add_child(collider)
+		add_child(area)
+		var pos: Vector3 = secret.pos
+		# Snap to the live surface (the authored y is a probe of the same
+		# terrain, kept as the fallback if the raycast misses).
+		area.global_position = Vector3(pos.x, _ground_y(pos.x, pos.z, pos.y) + 1.0, pos.z)
+		area.body_entered.connect(_on_secret_entered.bind(secret))
+
+
+func _on_secret_entered(body: Node3D, secret: Dictionary) -> void:
+	if body != _player or _secrets_found.has(secret.id):
+		return
+	_secrets_found[secret.id] = true
+	add_score(SECRET_SCORE)
+	# Persist the find for the achievements/discoveries page. The in-game x/5
+	# counter stays per-session (rediscovery = another walk earned); the page is
+	# where "ever found" lives.
+	AchievementManager.report_discovery(String(secret.id))
+	if _hud != null:
+		_hud.set_secrets(_secrets_found.size(), WorldScatterScript.SECRETS.size())
+		_hud.show_discovery(secret.name)
 
 
 func _on_orb_touched(body: Node3D, orb: Area3D) -> void:

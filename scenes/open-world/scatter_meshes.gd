@@ -14,6 +14,9 @@ const _PINE := Color(0.15, 0.32, 0.16)
 const _LEAF := Color(0.24, 0.42, 0.17)
 const _STONE := Color(0.46, 0.46, 0.48)
 const _CRYSTAL := Color(0.42, 0.86, 0.82)
+const _DRIFT := Color(0.58, 0.52, 0.43)
+const _EMBER := Color(1.0, 0.45, 0.15)
+const _SPORE := Color(0.66, 0.42, 0.92)
 
 
 ## A conifer: tapered trunk + three stacked cones, ~5 m tall. Two surfaces
@@ -130,6 +133,81 @@ static func build_crystal() -> ArrayMesh:
 	mat.emission = _CRYSTAL
 	mat.emission_energy_multiplier = 1.6
 	_append(mesh, spikes, mat)
+	return mesh
+
+
+## A collapsed driftwood lean-to over a dying fire: four bleached logs tipped
+## together above a pile of still-glowing embers, one more fallen flat beside.
+## The castaway camp's centrepiece (see world_scatter.gd SECRETS). ~2 m tall.
+static func build_driftwood() -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	var logs: Array = []
+	var yaw_jitter := [0.3, 0.1, 0.45, 0.2]
+	for i in 4:
+		var az: float = TAU * float(i) / 4.0 + yaw_jitter[i]
+		var lean := 0.55 + 0.07 * float(i % 2)
+		var out := Vector3(cos(az), 0.0, sin(az))
+		var dir := (Vector3.UP * cos(lean) - out * sin(lean)).normalized()
+		var length := 2.3 - 0.15 * float(i % 2)
+		var log := CylinderMesh.new()
+		log.top_radius = 0.06
+		log.bottom_radius = 0.09
+		log.height = length
+		log.radial_segments = 5
+		log.rings = 1
+		var basis := Basis(Vector3.UP.cross(dir).normalized(), Vector3.UP.angle_to(dir))
+		logs.append([log, Transform3D(basis, out * 0.85 + dir * (length * 0.45))])
+	var fallen := CylinderMesh.new()
+	fallen.top_radius = 0.07
+	fallen.bottom_radius = 0.10
+	fallen.height = 1.7
+	fallen.radial_segments = 5
+	fallen.rings = 1
+	logs.append([fallen, Transform3D(
+			Basis(Vector3.UP, 0.5).rotated(Vector3(0.94, 0.0, 0.34), PI / 2.0),
+			Vector3(1.5, 0.1, 0.6))])
+	_append(mesh, logs, _material(_DRIFT, 0.95))
+
+	var embers: Array = []
+	for offset in [Vector3(0.0, 0.02, 0.0), Vector3(0.22, 0.0, 0.1),
+			Vector3(-0.16, 0.0, -0.14)]:
+		var coal := SphereMesh.new()
+		coal.radius = 0.2
+		coal.height = 0.18
+		coal.radial_segments = 7
+		coal.rings = 4
+		embers.append([coal, Transform3D(Basis(), offset + Vector3(0.0, 0.06, 0.0))])
+	var glow := _material(_EMBER, 0.7)
+	glow.emission_enabled = true
+	glow.emission = _EMBER
+	glow.emission_energy_multiplier = 1.8
+	_append(mesh, embers, glow)
+	return mesh
+
+
+## A luminous toadstool: pale stalk under a softly glowing violet cap, ~0.55 m
+## tall at scale 1 — the glowing hollow grows a ring of them at varied scales.
+static func build_mushroom() -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	var stalk := CylinderMesh.new()
+	stalk.top_radius = 0.07
+	stalk.bottom_radius = 0.10
+	stalk.height = 0.4
+	stalk.radial_segments = 6
+	stalk.rings = 1
+	_append(mesh, [[stalk, Transform3D(Basis(), Vector3(0.0, 0.2, 0.0))]],
+			_material(Color(0.82, 0.78, 0.7), 0.9))
+
+	var cap := SphereMesh.new()
+	cap.radius = 0.27
+	cap.height = 0.3
+	cap.radial_segments = 9
+	cap.rings = 5
+	var mat := _material(_SPORE, 0.45)
+	mat.emission_enabled = true
+	mat.emission = _SPORE
+	mat.emission_energy_multiplier = 1.3
+	_append(mesh, [[cap, Transform3D(Basis(), Vector3(0.0, 0.42, 0.0))]], mat)
 	return mesh
 
 

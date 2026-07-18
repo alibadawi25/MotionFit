@@ -23,10 +23,11 @@ extends Node3D
 ##      Two, not one, so they parallax against each other as you move and read as
 ##      a volume rather than a decal. They hide the terrain's rim and the empty
 ##      sea past it.
-##   2. [b]The whiteout[/b]: the WorldEnvironment's own fog density is ramped up
-##      as you push in, so the air around YOU thickens too. This is the piece
-##      that actually sells it — geometry alone always looks like a thing you
-##      are standing next to, never like weather you are inside of.
+##   2. [b]The whiteout[/b]: the WorldEnvironment's depth-fog gradient is collapsed
+##      inward as you push in (clear plane to the camera, full white ~20 m out),
+##      so the air around YOU thickens too. This is the piece that actually sells
+##      it — geometry alone always looks like a thing you are standing next to,
+##      never like weather you are inside of.
 ##   3. [b]The refusal[/b]: [method limit_velocity] caps how fast you may still
 ##      travel outward by how much room is left, which decays to a glide you can
 ##      never finish. You are never stopped — you just stop arriving. Most
@@ -77,10 +78,14 @@ const RING_EXTENTS: Array[float] = [508.0, 532.0]
 const RING_BOTTOM: float = -30.0
 const RING_TOP: float = 135.0
 
-## Environment fog density at [constant HALF_EXTENT]. ~1/0.05 ≈ 20 m of
-## visibility: a true whiteout, which is the point — at the limit there is
-## nothing left to walk toward.
-const WALL_FOG_DENSITY: float = 0.05
+## Where the environment's DEPTH fog reaches full white at [constant HALF_EXTENT]:
+## ~20 m out. The scene runs Depth-mode fog (a long begin→end gradient, so the
+## world hazes off gradually over hundreds of metres rather than an exponential
+## wall close to the camera). To white the rim out we don't touch density —
+## Depth mode ignores it — we collapse the whole gradient onto the player:
+## [member Environment.fog_depth_begin] slides to 0 and end to this, so at the
+## limit there is ~20 m of visibility and nothing left to walk toward.
+const WALL_FOG_END: float = 20.0
 
 ## The player, whose distance into the band drives the whole effect.
 @export var player_path: NodePath
@@ -90,25 +95,32 @@ const WALL_FOG_DENSITY: float = 0.05
 
 var _player: Node3D
 var _environment: WorldEnvironment
-## The scene's authored fog density, captured so the ramp can return to it
-## instead of hardcoding a value that would silently diverge from the scene.
-var _base_fog_density: float = 0.0
+## The scene's authored depth-fog gradient (near clear plane and far full-white
+## plane), captured so the ramp can return to it instead of hardcoding values
+## that would silently diverge from the scene.
+var _base_depth_begin: float = 0.0
+var _base_depth_end: float = 0.0
 
 
 func _ready() -> void:
 	_player = get_node_or_null(player_path) as Node3D
 	_environment = get_node_or_null(environment_path) as WorldEnvironment
 	if _environment != null and _environment.environment != null:
-		_base_fog_density = _environment.environment.fog_density
+		_base_depth_begin = _environment.environment.fog_depth_begin
+		_base_depth_end = _environment.environment.fog_depth_end
 	_build_rings()
 
 
 func _process(_delta: float) -> void:
 	if _player == null or _environment == null or _environment.environment == null:
 		return
-	# Thicken the air the player is standing in, not just the air at the rim.
-	_environment.environment.fog_density = lerpf(
-			_base_fog_density, WALL_FOG_DENSITY, get_haze(_player.global_position))
+	# Thicken the air the player is standing in, not just the air at the rim:
+	# collapse the long depth gradient inward as they push into the band, so the
+	# clear plane slides up to the camera and full white closes to ~20 m out.
+	var haze: float = get_haze(_player.global_position)
+	var env: Environment = _environment.environment
+	env.fog_depth_begin = lerpf(_base_depth_begin, 0.0, haze)
+	env.fog_depth_end = lerpf(_base_depth_end, WALL_FOG_END, haze)
 
 
 ## Builds the fog bank: two square rings of four inward-facing walls each, sharing
@@ -156,6 +168,13 @@ func _make_wall_material(shader: Shader, noise: NoiseTexture2D, index: int,
 	mat.set_shader_parameter("fog_noise", noise)
 	mat.set_shader_parameter("base_y", RING_BOTTOM)
 	mat.set_shader_parameter("top_y", RING_TOP)
+	# Sit the bank IN the sky's own colour, not brighter than it: the default fog
+	# white (0.8) glows as a distinct pale slab against the pale-blue horizon,
+	# which is half of why it read as a wall. Pull it down onto the horizon tint
+	# (sky_horizon 0.68,0.76,0.84 / env fog 0.66,0.73,0.82) so the top of the
+	# gradient simply vanishes into the sky.
+	mat.set_shader_parameter("fog_color", Color(0.71, 0.78, 0.85))
+	mat.set_shader_parameter("deep_color", Color(0.5, 0.58, 0.68))
 	# The outer ring wraps fewer, larger clumps and drifts slower: distance reads
 	# as scale plus parallax, exactly like the far layer of a painted backdrop.
 	# Counted in tiles per WALL rather than per metre, so this has to be derived
@@ -174,13 +193,29 @@ func _make_wall_material(shader: Shader, noise: NoiseTexture2D, index: int,
 	mat.set_shader_parameter("scroll", 0.65 if outer else 1.0)
 	# The division of labour between the rings. The outer one is the WALL: mostly
 	# solid, so the rim and the empty sea behind it are genuinely gone. The inner
-	# one is the WEATHER: no floor at all, just clumps, drifting across the outer
-	# one at a different rate. Neither alone works — the outer alone is a painted
-	# backdrop, the inner alone is a world with holes in its edge.
-	mat.set_shader_parameter("floor_density", 0.8 if outer else 0.0)
-	mat.set_shader_parameter("density", 1.0 if outer else 0.85)
-	mat.set_shader_parameter("coverage", 0.38 if outer else 0.5)
-	mat.set_shader_parameter("top_start", 0.42 if outer else 0.3)
+	# one is the WEATHER: soft clumps drifting across the outer one at a different
+	# rate. Both keep a real FLOOR of haze now (the inner one used to have none),
+	# so from the island the bank reads as a smooth pale mist rather than a field
+	# of speckles — the clumps modulate that haze instead of poking through empty
+	# sky. Realism, not drama: seen from 500 m across the water through the
+	# aerial fog, any bare gap between clumps flickers as a white speck.
+	mat.set_shader_parameter("floor_density", 0.95 if outer else 0.7)
+	mat.set_shader_parameter("density", 1.0 if outer else 0.72)
+	mat.set_shader_parameter("coverage", 0.3 if outer else 0.4)
+	# Soften the clump edges: the default contrast (2.4) stretches the noise into
+	# hard-edged blobs, which is exactly what reads as speckle at distance. A
+	# gentle stretch (near 1.0 = almost none) keeps a whisper of billow but blurs
+	# its rim into the haze floor instead of punching holes to the sky.
+	mat.set_shader_parameter("contrast", 1.2 if outer else 1.35)
+	# Make it a GRADIENT, not a slab. The sea meets the bank at h≈0.27 (waterline
+	# y=15 between base -30 and top 135); the old top_start held FULL opacity from
+	# there up to h=0.42 before fading, which is the ~24 m solid strip that read as
+	# a wall standing on the water. Start the fade right at the waterline instead,
+	# so the bank is thickest at the horizon and thins continuously all the way up
+	# into the sky — natural aerial haze rather than a painted flat. A wider
+	# raggedness breaks the fade line so it never resolves into a clean top edge.
+	mat.set_shader_parameter("top_start", 0.29 if outer else 0.26)
+	mat.set_shader_parameter("raggedness", 0.55)
 	# Draw order has to be stated outright, because depth cannot settle it. The
 	# walls share a centre with the sea plane, so Godot's transparent sort — which
 	# orders by distance to the AABB centre — sees objects at the same place and

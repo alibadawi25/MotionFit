@@ -21,6 +21,7 @@
 [ext_resource type="Script" uid="uid://dt76it4kp4xvj" path="res://addons/zylann.hterrain/hterrain_detail_layer.gd" id="19_dtl"]
 [ext_resource type="Texture2D" uid="uid://24ki2ai83bi4" path="res://assets/textures/terrain/grass_blades.png" id="20_blades"]
 [ext_resource type="Script" uid="uid://can8godn55p3p" path="res://scenes/open-world/world_scatter.gd" id="21_scat"]
+[ext_resource type="Script" path="res://scenes/open-world/wildlife.gd" id="22_wild"]
 
 [sub_resource type="Resource" id="Resource_xcpkc"]
 script = ExtResource("3_7qf85")
@@ -102,22 +103,25 @@ glow_strength = 1.1
 glow_bloom = 0.08
 glow_hdr_threshold = 0.95
 fog_enabled = true
+fog_mode = 1
 fog_light_color = Color(0.66, 0.73, 0.82, 1)
-fog_sun_scatter = 0.25
-fog_density = 0.0022
-fog_aerial_perspective = 0.55
-fog_sky_affect = 0.35
-fog_height = 16.0
-fog_height_density = 0.05
+fog_sun_scatter = 0.3
+fog_aerial_perspective = 0.72
+fog_sky_affect = 0.5
+fog_depth_begin = 70.0
+fog_depth_end = 820.0
+fog_depth_curve = 1.5
+fog_height = 20.0
+fog_height_density = 0.04
 adjustment_enabled = true
 adjustment_contrast = 1.08
 adjustment_saturation = 1.12
 
 [sub_resource type="CameraAttributesPractical" id="cam_attrs"]
 dof_blur_far_enabled = true
-dof_blur_far_distance = 90.0
-dof_blur_far_transition = 60.0
-dof_blur_amount = 0.06
+dof_blur_far_distance = 80.0
+dof_blur_far_transition = 90.0
+dof_blur_amount = 0.13
 
 [node name="OpenWorld" type="Node3D" unique_id=1654159363]
 script = ExtResource("12_game")
@@ -158,7 +162,7 @@ shader_params/u_instance_scale = Vector3(1, 1, 1)
 shader_params/u_roughness = 0.9
 
 [node name="Sea" type="MeshInstance3D" parent="." unique_id=1449021337]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 13.5, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15, 0)
 cast_shadow = 0
 extra_cull_margin = 4.0
 mesh = SubResource("PlaneMesh_sea")
@@ -216,6 +220,11 @@ player_path = NodePath("../CharacterBody3D")
 [node name="WorldScatter" type="Node3D" parent="." unique_id=86184369]
 script = ExtResource("21_scat")
 terrain_path = NodePath("../HTerrain")
+
+[node name="Wildlife" type="Node3D" parent="."]
+script = ExtResource("22_wild")
+terrain_path = NodePath("../HTerrain")
+player_path = NodePath("../CharacterBody3D")
 
 [node name="SpawnPoint" type="Marker3D" parent="." unique_id=905473459]
 transform = Transform3D(-0.0871557, 0, -0.9961947, 0, 1, 0, 0.9961947, 0, -0.0871557, 407.81302, 39.572594, -6.018368)

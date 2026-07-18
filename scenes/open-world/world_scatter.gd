@@ -14,8 +14,11 @@ extends Node3D
 ## Placement is deterministic (fixed seed): the forest is part of the world,
 ## not a dice roll per session.
 ##
-## Also builds the one hand-placed landmark, the crystal grotto (GROTTO_POS):
-## a walk-in boulder shell that rides the same MultiMesh + collider plumbing.
+## Also builds the hand-placed hidden landmarks (see SECRETS): the crystal
+## grotto, the summit cairn, the standing stones, the castaway camp and the
+## glowing hollow — all riding the same MultiMesh + collider plumbing, dressed
+## with a few MeshInstances and lights. open_world.gd reads SECRETS to plant
+## the discovery triggers that turn stumbling onto one into a score bonus.
 
 const ScatterMeshes := preload("res://scenes/open-world/scatter_meshes.gd")
 
@@ -37,20 +40,24 @@ const SEED := 20260717
 const MAX_TREES := 1100
 const MAX_ROCKS := 420
 
-## World-space height bands (metres). Sea sits at 13.5; the cold band of
+## World-space height bands (metres). Sea sits at 15; the cold band of
 ## altitude_effects.gd starts at 55, and the roamable midlands (including the
 ## spawn plateau at ~64-68) sit ABOVE that — so the treeline reaches past the
 ## start of the cold and thins out on the way (see TREELINE_FADE_Y), with
 ## conifers owning the upper half.
-const TREE_MIN_Y := 16.5
+const TREE_MIN_Y := 18.0
 const TREE_MAX_Y := 66.0
 const TREELINE_FADE_Y := 54.0
 const CONIFER_Y := 45.0
-const ROCK_MIN_Y := 15.5
+const ROCK_MIN_Y := 15.8  # boulders may sit on the upper beach, half in sand
 const ALPINE_Y := 50.0
 ## Slope limits (degrees).
 const TREE_MAX_SLOPE := 26.0
 const ROCK_MAX_SLOPE := 52.0
+## Trees stay a stride back from cliff rims: a candidate is rejected when the
+## ground this many px (2 px = 4 m) away already tilts past RIM_SLOPE.
+const RIM_MARGIN_PX := 2.0
+const RIM_SLOPE := 34.0
 ## Nothing spawns this close to the player's start line.
 const SPAWN_CLEAR := Vector3(182.3, 0.0, -6.0)
 const SPAWN_CLEAR_RADIUS := 9.0
@@ -63,7 +70,25 @@ const SPAWN_CLEAR_RADIUS := 9.0
 const GROTTO_POS := Vector3(228.0, 47.4, -60.0)
 const GROTTO_SHELL_R := 6.0
 const GROTTO_MOUTH_AZ_DEG := 62.0  # half-angle of the opening, around +X (east)
-const GROTTO_CLEAR_RADIUS := 15.0  # ordinary scatter keeps out of the grotto
+
+## The hidden landmarks scattered around the world for players to search out.
+## Positions were sited with tools/probe_spot.gd (flat ground, spread to the
+## world's far corners so each one demands a real walk). Per secret:
+## "radius" — how close the player must come for open_world.gd's discovery
+## trigger to fire; "clear" — ordinary scatter keeps this far away, so trees
+## can't bury a landmark (nor crowd the hollow's own mushroom ring).
+const SECRETS: Array[Dictionary] = [
+	{"id": "grotto", "name": "THE CRYSTAL GROTTO",
+			"pos": GROTTO_POS, "radius": 5.5, "clear": 15.0},
+	{"id": "cairn", "name": "THE SUMMIT CAIRN",
+			"pos": Vector3(-60.0, 79.8, -120.0), "radius": 6.0, "clear": 8.0},
+	{"id": "stones", "name": "THE STANDING STONES",
+			"pos": Vector3(-240.0, 50.1, 240.0), "radius": 8.0, "clear": 14.0},
+	{"id": "camp", "name": "THE CASTAWAY CAMP",
+			"pos": Vector3(60.0, 16.4, 250.0), "radius": 6.0, "clear": 8.0},
+	{"id": "hollow", "name": "THE GLOWING HOLLOW",
+			"pos": Vector3(-405.0, 20.1, -285.0), "radius": 6.0, "clear": 7.0},
+]
 
 @export var terrain_path: NodePath
 
@@ -105,13 +130,13 @@ func _ready() -> void:
 					clampi(int(map.z), 0, splat_img.get_height() - 1))
 			if Vector3(wx, 0.0, wz).distance_to(SPAWN_CLEAR) < SPAWN_CLEAR_RADIUS:
 				continue
-			if Vector2(wx, wz).distance_to(
-					Vector2(GROTTO_POS.x, GROTTO_POS.z)) < GROTTO_CLEAR_RADIUS:
+			if _near_secret(wx, wz):
 				continue
 
 			# --- trees: on grass, gentle ground, gathered into woods --------
 			if ground.r > 0.5 and wy > TREE_MIN_Y and wy < TREE_MAX_Y \
-					and slope < TREE_MAX_SLOPE:
+					and slope < TREE_MAX_SLOPE \
+					and not _near_cliff_rim(height_img, map.x, map.z, y_scale):
 				var wooded := clumps.get_noise_2d(wx, wz) > 0.08
 				var chance := 0.62 if wooded else 0.045
 				# Woods thin out toward the treeline instead of stopping dead.
@@ -143,10 +168,13 @@ func _ready() -> void:
 		broadleafs.resize(int(broadleafs.size() * keep))
 	if rocks.size() > MAX_ROCKS:
 		rocks.resize(MAX_ROCKS)
-	# Appended after the cap on purpose: the grotto is a landmark, not scatter,
-	# and must never be thinned away. Riding in the boulder MultiMesh + collider
-	# list means it needs no rendering or physics machinery of its own.
+	# Appended after the cap on purpose: these are landmarks, not scatter, and
+	# must never be thinned away. Riding in the boulder MultiMesh + collider
+	# list means they need no rendering or physics machinery of their own.
 	rocks.append_array(_grotto_shell())
+	rocks.append_array(_standing_stones())
+	rocks.append_array(_cairn_stones())
+	rocks.append_array(_camp_stone_ring())
 
 	rng.seed = SEED + 1  # tints independent of how placement consumed the stream
 	_make_multimesh("Conifers", ScatterMeshes.build_conifer(), conifers, rng)
@@ -154,6 +182,17 @@ func _ready() -> void:
 	_make_multimesh("Boulders", ScatterMeshes.build_boulder(), rocks, rng)
 	_build_colliders(conifers + broadleafs, rocks)
 	_build_grotto_interior()
+	_build_secret_props()
+
+
+## True when (wx, wz) falls inside any secret's keep-out ring — ordinary
+## scatter must not bury (or wall off) a landmark players are meant to find.
+func _near_secret(wx: float, wz: float) -> bool:
+	for secret in SECRETS:
+		var sp: Vector3 = secret.pos
+		if Vector2(wx, wz).distance_to(Vector2(sp.x, sp.z)) < secret.clear:
+			return true
+	return false
 
 
 ## The grotto's rock shell: boulders on a hemisphere around GROTTO_POS, in
@@ -217,6 +256,125 @@ func _build_grotto_interior() -> void:
 	add_child(glow)
 
 
+## The standing stones: eight menhirs — tall-stretched boulders — ringing a
+## fallen slab on the flat west-meadow plateau. The stretch is anisotropic
+## (thin x/z, tall y), which is why _build_colliders sizes its spheres from the
+## horizontal scale, not the height.
+func _standing_stones() -> Array[Transform3D]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 4
+	var out: Array[Transform3D] = []
+	var center: Vector3 = SECRETS[2].pos
+	var ring_r := 7.5
+	for i in 8:
+		var az := TAU * float(i) / 8.0 + rng.randf_range(-0.08, 0.08)
+		var h := rng.randf_range(2.1, 2.8)
+		var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)) \
+				.rotated(Vector3.RIGHT, rng.randf_range(-0.05, 0.05)) \
+				.scaled(Vector3(rng.randf_range(0.55, 0.7), h,
+						rng.randf_range(0.45, 0.6)))
+		out.append(Transform3D(basis, center
+				+ Vector3(cos(az) * ring_r, 0.35 * h, sin(az) * ring_r)))
+	# The slab in the middle, tipped flat into the grass long ago.
+	out.append(Transform3D(
+			Basis(Vector3.UP, 0.7).scaled(Vector3(1.6, 0.35, 1.0)),
+			center + Vector3(0.4, -0.1, -0.3)))
+	return out
+
+
+## The summit cairn: a tapering stack of boulders on the high shelf below the
+## peak — proof somebody once made the climb. Light xz jitter and per-stone
+## yaw keep it hand-stacked rather than machined.
+func _cairn_stones() -> Array[Transform3D]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 5
+	var out: Array[Transform3D] = []
+	var base: Vector3 = SECRETS[1].pos
+	# scale, centre height above the ground
+	var courses: Array = [[1.5, 0.4], [1.1, 1.1], [0.8, 1.65], [0.55, 2.05],
+			[0.35, 2.35]]
+	for course in courses:
+		var s: float = course[0] * rng.randf_range(0.92, 1.08)
+		var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)) \
+				.scaled(Vector3.ONE * s)
+		out.append(Transform3D(basis, base + Vector3(
+				rng.randf_range(-0.12, 0.12), course[1],
+				rng.randf_range(-0.12, 0.12))))
+	return out
+
+
+## The castaway camp's fire ring: a circle of fist-sized stones around the
+## embers. Too small for colliders (by design — nothing to trip on).
+func _camp_stone_ring() -> Array[Transform3D]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 6
+	var out: Array[Transform3D] = []
+	var center: Vector3 = SECRETS[3].pos
+	for i in 7:
+		var az := TAU * float(i) / 7.0 + rng.randf_range(-0.15, 0.15)
+		var s := rng.randf_range(0.26, 0.38)
+		var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)) \
+				.scaled(Vector3.ONE * s)
+		out.append(Transform3D(basis,
+				center + Vector3(cos(az) * 1.0, -0.05, sin(az) * 1.0)))
+	return out
+
+
+## Dressing that turns the remaining secret sites into places: the driftwood
+## lean-to and ember glow at the camp, an ice-pale crystal and cold beacon on
+## the cairn, and the hollow's ring of glowing mushrooms. Same recipe as the
+## grotto interior — a couple of MeshInstances and a light each.
+func _build_secret_props() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 7
+	var camp: Vector3 = SECRETS[3].pos
+	var wood := MeshInstance3D.new()
+	wood.name = "CampDriftwood"
+	wood.mesh = ScatterMeshes.build_driftwood()
+	wood.transform = _stand(camp + Vector3(0.0, -0.06, 0.0), 1.0, rng, 0.02)
+	add_child(wood)
+	var ember := OmniLight3D.new()
+	ember.name = "CampEmberGlow"
+	ember.position = camp + Vector3(0.0, 0.5, 0.0)
+	ember.light_color = Color(1.0, 0.55, 0.25)
+	ember.light_energy = 1.4
+	ember.omni_range = 6.0
+	add_child(ember)
+
+	var cairn: Vector3 = SECRETS[1].pos
+	var spike := MeshInstance3D.new()
+	spike.name = "CairnCrystal"
+	spike.mesh = ScatterMeshes.build_crystal()
+	spike.transform = _stand(cairn + Vector3(0.15, 2.45, 0.1), 0.7, rng, 0.15)
+	add_child(spike)
+	var beacon := OmniLight3D.new()
+	beacon.name = "CairnBeacon"
+	beacon.position = cairn + Vector3(0.0, 3.3, 0.0)
+	beacon.light_color = Color(0.62, 0.82, 1.0)
+	beacon.light_energy = 1.0
+	beacon.omni_range = 8.0
+	add_child(beacon)
+
+	var hollow: Vector3 = SECRETS[4].pos
+	var shroom_mesh := ScatterMeshes.build_mushroom()
+	for i in 9:
+		var az := TAU * float(i) / 9.0 + rng.randf_range(-0.18, 0.18)
+		var r := rng.randf_range(2.0, 3.4)
+		var mi := MeshInstance3D.new()
+		mi.mesh = shroom_mesh
+		mi.transform = _stand(
+				hollow + Vector3(cos(az) * r, -0.04, sin(az) * r),
+				rng.randf_range(0.7, 1.5), rng, 0.1)
+		add_child(mi)
+	var spores := OmniLight3D.new()
+	spores.name = "HollowGlow"
+	spores.position = hollow + Vector3(0.0, 1.0, 0.0)
+	spores.light_color = Color(0.66, 0.42, 0.92)
+	spores.light_energy = 1.2
+	spores.omni_range = 7.0
+	add_child(spores)
+
+
 ## Upright transform with a whisper of tilt — dead-vertical trees read as pins.
 func _stand(pos: Vector3, s: float, rng: RandomNumberGenerator,
 		tilt: float) -> Transform3D:
@@ -265,18 +423,33 @@ func _build_colliders(trees: Array[Transform3D], rocks: Array[Transform3D]) -> v
 		PhysicsServer3D.body_add_shape(body.get_rid(), shape.get_rid(),
 				Transform3D(Basis(), t.origin + Vector3(0.0, 1.3 * s, 0.0)))
 	for t in rocks:
-		var rs := t.basis.get_scale().y
-		if rs < 0.75:
+		var sc := t.basis.get_scale()
+		if sc.y < 0.75:
 			continue
+		# Radius from the HORIZONTAL scale: landmark menhirs are stretched tall
+		# and thin, and a sphere sized from their height would be an invisible
+		# wall a metre wider than the stone.
 		var ball := SphereShape3D.new()
-		ball.radius = 0.62 * rs
+		ball.radius = 0.62 * maxf(sc.x, sc.z)
 		_shapes.append(ball)
 		PhysicsServer3D.body_add_shape(body.get_rid(), ball.get_rid(),
-				Transform3D(Basis(), t.origin + Vector3(0.0, 0.3 * rs, 0.0)))
+				Transform3D(Basis(), t.origin + Vector3(0.0, 0.3 * sc.y, 0.0)))
+
+
+## True when the ground a few metres away in any cardinal direction is already
+## cliff-steep — a tree there would teeter on the rim with half its roots in
+## the air. (Only called for candidates that passed the cheap gates.)
+func _near_cliff_rim(img: Image, x: float, z: float, y_scale: float) -> bool:
+	for off in [Vector2(RIM_MARGIN_PX, 0.0), Vector2(-RIM_MARGIN_PX, 0.0),
+			Vector2(0.0, RIM_MARGIN_PX), Vector2(0.0, -RIM_MARGIN_PX)]:
+		if _slope_deg(img, x + off.x, z + off.y, y_scale) > RIM_SLOPE:
+			return true
+	return false
 
 
 ## Bilinear heightmap sample at a floating-point pixel position (map units).
-func _height_at(img: Image, x: float, z: float) -> float:
+## (Static: wildlife.gd samples the same maps through these three helpers.)
+static func _height_at(img: Image, x: float, z: float) -> float:
 	var w := img.get_width()
 	var h := img.get_height()
 	var x0 := clampi(int(floorf(x)), 0, w - 1)
@@ -291,7 +464,7 @@ func _height_at(img: Image, x: float, z: float) -> float:
 
 
 ## Ground steepness in degrees, in world units (map px = 2 m; heights scaled).
-func _slope_deg(img: Image, x: float, z: float, y_scale: float) -> float:
+static func _slope_deg(img: Image, x: float, z: float, y_scale: float) -> float:
 	var dhx := (_height_at(img, x + 1.0, z) - _height_at(img, x - 1.0, z)) \
 			* y_scale / 4.0
 	var dhz := (_height_at(img, x, z + 1.0) - _height_at(img, x, z - 1.0)) \
@@ -299,7 +472,7 @@ func _slope_deg(img: Image, x: float, z: float, y_scale: float) -> float:
 	return rad_to_deg(atan(sqrt(dhx * dhx + dhz * dhz)))
 
 
-func _load_image(path: String) -> Image:
+static func _load_image(path: String) -> Image:
 	var res: Resource = load(path)
 	if res == null:
 		return null

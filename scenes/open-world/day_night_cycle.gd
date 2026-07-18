@@ -15,7 +15,7 @@ extends Node
 ## automatically; only the night and dusk tints live here as constants.
 ##
 ## Plays nicely with world_border.gd: the border ramps the environment's fog
-## DENSITY, this cycle recolours its fog LIGHT — different properties, no fight.
+## DEPTH range, this cycle recolours its fog LIGHT — different properties, no fight.
 class_name DayNightCycle
 
 ## Night palette (the sky material's day values are captured at _ready).

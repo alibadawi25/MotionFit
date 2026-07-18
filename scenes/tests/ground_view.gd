@@ -11,6 +11,7 @@ extends Node3D
 ## (multiplies fog_density / fog_height_density; border wall hidden either way).
 
 var _hide_hud := false
+var _cam: Camera3D
 
 func _ready() -> void:
 	_hide_hud = OS.get_environment("GV_HUD") == "0"
@@ -41,13 +42,14 @@ func _ready() -> void:
 	add_child(cam)
 	cam.global_position = _env_vec3("GV_POS", Vector3(182.0, 70.0, 8.0))
 	cam.look_at(_env_vec3("GV_AT", Vector3(150.0, 62.0, -50.0)))
-	# Claim the viewport after the world's own rig has finished setting up.
-	await get_tree().process_frame
-	await get_tree().process_frame
-	cam.make_current()
+	_cam = cam
 
 
 func _process(_delta: float) -> void:
+	# The player rig spawns seconds into the load and claims the viewport, so a
+	# one-shot make_current loses the race — re-assert every frame instead.
+	if _cam != null and not _cam.current:
+		_cam.make_current()
 	if not _hide_hud:
 		return
 	# HUD layers appear over the first seconds (stat HUD, countdown, hints), so
