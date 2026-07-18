@@ -149,6 +149,15 @@ Initialisation order (and dependencies):
   running are ignored (button-mash guard); the fade tweens are pause-immune so a
   paused tree can't wedge the transition. `change_scene` is now `void`/async —
   the swap lands a fade later, which no caller depended on.
+- The target scene is loaded on a **background thread**
+  (`ResourceLoader.load_threaded_request` behind the black; `use_sub_threads`
+  must stay **false** — parallel sub-thread loading fails to compile scripts
+  that reference autoloads, surfacing as a bogus "Parse Error: Failed" on the
+  scene). If a load outlasts `LOADING_UI_DELAY_SEC` (0.2 s), SceneManager
+  overlays `loading_screen.tscn` above the fade and feeds its bar real
+  progress via `set_progress()` — menus never see it, heavy game scenes do.
+  So the app never freezes on a scene swap, and `loading_screen.tscn` is no
+  longer a routed-to standalone screen.
 - **No other file may contain a `res://….tscn` literal or call
   `get_tree().change_scene_*` directly.** Games are launched generically from a
   path stored in the GameManager registry, which itself references SceneManager
@@ -570,7 +579,17 @@ by design — with no service running the texture is null and the UI falls back 
   Non-obvious numbers: the roamable midlands INCLUDING THE SPAWN PLATEAU sit
   at world y ~64-68 — vegetation bands tuned "sensibly" against sea level
   (13.5) left the first meadow the player ever sees bare; the treeline runs to
-  66 and full grass to ~65 for exactly that reason. Verified via
+  66 and full grass to ~65 for exactly that reason.
+  *The crystal grotto (2026-07-18)*: the walkable cave prototype, built by
+  `world_scatter.gd` (`GROTTO_POS` (228, 47.4, −60), mountain's east flank,
+  ~195 m west of spawn). Heightmap terrain cannot hold true caves, so it is a
+  hemisphere shell of oversized scatter boulders (three rings; ±62° mouth gap
+  facing east — wide because webcam steering is imprecise) with an amber
+  OmniLight + emissive crystal clusters (`ScatterMeshes.build_crystal`) inside.
+  It rides the existing boulder MultiMesh + PhysicsServer collider path and is
+  appended AFTER the MAX_ROCKS cap so thinning can never delete the landmark;
+  ordinary scatter keeps `GROTTO_CLEAR_RADIUS` (15 m) away. Site found with
+  `tools/probe_spot.gd` (`SPOTS="x,z;..."` prints height/slope/downhill). Verified via
   `scenes/tests/ground_view.tscn` (`GV_POS="x,y,z" GV_AT="x,y,z" bash
   tools/shot.sh name scenes/tests/ground_view.tscn` — head-height camera,
   defaults to the spawn meadow). NB a camera placed below the terrain surface
@@ -772,7 +791,9 @@ same controller works with the camera today or another input source later.
 	  players have no strap, and an absent-state row would be noise. Still open:
 	  an HR chip in the Zombie Run HUD (kept out for now — that HUD's rule is
 	  "no numbers that quantify the tension") and per-day HR on the dashboard.
-- [ ] Async loading via `LoadingScreen` for heavy game scenes.
+- [x] Async loading via `LoadingScreen` for heavy game scenes — SceneManager
+	  threads every scene load and overlays the loading screen with real
+	  progress when a load runs long (see §5 SceneManager).
 - [x] Global UI `Theme` in `assets/ui/` for consistent styling — `assets/ui/main_theme.tres`
 	  styles Button (+ a `PrimaryButton` type variation) and sets a default Rajdhani
 	  font. Applied across the menu scenes (Main Menu, Game Select, Settings, Profile,

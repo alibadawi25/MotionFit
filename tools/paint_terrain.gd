@@ -16,7 +16,13 @@ extends SceneTree
 
 const SEA_MAP_H := 9.0            # world 13.5 / 1.5
 const SAND_FULL_H := 10.2         # fully sand below this (world ~15.3)
-const SAND_FADE_H := 11.6         # no sand above this (world ~17.4)
+const SAND_FADE_H := 14.6         # no sand above this (world ~21.9). The fade
+								  # is a plain smoothstep kept WIDE on purpose:
+								  # mid splat weights are where the shader's
+								  # depth blending lets the bumpier texture win
+								  # per-pixel, which is what gives the mountain
+								  # grass->stone band its speckled look — sand
+								  # gets the same treatment for free.
 const SAND_JITTER := 0.7          # noise wobble on both thresholds
 const SAND_SLOPE_DAMP_DEG := 26.0 # sand thins out beyond this steepness
 const SAND_SLOPE_END_DEG := 40.0  # …and is gone past this (cliff shorelines)

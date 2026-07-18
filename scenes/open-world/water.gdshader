@@ -15,6 +15,12 @@ uniform float depth_fade : hint_range(0.5, 40.0) = 10.0;
 uniform float foam_depth : hint_range(0.05, 5.0) = 0.9;
 uniform float wave_height : hint_range(0.0, 2.0) = 0.3;
 uniform float wave_speed : hint_range(0.0, 4.0) = 1.0;
+// Short choppy waves riding on the broad swell (0 = glassy rolling sea).
+// Their wavelengths (~20-25 m) must stay well above the sea mesh's quad size
+// or the vertex grid undersamples them into shimmering moire.
+uniform float chop : hint_range(0.0, 2.0) = 1.0;
+// Whitecap foam dusted on the highest crests (0 disables).
+uniform float whitecap : hint_range(0.0, 1.0) = 0.35;
 // World-space scale of the small surface ripples that catch the sun: UV
 // repeats per metre for the primary noise layer (the second layer scrolls at
 // 0.38x this scale, the other way, so the pattern never visibly tiles).
@@ -29,16 +35,30 @@ uniform sampler2D depth_texture : hint_depth_texture, filter_linear;
 
 varying vec3 world_pos;
 
-// Broad swell: a few offset sines so crests drift instead of marching in rows.
-float swell(vec2 p, float t) {
-	return sin(p.x * 0.11 + t) * 0.45
-			+ sin(p.y * 0.087 - t * 1.27) * 0.35
-			+ sin((p.x + p.y) * 0.061 + t * 0.73) * 0.2;
+// Broad swell + short chop: a few offset sines in different directions so
+// crests drift instead of marching in rows. Height and slope must come from
+// the SAME sum, so each term lives here once and _wave_eval returns both:
+// h in .x, d/dx in .y, d/dz in .z.
+vec3 _wave_term(vec2 p, vec2 k, float speed, float amp, float t) {
+	float phase = dot(p, k) + t * speed;
+	return vec3(sin(phase) * amp, cos(phase) * amp * k.x, cos(phase) * amp * k.y);
+}
+
+vec3 wave_eval(vec2 p, float t) {
+	// Broad swell (wavelengths 57-103 m) — the slow breathing of the surface.
+	vec3 w = _wave_term(p, vec2(0.11, 0.0), 1.0, 0.45, t)
+			+ _wave_term(p, vec2(0.0, 0.087), -1.27, 0.35, t)
+			+ _wave_term(p, vec2(0.061, 0.061), 0.73, 0.2, t);
+	// Chop (wavelengths ~20-25 m) — what actually reads as "waves" in motion.
+	w += (_wave_term(p, vec2(0.21, 0.14), 1.7, 0.20, t)
+			+ _wave_term(p, vec2(0.16, -0.23), -1.4, 0.16, t)
+			+ _wave_term(p, vec2(-0.09, 0.31), 2.1, 0.12, t)) * chop;
+	return w * wave_height;
 }
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX.y += swell(world_pos.xz, TIME * wave_speed) * wave_height;
+	VERTEX.y += wave_eval(world_pos.xz, TIME * wave_speed).x;
 }
 
 void fragment() {
@@ -53,7 +73,13 @@ void fragment() {
 	// water reads as a smooth fresnel sheet instead of shimmer.
 	float detail = clamp(1.0 - length(VERTEX) / 250.0, 0.15, 1.0);
 	vec2 nxy = (n1.xy + n2.xy * 0.8) * ripple_strength * detail;
-	vec3 n = normalize(NORMAL + TANGENT * nxy.x + BINORMAL * nxy.y);
+	// The wave sum's analytic slope tilts the surface normal, which is what
+	// makes the swell and chop visible as light: crests catch the sun and
+	// troughs hold the sky colour. Without this the displacement is a silent
+	// wobble the shading never sees.
+	vec3 wave = wave_eval(world_pos.xz, t);
+	vec3 n_world = normalize(vec3(-wave.y + nxy.x, 1.0, -wave.z + nxy.y));
+	vec3 n = normalize((VIEW_MATRIX * vec4(n_world, 0.0)).xyz);
 	NORMAL = n;
 
 	// Water column depth behind this pixel: scene depth minus surface depth.
@@ -73,6 +99,12 @@ void fragment() {
 	float foam_edge = foam_depth * (0.8 + 0.5 * n1.x);
 	float foam = 1.0 - smoothstep(0.0, foam_edge, water_depth);
 	color = mix(color, foam_color, foam * 0.85);
+
+	// Whitecaps: foam dusted where the wave sum peaks, broken up by the ripple
+	// noise so caps are streaks on the crest, never a painted-on contour line.
+	float crest = smoothstep(0.55, 0.95, wave.x / max(wave_height, 0.001));
+	float cap = crest * smoothstep(0.05, 0.45, n1.x + n2.y * 0.5) * whitecap;
+	color = mix(color, foam_color, cap * detail);
 
 	ALBEDO = color;
 	ROUGHNESS = roughness_value;

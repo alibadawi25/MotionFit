@@ -13,6 +13,9 @@ extends Node3D
 ##
 ## Placement is deterministic (fixed seed): the forest is part of the world,
 ## not a dice roll per session.
+##
+## Also builds the one hand-placed landmark, the crystal grotto (GROTTO_POS):
+## a walk-in boulder shell that rides the same MultiMesh + collider plumbing.
 
 const ScatterMeshes := preload("res://scenes/open-world/scatter_meshes.gd")
 
@@ -51,6 +54,16 @@ const ROCK_MAX_SLOPE := 52.0
 ## Nothing spawns this close to the player's start line.
 const SPAWN_CLEAR := Vector3(182.3, 0.0, -6.0)
 const SPAWN_CLEAR_RADIUS := 9.0
+
+## The grotto: a hollow knoll of oversized boulders on the mountain's east
+## flank — the walkable cave prototype. A hemisphere shell of rocks with a wide
+## east-facing mouth (webcam steering needs a forgiving entrance), an amber
+## light and a crystal cluster inside. Site picked with tools/probe_spot.gd:
+## ground y 47.7, slope < 2 deg, ~195 m west of the spawn plateau.
+const GROTTO_POS := Vector3(228.0, 47.4, -60.0)
+const GROTTO_SHELL_R := 6.0
+const GROTTO_MOUTH_AZ_DEG := 62.0  # half-angle of the opening, around +X (east)
+const GROTTO_CLEAR_RADIUS := 15.0  # ordinary scatter keeps out of the grotto
 
 @export var terrain_path: NodePath
 
@@ -92,6 +105,9 @@ func _ready() -> void:
 					clampi(int(map.z), 0, splat_img.get_height() - 1))
 			if Vector3(wx, 0.0, wz).distance_to(SPAWN_CLEAR) < SPAWN_CLEAR_RADIUS:
 				continue
+			if Vector2(wx, wz).distance_to(
+					Vector2(GROTTO_POS.x, GROTTO_POS.z)) < GROTTO_CLEAR_RADIUS:
+				continue
 
 			# --- trees: on grass, gentle ground, gathered into woods --------
 			if ground.r > 0.5 and wy > TREE_MIN_Y and wy < TREE_MAX_Y \
@@ -127,12 +143,78 @@ func _ready() -> void:
 		broadleafs.resize(int(broadleafs.size() * keep))
 	if rocks.size() > MAX_ROCKS:
 		rocks.resize(MAX_ROCKS)
+	# Appended after the cap on purpose: the grotto is a landmark, not scatter,
+	# and must never be thinned away. Riding in the boulder MultiMesh + collider
+	# list means it needs no rendering or physics machinery of its own.
+	rocks.append_array(_grotto_shell())
 
 	rng.seed = SEED + 1  # tints independent of how placement consumed the stream
 	_make_multimesh("Conifers", ScatterMeshes.build_conifer(), conifers, rng)
 	_make_multimesh("Broadleafs", ScatterMeshes.build_broadleaf(), broadleafs, rng)
 	_make_multimesh("Boulders", ScatterMeshes.build_boulder(), rocks, rng)
 	_build_colliders(conifers + broadleafs, rocks)
+	_build_grotto_interior()
+
+
+## The grotto's rock shell: boulders on a hemisphere around GROTTO_POS, in
+## three rings (walls, shoulders, roof slabs), leaving a gap of
+## +/- GROTTO_MOUTH_AZ_DEG around +X for the mouth. Neighbours overlap enough
+## to close the shell; the chinks that remain read as natural rockfall.
+func _grotto_shell() -> Array[Transform3D]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 2
+	var out: Array[Transform3D] = []
+	# elevation deg, slots, azimuth offset deg, scale, y squash, keeps mouth open
+	var rings: Array = [
+		[10.0, 10, 0.0, 3.4, 1.0, true],
+		[40.0, 8, 22.0, 3.0, 1.0, true],
+		[70.0, 3, 60.0, 3.3, 0.65, false],  # roof: high enough to clear heads
+	]
+	for ring in rings:
+		var elev: float = deg_to_rad(ring[0])
+		var slots: int = ring[1]
+		for i in slots:
+			var az: float = deg_to_rad(ring[2]) + TAU * float(i) / float(slots)
+			if ring[5] and absf(rad_to_deg(wrapf(az, -PI, PI))) < GROTTO_MOUTH_AZ_DEG:
+				continue
+			var dir := Vector3(cos(az) * cos(elev), sin(elev), sin(az) * cos(elev))
+			var s: float = ring[3] * rng.randf_range(0.9, 1.1)
+			var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)) \
+					.scaled(Vector3(s, s * ring[4], s))
+			out.append(Transform3D(basis, GROTTO_POS + dir * GROTTO_SHELL_R))
+	return out
+
+
+## What makes the shell a place: an amber light overhead and a crystal cluster
+## against the back wall (both deliberately visible from outside through the
+## mouth — the glow is the invitation to come in).
+func _build_grotto_interior() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 3
+	var lamp := OmniLight3D.new()
+	lamp.name = "GrottoLamp"
+	lamp.position = GROTTO_POS + Vector3(0.0, 2.6, 0.0)
+	lamp.light_color = Color(1.0, 0.76, 0.46)
+	lamp.light_energy = 2.2
+	lamp.omni_range = 11.0
+	lamp.shadow_enabled = true
+	add_child(lamp)
+
+	var crystal_mesh := ScatterMeshes.build_crystal()
+	for spec in [[150.0, 3.8, 1.4], [195.0, 3.5, 1.0], [235.0, 3.9, 1.7]]:
+		var az: float = deg_to_rad(spec[0])
+		var pos := GROTTO_POS + Vector3(cos(az) * spec[1], 0.05, sin(az) * spec[1])
+		var mi := MeshInstance3D.new()
+		mi.mesh = crystal_mesh
+		mi.transform = _stand(pos, spec[2], rng, 0.12)
+		add_child(mi)
+	var glow := OmniLight3D.new()
+	glow.name = "GrottoCrystalGlow"
+	glow.position = GROTTO_POS + Vector3(-3.0, 1.2, 1.6)
+	glow.light_color = Color(0.42, 0.86, 0.82)
+	glow.light_energy = 1.1
+	glow.omni_range = 6.0
+	add_child(glow)
 
 
 ## Upright transform with a whisper of tilt — dead-vertical trees read as pins.

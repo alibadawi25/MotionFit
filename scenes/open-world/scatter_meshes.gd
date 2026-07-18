@@ -13,6 +13,7 @@ const _BARK := Color(0.33, 0.23, 0.15)
 const _PINE := Color(0.15, 0.32, 0.16)
 const _LEAF := Color(0.24, 0.42, 0.17)
 const _STONE := Color(0.46, 0.46, 0.48)
+const _CRYSTAL := Color(0.42, 0.86, 0.82)
 
 
 ## A conifer: tapered trunk + three stacked cones, ~5 m tall. Two surfaces
@@ -99,6 +100,37 @@ static func build_boulder() -> ArrayMesh:
 	st.generate_normals()
 	st.set_material(_material(_STONE, 1.0))
 	return st.commit()
+
+
+## A crystal cluster: four five-sided spikes leaning out of one spot, ~1.3 m
+## tall, self-lit — the grotto's treasure glow (see world_scatter.gd). Origin at
+## ground level like everything else here.
+static func build_crystal() -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	var spikes: Array = []
+	# base offset, lean (rad), height, base radius
+	var specs := [
+		[Vector3(0.0, 0.0, 0.0), 0.0, 1.3, 0.20],
+		[Vector3(0.28, 0.0, 0.12), 0.42, 0.85, 0.14],
+		[Vector3(-0.24, 0.0, 0.18), -0.5, 0.7, 0.12],
+		[Vector3(0.05, 0.0, -0.3), 0.35, 0.55, 0.11],
+	]
+	for s in specs:
+		var spike := CylinderMesh.new()
+		spike.top_radius = 0.02
+		spike.bottom_radius = s[3]
+		spike.height = s[2]
+		spike.radial_segments = 5
+		spike.rings = 1
+		var lean := Basis(Vector3(1.0, 0.0, 0.4).normalized(), s[1])
+		spikes.append([spike,
+				Transform3D(lean, s[0] + lean * Vector3(0.0, s[2] * 0.5, 0.0))])
+	var mat := _material(_CRYSTAL, 0.25)
+	mat.emission_enabled = true
+	mat.emission = _CRYSTAL
+	mat.emission_energy_multiplier = 1.6
+	_append(mesh, spikes, mat)
+	return mesh
 
 
 static func _append(mesh: ArrayMesh, parts: Array, mat: StandardMaterial3D) -> void:

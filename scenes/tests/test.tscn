@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://dakturf87igiv"]
+[gd_scene format=3 uid="uid://bjnqbi4dk0pwe"]
 
 [ext_resource type="Script" uid="uid://duea1rw5hxpro" path="res://addons/zylann.hterrain/hterrain.gd" id="1_5i1m7"]
 [ext_resource type="Resource" uid="uid://gb2cwugm5q7i" path="res://Terrain/data.hterrain" id="2_knfty"]
