@@ -21,7 +21,7 @@
 [ext_resource type="Script" uid="uid://dt76it4kp4xvj" path="res://addons/zylann.hterrain/hterrain_detail_layer.gd" id="19_dtl"]
 [ext_resource type="Texture2D" uid="uid://24ki2ai83bi4" path="res://assets/textures/terrain/grass_blades.png" id="20_blades"]
 [ext_resource type="Script" uid="uid://can8godn55p3p" path="res://scenes/open-world/world_scatter.gd" id="21_scat"]
-[ext_resource type="Script" path="res://scenes/open-world/wildlife.gd" id="22_wild"]
+[ext_resource type="Script" uid="uid://bkp2g170kspif" path="res://scenes/open-world/wildlife.gd" id="22_wild"]
 
 [sub_resource type="Resource" id="Resource_xcpkc"]
 script = ExtResource("3_7qf85")
@@ -106,13 +106,14 @@ fog_enabled = true
 fog_mode = 1
 fog_light_color = Color(0.66, 0.73, 0.82, 1)
 fog_sun_scatter = 0.3
+fog_density = 1.0
 fog_aerial_perspective = 0.72
 fog_sky_affect = 0.5
-fog_depth_begin = 70.0
-fog_depth_end = 820.0
-fog_depth_curve = 1.5
 fog_height = 20.0
 fog_height_density = 0.04
+fog_depth_curve = 1.5
+fog_depth_begin = 70.0
+fog_depth_end = 820.0
 adjustment_enabled = true
 adjustment_contrast = 1.08
 adjustment_saturation = 1.12
@@ -221,7 +222,7 @@ player_path = NodePath("../CharacterBody3D")
 script = ExtResource("21_scat")
 terrain_path = NodePath("../HTerrain")
 
-[node name="Wildlife" type="Node3D" parent="."]
+[node name="Wildlife" type="Node3D" parent="." unique_id=433222103]
 script = ExtResource("22_wild")
 terrain_path = NodePath("../HTerrain")
 player_path = NodePath("../CharacterBody3D")

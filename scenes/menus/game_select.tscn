@@ -73,7 +73,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.01, 0.02, 0.04, 0.34)
+color = Color(0.01, 0.02, 0.04, 0.6)
 
 [node name="Content" type="MarginContainer" parent="."]
 layout_mode = 1

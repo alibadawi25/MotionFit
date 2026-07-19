@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cl4dbmfhnfg3y"]
+
+[ext_resource type="Script" path="res://scenes/promo/promo_sprint.gd" id="1_promo"]
+
+[node name="PromoSprint" type="Node3D"]
+script = ExtResource("1_promo")

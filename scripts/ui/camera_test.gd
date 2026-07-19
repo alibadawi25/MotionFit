@@ -374,8 +374,11 @@ func _update_banner(streaming: bool, pose_ready: bool) -> void:
 		elif MotionManager.is_receiving():
 			_set_banner("STARTING CAMERA…", AMBER, "One moment")
 		else:
-			_set_banner("CAMERA NOT RUNNING", AMBER,
-				"Start the camera service (run.bat), then come back")
+			# run.bat is the dev launcher; the shipped build starts the pose
+			# service itself, so only surface that hint in the editor.
+			var hint: String = "Start the camera service (run.bat), then come back" \
+				if OS.has_feature("editor") else "The camera service is starting — one moment"
+			_set_banner("CAMERA NOT RUNNING", AMBER, hint)
 		return
 
 	if not pose_ready:
