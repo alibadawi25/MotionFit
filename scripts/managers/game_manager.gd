@@ -31,6 +31,11 @@ var _last_result: Dictionary = {}
 # directly (e.g. from the editor) sees this false and just begins. See
 # [method take_intro_pending] and MiniGame._ready.
 var _intro_pending: bool = false
+# Set when a game is launched as today's Daily Challenge (WorkoutManager): the
+# interval plan handed to the game's MiniGame base so it can overlay the coach.
+# Consumed once by [method take_pending_workout]; empty for a normal launch (so a
+# Play Again after a challenge is an ordinary run, not another prescribed one).
+var _pending_workout: Dictionary = {}
 
 func _ready() -> void:
 	_build_registry()
@@ -99,6 +104,27 @@ func take_intro_pending() -> bool:
 	var pending: bool = _intro_pending
 	_intro_pending = false
 	return pending
+
+
+## Launches today's Daily Challenge: selects the prescribed game and difficulty,
+## arms the interval plan, and starts it through the normal flow (so it still gets
+## the countdown intro). No-op if no plan is available. See [WorkoutManager].
+func start_daily_challenge() -> void:
+	var plan: Dictionary = WorkoutManager.get_today_plan()
+	if plan.is_empty():
+		return
+	_pending_workout = plan
+	select_game(String(plan["game_id"]))
+	set_difficulty(int(plan["difficulty"]))
+	start_selected_game()
+
+
+## Returns the interval plan for the just-loaded game and clears it, so the coach
+## is shown exactly once. Called by MiniGame.begin; empty for a normal session.
+func take_pending_workout() -> Dictionary:
+	var plan: Dictionary = _pending_workout
+	_pending_workout = {}
+	return plan
 
 
 ## DEPRECATED. The setup/countdown is now an in-game overlay (GameIntro) shown by

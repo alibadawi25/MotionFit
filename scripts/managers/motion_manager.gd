@@ -60,12 +60,17 @@ const TURN_SMOOTH_TIME: float = 0.22
 ## Time constant used instead once the feed goes quiet, so motion eases to a
 ## stop rather than snapping to zero the frame the timeout trips.
 const DECAY_TIME: float = 0.15
-## kcal burned per MET, per minute, per kilogram of body mass — the standard
-## MET→energy conversion (kcal/min = MET * 3.5 * kg / 200).
-const KCAL_PER_MET_MIN_PER_KG: float = 3.5 / 200.0
-## Body mass assumed if ProfileManager isn't available (keeps the sandbox and
-## tests working standalone).
+## Resting metabolism is 1 MET by definition; we bank only the exercise energy
+## ABOVE it (net calories), so standing in frame costs ~nothing and every kcal
+## credited is workout above rest — the metric fitness trackers report.
+const RESTING_MET: float = 1.0
+## Body mass / height assumed if ProfileManager isn't available (keeps the
+## sandbox and tests working standalone).
 const DEFAULT_BODY_MASS_KG: float = 70.0
+const DEFAULT_HEIGHT_CM: float = 170.0
+## Floor on the Mifflin-St Jeor resting rate (kcal/day), guarding blank/odd
+## profiles from yielding a near-zero or negative resting metabolism.
+const MIN_RMR_KCAL_PER_DAY: float = 800.0
 ## kJ per kcal, for the Keytel heart-rate equation (which is fitted in kJ/min).
 const KJ_PER_KCAL: float = 4.184
 ## Below this bpm the Keytel equation is outside its fitted range (it was
@@ -128,8 +133,13 @@ var _session_start_sec: float = -1.0
 # mid-game).
 var _session_kcal: float = 0.0
 var _body_mass_kg: float = DEFAULT_BODY_MASS_KG
+var _height_cm: float = DEFAULT_HEIGHT_CM
 var _age: int = 30
 var _sex: String = "unspecified"
+# Resting metabolic rate (kcal/min, Mifflin-St Jeor) captured at session reset.
+# MET is a multiple of RMR by definition, so kcal/min = (MET - RESTING_MET) *
+# this — personalised by mass/height/age/sex instead of a fixed per-kg proxy.
+var _rmr_kcal_per_min: float = 1.05
 # Rolling effort/heart-rate accumulators for this session, so the results screen
 # can report averages and peaks. Summed each frame the feed is live.
 var _session_hr_sum: float = 0.0
@@ -407,8 +417,8 @@ func get_cadence() -> float:
 
 
 ## Current effort as a MET value (metabolic equivalent of task): ~1.2 standing,
-## ~4-5 marching, ~8+ vigorous. Body-mass-independent; multiply by weight/time
-## for calories, or use [method get_session_calories].
+## ~4-5 marching, ~8+ vigorous. Body-mass-independent; the resting rate and time
+## turn it into calories — see [method get_session_calories].
 func get_met() -> float:
 	return _met
 
@@ -446,17 +456,21 @@ func reset_session_stats() -> void:
 	# Drop any gesture/jump left over from the pre-game setup screen so the game
 	# doesn't open with a phantom hop the moment it starts.
 	_jump_pending = false
-	# Capture the player's physical attributes for this session's calorie maths
-	# (weight drives the MET path; age/sex additionally drive the Keytel
-	# heart-rate path when a wearable is streaming).
+	# Capture the player's physical attributes for this session's calorie maths.
+	# Mass, height, age and sex feed the Mifflin-St Jeor resting rate that scales
+	# the motion MET into kcal; age/sex additionally drive the Keytel heart-rate
+	# path when a wearable is streaming.
 	var pm: Node = get_node_or_null("/root/ProfileManager")
 	if pm != null:
 		if pm.has_method("get_weight_kg"):
 			_body_mass_kg = pm.get_weight_kg()
+		if pm.has_method("get_height_cm"):
+			_height_cm = pm.get_height_cm()
 		if pm.has_method("get_age"):
 			_age = pm.get_age()
 		if pm.has_method("get_sex"):
 			_sex = pm.get_sex()
+	_rmr_kcal_per_min = _compute_rmr_kcal_per_min()
 
 
 ## Steps taken since the last [method reset_session_stats].
@@ -539,16 +553,22 @@ func _apply(data: Dictionary) -> void:
 		jumped.emit()
 
 
-## The current burn rate in kcal/min. Prefers the heart-rate estimate (Keytel
-## et al. 2005 — individually far more accurate than any motion model, since HR
-## integrates true physiological load) whenever a wearable is streaming a rate
-## inside the equation's fitted range; otherwise the motion-MET estimate.
-## A camera dropout therefore costs no calories when a strap is worn.
+## The current NET burn rate in kcal/min — exercise energy above resting. Prefers
+## the heart-rate estimate (Keytel et al. 2005 — individually far more accurate
+## than any motion model, since HR integrates true physiological load) whenever a
+## wearable is streaming a rate inside the equation's fitted range; otherwise the
+## motion-MET estimate. A camera dropout therefore costs no calories when a strap
+## is worn. Both paths subtract the player's resting rate so standing banks ~0.
 func _current_kcal_per_min() -> float:
-	var met_rate: float = _met * KCAL_PER_MET_MIN_PER_KG * _body_mass_kg
+	# MET is a multiple of resting metabolism by definition, so net exercise
+	# energy is (MET - RESTING_MET) scaled by the player's Mifflin-St Jeor RMR.
+	var net_met: float = maxf(_met - RESTING_MET, 0.0)
+	var met_rate: float = net_met * _rmr_kcal_per_min
 	if _heart_rate < HR_KCAL_MIN_BPM:
 		return met_rate
 	# Keytel 2005, fitted in kJ/min: sex-specific linear model of HR, mass, age.
+	# It predicts gross expenditure, so subtract RMR to match the net motion path
+	# before the two are compared.
 	var male: float = (-55.0969 + 0.6309 * _heart_rate + 0.1988 * _body_mass_kg
 			+ 0.2017 * _age) / KJ_PER_KCAL
 	var female: float = (-20.4022 + 0.4472 * _heart_rate - 0.1263 * _body_mass_kg
@@ -561,9 +581,28 @@ func _current_kcal_per_min() -> float:
 			hr_rate = female
 		_:
 			hr_rate = (male + female) * 0.5
+	hr_rate = maxf(hr_rate - _rmr_kcal_per_min, 0.0)
 	# Never bank less than the movement itself justifies (the linear fit can
 	# undershoot near its low-HR edge for light players).
 	return maxf(hr_rate, met_rate)
+
+
+## The player's resting metabolic rate in kcal/min via Mifflin-St Jeor — the
+## best-validated predictive RMR equation. Personalises the MET→kcal conversion
+## from the profile's mass, height, age and sex, rather than assuming everyone's
+## resting metabolism is the population-average 3.5 ml/kg/min (which over-credits
+## heavier, older and female players by 15-30%). Captured once per session.
+func _compute_rmr_kcal_per_min() -> float:
+	var base: float = 10.0 * _body_mass_kg + 6.25 * _height_cm - 5.0 * float(_age)
+	var rmr_per_day: float
+	match _sex:
+		"male":
+			rmr_per_day = base + 5.0
+		"female":
+			rmr_per_day = base - 161.0
+		_:
+			rmr_per_day = base - 78.0  # midpoint of the male/female constants
+	return maxf(rmr_per_day, MIN_RMR_KCAL_PER_DAY) / 1440.0
 
 
 ## Sends a single camera command to the pose service and stamps the send time so

@@ -34,6 +34,11 @@ var _elapsed_sec: float = 0.0
 var _running: bool = false
 # The world nodes frozen while the intro overlay runs, restored at begin().
 var _frozen_children: Array[Node] = []
+# Set when this session was launched as a Daily Challenge (WorkoutManager): the
+# interval plan being coached, and whether its timeline ran to completion. Empty
+# for a normal play session.
+var _workout_plan: Dictionary = {}
+var _workout_completed: bool = false
 
 ## Runs the shared setup → countdown intro (if launched through the platform),
 ## then starts the game. Games should NOT override _ready; put game-specific
@@ -102,8 +107,33 @@ func begin() -> void:
 	# on their framing (it hides itself when no camera is streaming). Reusable, so
 	# every game gets it without any per-game code.
 	add_child(GameCameraHUD.new())
+	# If this session is today's Daily Challenge, overlay the interval coach on top
+	# of the game and let it drive the workout (see WorkoutManager / IntervalCoach).
+	_start_workout(GameManager.take_pending_workout())
 	_start_game()
 	started.emit()
+
+
+## Starts the Daily Challenge interval coach for [param plan], if one is pending.
+## The coach counts down the blocks and, when the whole timeline finishes, ends the
+## session and banks the completion — so completing the intervals IS completing the
+## challenge. A no-op for an ordinary play session (empty plan).
+func _start_workout(plan: Dictionary) -> void:
+	if plan.is_empty():
+		return
+	_workout_plan = plan
+	var coach := IntervalCoach.new()
+	coach.setup(plan)
+	coach.workout_completed.connect(_on_workout_completed)
+	add_child(coach)
+
+
+func _on_workout_completed() -> void:
+	if _workout_completed:
+		return
+	_workout_completed = true
+	WorkoutManager.mark_today_complete()
+	finish()
 
 
 ## Ends the game, builds the standard result, reports it to GameManager, and
@@ -130,6 +160,11 @@ func finish(calories: float = -1.0) -> void:
 		"avg_heart_rate": MotionManager.get_session_avg_heart_rate(),
 		"peak_heart_rate": MotionManager.get_session_peak_heart_rate(),
 	}
+	# When this was a Daily Challenge, tell the results screen so it can celebrate a
+	# completed workout (vs. one abandoned before the timeline finished).
+	if not _workout_plan.is_empty():
+		result["workout_title"] = String(_workout_plan.get("title", ""))
+		result["workout_completed"] = _workout_completed
 	finished_with_result.emit(result)
 	GameManager.finish_game(result)
 
