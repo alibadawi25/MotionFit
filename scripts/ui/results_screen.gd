@@ -49,22 +49,48 @@ func _build(result: Dictionary) -> void:
 	column.add_theme_constant_override("separation", 26)
 	margin.add_child(column)
 
-	_build_header(column, result)
-
 	if result.is_empty():
-		var none := _label("No results yet — play a game to see your workout summary.", 26, MUTED)
-		none.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		column.add_child(none)
+		# Reached without a finished game behind it (e.g. straight from a menu):
+		# show a friendly placeholder instead of a misleading "workout complete".
+		_build_empty_state(column)
+		_build_buttons(column, true)
 	else:
+		_build_header(column, result)
 		_build_stat_grid(column, result)
 		_build_unlocks(column)
 		_build_progression(column, result)
 		_build_next_goal(column)
-
-	_build_buttons(column)
+		_build_buttons(column, false)
 
 	if _first_button != null:
 		_first_button.grab_focus()
+
+
+## Placeholder shown when there's no result to summarise: a large muted glyph, a
+## headline and one line telling the player what will fill this screen — on-brand
+## and pointing at the game library, never a blank or a false celebration.
+func _build_empty_state(parent: VBoxContainer) -> void:
+	var card := VBoxContainer.new()
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_theme_constant_override("separation", 14)
+	parent.add_child(card)
+
+	var glyph := _label("◎", 96, ACCENT)
+	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card.add_child(glyph)
+
+	var title := _label("NO WORKOUT YET", 56, TEXT)
+	title.add_theme_font_override("font", _anton)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card.add_child(title)
+
+	var body := _label(
+		"Play any game and your summary — calories, steps, XP and new records — lands here.",
+		24, MUTED)
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(720, 0)
+	card.add_child(body)
 
 
 ## A vertical dark gradient so the card stats read cleanly against it.
@@ -94,7 +120,11 @@ func _build_header(parent: VBoxContainer, result: Dictionary) -> void:
 	header.add_theme_constant_override("separation", 4)
 	parent.add_child(header)
 
-	var kicker := _label("WORKOUT COMPLETE", 22, ACCENT)
+	# A completed Daily Challenge gets its own gold kicker; every other session is
+	# the standard "workout complete".
+	var challenge_done: bool = bool(result.get("workout_completed", false))
+	var kicker_text: String = "★  DAILY CHALLENGE COMPLETE" if challenge_done else "WORKOUT COMPLETE"
+	var kicker := _label(kicker_text, 22, GOLD if challenge_done else ACCENT)
 	kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_child(kicker)
 
@@ -120,26 +150,40 @@ func _build_header(parent: VBoxContainer, result: Dictionary) -> void:
 		header.add_child(cheer)
 
 
-## One warm line under the title, picked from what actually happened — a level
-## up, a record, the daily goal, the streak — falling back to honest praise for
-## simply moving. Every workout ends on encouragement, never on a bare number.
+## One warm line under the title, picked from what actually happened — a completed
+## challenge, a level up, a record, the daily goal, the streak — falling back to
+## honest praise for simply moving. Addressed to the player by name so Results
+## reads as personal. Every workout ends on encouragement, never on a bare number.
 func _encouragement(result: Dictionary) -> String:
+	var who: String = _first_name()
+	if bool(result.get("workout_completed", false)):
+		return "That's today's challenge done, %s. Same time tomorrow?" % who
 	if bool(result.get("leveled_up", false)):
-		return "You're getting stronger — that session pushed you up a level."
+		return "You're getting stronger, %s — that session pushed you up a level." % who
 	if bool(result.get("new_best", false)) and int(result.get("prev_best", 0)) > 0:
-		return "Your best ever. That version of you didn't exist last week."
+		return "Your best ever, %s. That version of you didn't exist last week." % who
 	var goal: float = ActivityManager.get_daily_calorie_goal()
 	if ActivityManager.get_today_calories() >= goal:
-		return "That's your daily goal done. Your future self says thanks."
+		return "That's your daily goal done, %s. Your future self says thanks." % who
 	var streak: int = ActivityManager.get_streak()
 	if streak >= 2:
-		return "Day %d in a row — showing up is the whole game, and you keep showing up." % streak
+		return "Day %d in a row, %s — showing up is the whole game, and you keep showing up." % [streak, who]
 	var lines: Array[String] = [
-		"Every one of those steps was real movement. Well done.",
-		"Good work — that burn was earned, not tapped on a screen.",
-		"Nice session. Come back tomorrow and it becomes a streak.",
+		"Every one of those steps was real movement. Well done, %s." % who,
+		"Good work, %s — that burn was earned, not tapped on a screen." % who,
+		"Nice session, %s. Come back tomorrow and it becomes a streak." % who,
 	]
 	return lines[ActivityManager.get_total_sessions() % lines.size()]
+
+
+## The player's first name for a natural, personal address ("Well done, Ali"). The
+## profile stores a display name (collected at onboarding); we take the first word
+## so a full name doesn't read stiffly mid-sentence.
+func _first_name() -> String:
+	var name: String = ProfileManager.get_display_name().strip_edges()
+	if name.is_empty():
+		return "champ"
+	return name.split(" ")[0]
 
 
 ## Gold pills for achievements earned since the last summary (this session's
@@ -230,11 +274,18 @@ func _build_progression(parent: VBoxContainer, result: Dictionary) -> void:
 	row.add_child(_label("%d XP total" % int(result.get("total_xp", ProfileManager.get_xp())), 20, MUTED))
 
 
-func _build_buttons(parent: VBoxContainer) -> void:
+func _build_buttons(parent: VBoxContainer, empty: bool = false) -> void:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 20)
 	parent.add_child(row)
+
+	# With no result there's nothing to replay — send the player to the library.
+	if empty:
+		_first_button = _make_button("CHOOSE A GAME", true, _on_select_pressed)
+		row.add_child(_first_button)
+		row.add_child(_make_button("MAIN MENU", false, _on_menu_pressed))
+		return
 
 	_first_button = _make_button("PLAY AGAIN", true, _on_play_again_pressed)
 	row.add_child(_first_button)
