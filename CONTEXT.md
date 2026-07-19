@@ -867,16 +867,58 @@ same controller works with the camera today or another input source later.
 	  fitness totals derived from `ActivityManager` (calories, steps, active minutes,
 	  workouts) — deliberately NOT XP/Level. XP/Level still accrue in ProfileManager
 	  for progression but are kept off the profile UI (no gamification placeholders).
-	  Still TODO: name entry. (HR-based Keytel calories are now wired in
-	  `MotionManager` — see §9 Calories.)
+	  Name entry is collected at onboarding (`profile_setup.gd` → `create_profile`)
+	  and surfaced in the menu greeting and the Results screen (personalised by
+	  first name). (HR-based Keytel calories are now wired in `MotionManager` — see
+	  §9 Calories.)
 - [x] **Fitness dashboard + daily/weekly history.** `ActivityManager` (§5) logs a
 	  per-day record on every `game_finished` and derives week totals, daily
 	  averages and streaks. `scenes/menus/fitness_screen.tscn` (FitnessScreen, on
 	  the `PanelScreen` base) shows a KPI row (today-vs-goal, streak, week total,
 	  daily avg) and a 7-day calorie bar chart (`scripts/ui/bar_chart.gd`,
 	  `BarChart`, code-drawn) with the goal line and today highlighted. Reachable
-	  from the main menu (FITNESS). Future: editable daily goal UI, monthly/yearly
-	  views + consistency heat-calendar, steps/active-minutes charts, per-day HR.
+	  from the main menu (FITNESS). The daily goal is now editable inline (a SpinBox
+	  that writes back through `ActivityManager.set_daily_calorie_goal` and rebuilds
+	  every goal-derived figure), and a code-drawn GitHub-style consistency
+	  heat-calendar (`scripts/ui/heat_calendar.gd`, `HeatCalendar`, fed by
+	  `ActivityManager.get_calendar()`) sits under the bar chart — the classic
+	  streak-retention view. The daily goal **auto-adapts** by default: rather than a
+	  flat 300 that some players can't reach, `ActivityManager.get_daily_calorie_goal()`
+	  in "auto" mode returns `get_adaptive_calorie_goal()` — the average of the
+	  player's *active* days over the last 14 (`get_average_active_day_calories`),
+	  nudged ~10% and floored at a friendly 120 (a 150 onboarding goal before any
+	  history). The FitnessScreen SpinBox gains an **AUTO** toggle; turning it off
+	  makes the shown number a manual override (`set_daily_calorie_goal` → mode
+	  "manual"), and old saves that had customised the goal migrate to manual.
+	  Future: monthly/yearly views, steps/active-minutes charts, per-day HR.
+- [x] **Daily Challenge — structured HIIT retention layer.** A deterministic
+	  interval workout prescribed per calendar day (`WorkoutManager`, autoload): the
+	  date seeds both the host game (from an endless / time-based eligible set —
+	  Open World, Zombie Run) and one of four interval templates (Classic / Pyramid
+	  / Ladder / Tabata-style), so today's challenge is stable all day, refreshes at
+	  midnight, and needs nothing stored to describe it. It's surfaced as the top
+	  card on the main menu (above PLAY) with its structure, length, push count and
+	  pending/done state, and launched via `GameManager.start_daily_challenge()`
+	  (which arms `_pending_workout`, consumed once by `take_pending_workout`).
+	  In-game, `IntervalCoach` (`scripts/ui/interval_coach.gd`, a CanvasLayer the
+	  `MiniGame` base overlays when a plan is pending — same hook as the camera HUD)
+	  runs the block timeline and coaches the player toward each block's MET target
+	  using the live effort read (`MotionManager.get_met()`, the estimator that also
+	  drives calories); keyboard-only players still get the timeline, only the
+	  pass/fail verdict is withheld. **Intensity is personalised, not one-size-fits-all:**
+	  the template structure/game are date-deterministic, but `WorkoutManager._scale_targets`
+	  multiplies every block's `target_met` by `_effort_scale()` (0.80–1.12, from the
+	  player's recent active-day calories vs a 350 reference; 0.85 before any history),
+	  so "on target" is reachable for a beginner and still a push for the very active,
+	  and rises on its own as activity climbs. The coach copy is **encouragement, never
+	  scolding** ("GREAT PACE — HOLD IT", "FIND A LITTLE MORE — YOU'VE GOT THIS"), with
+	  no alarming red on the work verdict. Its panel sits below the game's top stat bar
+	  (`STAT_BAR_CLEARANCE`) so it doesn't overlap the HUD chips. Completing the timeline
+	  ends the session and banks the day via `WorkoutManager.mark_today_complete()`
+	  (per-profile, with its own challenge streak, scoped/reloaded like the activity
+	  log). Results celebrates a completed challenge with a gold kicker and a
+	  personalised line. Verified by `scenes/tests/interval_coach_view.tscn` (WAIT=8
+	  lands mid-work-block).
 - [ ] **Watch / heart-rate connection UX.** BLE stays Python-side (§9); `hr` already
 	  flows through `MotionManager.get_heart_rate()`, `is_hr_connected()` exists, and
 	  Keytel HR→kcal fusion is live (§9 Calories), and the connection-status

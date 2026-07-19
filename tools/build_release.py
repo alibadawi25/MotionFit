@@ -183,7 +183,15 @@ def ensure_venv() -> None:
             "opencv-contrib-python", "opencv-python", "matplotlib", "pillow",
         ]
     )
-    run([venv_python(), "-m", "pip", "install", "opencv-python-headless>=4.8"])
+    # --force-reinstall (--no-deps to leave numpy alone): opencv-python and the
+    # headless build share the same cv2/ files, so the uninstall above deletes
+    # them. On a reused venv pip still sees leftover headless *metadata* and would
+    # no-op a plain install, shipping a service that can't `import cv2`. Forcing
+    # the reinstall rewrites cv2/ every build.
+    run([
+        venv_python(), "-m", "pip", "install", "--force-reinstall", "--no-deps",
+        "opencv-python-headless>=4.8",
+    ])
 
 
 def build_pose_server() -> None:
