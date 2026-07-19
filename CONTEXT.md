@@ -256,7 +256,13 @@ Shared scenes live in `scenes/menus/`:
 `loading_screen`, `countdown_screen`.
 
 **Pause** is a reusable overlay (`PauseMenu`) a game instances; it sets
-`get_tree().paused` and processes while paused.
+`get_tree().paused` and processes while paused. Both of its leave options bank the
+session first, so pausing out never discards measured effort: "End & Save" emits
+`end_requested` (→ `finish()` → Results) and "Quit to Game Select" emits
+`quit_requested` (→ `bank_and_exit()` → launcher, no Results). Games don't wire
+this themselves — `MiniGame.attach_pause_menu(parent)` instantiates the overlay and
+connects both signals. `GameManager.finish_game(result, show_results)` records the
+session either way; `show_results=false` routes to Game Select instead of Results.
 
 UI controller scripts live in `scripts/ui/` and use `%UniqueName` node access so
 scene restructuring rarely breaks code.
@@ -433,7 +439,7 @@ by design — with no service running the texture is null and the UI falls back 
   feeds via `set_stats`); `player.gd` respawns anyone who falls below
   `FALL_RESET_Y` back to their ground-snapped spawn.
   Ending is player-driven: Esc opens the shared PauseMenu, whose "End & Save"
-  (`enable_end_option()` / `end_requested`) calls `finish()`. This scene doubles
+  (`end_requested` → `finish()`) banks the free-roam session. This scene doubles
   as the proof of the motion loop. (The earlier flat box-ground sandbox and a
   separate `scenes/tests/` terrain subclass were consolidated into this one
   scene + script.)
@@ -983,8 +989,9 @@ same controller works with the camera today or another input source later.
 - ✅ Full launcher flow wired and verified end-to-end (Menu → Game Select →
 	  Countdown → **Open World** → End & Save → Results). Open World is the first
 	  playable game and completes the loop; the other games show "Coming Soon".
-- ✅ PauseMenu gained an optional "End & Save" (`enable_end_option()` +
-	  `end_requested`) so endless/no-fail games can bank a session to Results.
+- ✅ PauseMenu leave options both bank the session (never discard): "End & Save"
+	  (`end_requested` → Results) and "Quit to Game Select" (`quit_requested` →
+	  launcher). `MiniGame.attach_pause_menu()` wires both for every game.
 - ✅ Save system (`SaveManager`) with Profile + Settings persistence.
 - ✅ **Camera movement pipeline** (§9): Python pose service (MediaPipe) →
 	  UDP → `MotionManager` → `CharacterBody3D`. Godot side verified end-to-end

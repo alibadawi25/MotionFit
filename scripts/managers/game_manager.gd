@@ -139,8 +139,13 @@ func launch_current_game_scene() -> void:
 
 
 ## Called by a running game (via the MiniGame contract) when it ends. Records
-## progression, stores the result for the results screen, and navigates there.
-func finish_game(result: Dictionary) -> void:
+## progression (calories/XP/steps toward the profile, daily activity and
+## achievements via [signal game_finished]) and stores the result for the results
+## screen. [param show_results] controls where the player lands: the Results
+## summary (the default, for a completed game or "End & Save"), or straight back
+## to Game Select (for a "quit but keep my progress" exit). Either way the session
+## is banked — leaving a game never discards the effort already measured.
+func finish_game(result: Dictionary, show_results: bool = true) -> void:
 	if not result.has("game_id"):
 		result["game_id"] = _current_game_id
 	# Snapshot progression BEFORE recording, so the results screen can show what
@@ -157,7 +162,10 @@ func finish_game(result: Dictionary) -> void:
 	result["total_xp"] = ProfileManager.get_xp()
 	_last_result = result
 	game_finished.emit(result)
-	SceneManager.load_results()
+	if show_results:
+		SceneManager.load_results()
+	else:
+		SceneManager.load_game_select()
 
 
 ## Returns the most recent game result (for the results screen).

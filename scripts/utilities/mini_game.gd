@@ -144,10 +144,35 @@ func finish(calories: float = -1.0) -> void:
 	if not _running:
 		return
 	_running = false
+	var result: Dictionary = _compile_result(calories)
+	finished_with_result.emit(result)
+	GameManager.finish_game(result)
+
+
+## Banks the session exactly like [method finish] — recording the calories, XP
+## and steps already measured — but returns the player to Game Select instead of
+## the Results summary. This backs the pause menu's "quit but keep my progress"
+## exit, so leaving a game mid-session never throws away the effort. A no-op-safe
+## call: if the game has already ended, it just navigates to Game Select.
+func bank_and_exit() -> void:
+	if not _running:
+		SceneManager.load_game_select()
+		return
+	_running = false
+	var result: Dictionary = _compile_result(-1.0)
+	finished_with_result.emit(result)
+	GameManager.finish_game(result, false)
+
+
+## Bundles the session's score and fitness stats into the result Dictionary the
+## profile/results systems consume. [param calories] defaults (< 0) to the value
+## the motion pipeline measured for this session; pass a non-negative override to
+## set it explicitly. Shared by [method finish] and [method bank_and_exit].
+func _compile_result(calories: float) -> Dictionary:
 	if calories < 0.0:
 		calories = MotionManager.get_session_calories()
-	# Bundle the session's fitness stats alongside score so the results screen can
-	# show a full workout summary — all measured for free by the motion pipeline.
+	# Everything here is measured for free by the motion pipeline, so games get a
+	# full workout summary without bespoke tracking.
 	var result: Dictionary = {
 		"game_id": get_game_id(),
 		"score": _score,
@@ -160,13 +185,12 @@ func finish(calories: float = -1.0) -> void:
 		"avg_heart_rate": MotionManager.get_session_avg_heart_rate(),
 		"peak_heart_rate": MotionManager.get_session_peak_heart_rate(),
 	}
-	# When this was a Daily Challenge, tell the results screen so it can celebrate a
-	# completed workout (vs. one abandoned before the timeline finished).
+	# When this was a Daily Challenge, flag whether its timeline ran to completion
+	# so the results screen can celebrate a finished workout vs. an abandoned one.
 	if not _workout_plan.is_empty():
 		result["workout_title"] = String(_workout_plan.get("title", ""))
 		result["workout_completed"] = _workout_completed
-	finished_with_result.emit(result)
-	GameManager.finish_game(result)
+	return result
 
 
 ## Adds [param points] to the running score.
@@ -205,3 +229,33 @@ func _prepare_world() -> void:
 ## Game-specific setup. Override in subclasses; default does nothing.
 func _start_game() -> void:
 	pass
+
+
+## Instantiates the shared PauseMenu (hidden) under [param parent] and wires its
+## two exits to this game, so every game leaves the same, honest way: "End & Save"
+## banks the session and shows Results; "Quit to Game Select" banks it and returns
+## to the launcher. Both preserve the effort already measured — neither discards
+## it. Returns the menu so the game can toggle it (open/close) on Esc.
+func attach_pause_menu(parent: Node) -> Control:
+	var menu: Control = load(SceneManager.PAUSE_MENU).instantiate()
+	menu.hide()
+	parent.add_child(menu)
+	if menu.has_signal("end_requested"):
+		menu.end_requested.connect(_on_pause_end_requested)
+	if menu.has_signal("quit_requested"):
+		menu.quit_requested.connect(_on_pause_quit_requested)
+	return menu
+
+
+## "End & Save" from the pause menu: unpause and finish the session, landing on
+## the Results summary.
+func _on_pause_end_requested() -> void:
+	get_tree().paused = false
+	finish()
+
+
+## "Quit to Game Select" from the pause menu: unpause and bank the session, then
+## return to the launcher without the Results screen.
+func _on_pause_quit_requested() -> void:
+	get_tree().paused = false
+	bank_and_exit()

@@ -120,7 +120,6 @@ text = "RESTART"
 
 [node name="EndButton" type="Button" parent="Center/Card/VBox"]
 unique_name_in_owner = true
-visible = false
 custom_minimum_size = Vector2(300, 54)
 layout_mode = 2
 text = "END & SAVE"

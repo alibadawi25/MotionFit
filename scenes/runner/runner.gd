@@ -375,9 +375,7 @@ func _build_overlay() -> void:
 	add_child(_hud)
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	_pause_menu = load(SceneManager.PAUSE_MENU).instantiate()
-	_pause_menu.hide()
-	layer.add_child(_pause_menu)
+	_pause_menu = attach_pause_menu(layer)
 
 
 ## Two quick thumps per cycle (lub-dub), used to pulse the camera zoom + vignette.

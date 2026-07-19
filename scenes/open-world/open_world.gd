@@ -135,13 +135,9 @@ func _toggle_pause() -> void:
 		_pause_menu.open()
 
 
-func _on_end_requested() -> void:
-	get_tree().paused = false
-	finish()  # banks session calories (MiniGame default) + step-based XP
-
-
 ## Builds the 2D overlay: the stats HUD (its own CanvasLayer) and the shared pause
-## menu (with its "End & Save" option enabled, since this mode has no automatic end).
+## menu. This mode has no automatic end, so "End & Save" is how a session wraps up
+## and banks — MiniGame.attach_pause_menu wires it (and Quit) for us.
 func _build_overlay() -> void:
 	_hud = OpenWorldHud.new()
 	add_child(_hud)
@@ -149,13 +145,7 @@ func _build_overlay() -> void:
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	_pause_menu = load(SceneManager.PAUSE_MENU).instantiate()
-	_pause_menu.hide()
-	layer.add_child(_pause_menu)
-	if _pause_menu.has_method("enable_end_option"):
-		_pause_menu.enable_end_option()
-	if _pause_menu.has_signal("end_requested"):
-		_pause_menu.end_requested.connect(_on_end_requested)
+	_pause_menu = attach_pause_menu(layer)
 
 
 func _update_hud() -> void:
