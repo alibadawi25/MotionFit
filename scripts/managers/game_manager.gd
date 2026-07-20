@@ -207,9 +207,10 @@ func _build_registry() -> void:
 		{
 			"id": "boxing",
 			"title": "Boxing",
-			"description": "Throw punches to hit targets. Upper-body burn.",
+			"description": "Read the opening and land the shot — throw real jabs and crosses to break the opponent down. Upper-body burn.",
 			"scene": SceneManager.BOXING,
-			"available": false,
+			"available": true,
+			"uses_difficulty": true,
 		},
 		{
 			"id": "football",

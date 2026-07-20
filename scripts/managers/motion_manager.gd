@@ -24,6 +24,11 @@ signal fitness_updated(steps: int, cadence: float)
 signal jumped
 ## Emitted each packet with the current squat depth, 0.0 (upright) .. 1.0.
 signal crouch_changed(crouch: float)
+## Emitted once each time the player throws a punch. [param hand] is "left" or
+## "right" and [param power] is 0.0..1.0 (how hard/fast it snapped out). Like
+## [signal jumped] this is an edge event — connect for a reaction, or poll with
+## [method consume_punch]. The upper-body counterpart the Boxing game reads.
+signal punched(hand: String, power: float)
 ## Emitted once when a body calibration finishes, carrying the captured leg
 ## extensions. MotionManager already saves these to the active profile and pushes
 ## them to the pose service; connect only if a UI wants a "calibrated!" cue.
@@ -105,6 +110,11 @@ var _cadence: float = 0.0
 var _met: float = 0.0       # current effort (metabolic equivalent of task)
 var _heart_rate: float = 0.0  # bpm from a wearable, 0 = no reading
 var _hands_up: bool = false   # "ready" gesture: both hands raised above the head
+# Latched punch edge, like _jump_pending: the hand of the last unconsumed punch
+# ("left"/"right", "" = none) and its 0..1 power. Cleared by [method consume_punch]
+# so a poller in _process picks up a punch landed on any packet since its last frame.
+var _punch_pending: String = ""
+var _punch_power: float = 0.0
 # Calibration setup state mirrored from the pose service (see Python's Calibrator):
 # the phase ("idle"/"still"/"squat"/"done"/"failed"), a short on-screen prompt, and
 # a 0..1 progress for the current phase. Drives the calibration setup UI.
@@ -189,6 +199,7 @@ func _process(delta: float) -> void:
 		_calib_prompt = ""
 		_calib_progress = 0.0
 		_jump_pending = false  # drop any unconsumed jump once the feed goes quiet
+		_punch_pending = ""    # …and any unconsumed punch
 	else:
 		var kcal_per_min: float = _current_kcal_per_min()
 		if kcal_per_min > 0.0:
@@ -406,6 +417,23 @@ func consume_jump() -> bool:
 	return false
 
 
+## Returns the hand of the last unconsumed punch ("left" or "right") and clears
+## the latch, or "" if none is pending. Poll this once per frame from a game that
+## reacts to punches; the strength of that punch is then [method get_last_punch_power].
+## For an event-driven listener, connect to [signal punched] instead.
+func consume_punch() -> String:
+	var hand: String = _punch_pending
+	_punch_pending = ""
+	return hand
+
+
+## The 0.0..1.0 power of the most recent punch (how hard/fast it snapped out),
+## for scoring or a heavier hit reaction. Valid right after [method consume_punch]
+## or a [signal punched] emission.
+func get_last_punch_power() -> float:
+	return _punch_power
+
+
 ## Cumulative steps counted since the pose service started this run.
 func get_steps() -> int:
 	return _steps
@@ -456,6 +484,7 @@ func reset_session_stats() -> void:
 	# Drop any gesture/jump left over from the pre-game setup screen so the game
 	# doesn't open with a phantom hop the moment it starts.
 	_jump_pending = false
+	_punch_pending = ""
 	# Capture the player's physical attributes for this session's calorie maths.
 	# Mass, height, age and sex feed the Mifflin-St Jeor resting rate that scales
 	# the motion MET into kcal; age/sex additionally drive the Keytel heart-rate
@@ -551,6 +580,13 @@ func _apply(data: Dictionary) -> void:
 	if bool(data.get("jump", false)):
 		_jump_pending = true
 		jumped.emit()
+	# Punch is likewise a one-frame edge ("left"/"right", "" = none): latch the
+	# hand + power for a poller and fire the signal for listeners.
+	var punch: String = String(data.get("punch", ""))
+	if punch != "":
+		_punch_pending = punch
+		_punch_power = clampf(float(data.get("punch_power", 0.0)), 0.0, 1.0)
+		punched.emit(_punch_pending, _punch_power)
 
 
 ## The current NET burn rate in kcal/min — exercise energy above resting. Prefers

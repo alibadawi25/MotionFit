@@ -1,9 +1,11 @@
 extends Node3D
 ## SprintPlayer
 ##
-## The racing athlete in Hurdle Dash. Like the zombie-run figure it never
-## travels — the stadium scrolls past while rivals are placed relative to it —
-## but its moveset is deliberately tiny: run (always; the stride paces to how
+## The racing athlete in Hurdle Dash. Like the zombie-run figure it holds its
+## lane — the stadium scrolls past while rivals are placed relative to it — save
+## for a forward LUNGE while airborne (see [member _z]) so a hurdle jump reads
+## as a real leap down the track rather than a hop in place.
+## Its moveset is deliberately tiny: run (always; the stride paces to how
 ## hard the player is marching) and JUMP (a real physical leap, via
 ## MotionManager.consume_jump) to clear hurdles. No strafe and no slide: a
 ## hurdles race is a purity test of rhythm plus timing, so nothing else
@@ -15,9 +17,18 @@ extends Node3D
 class_name SprintPlayer
 
 ## Kinematic jump identical to the zombie run's, so a leap feels the same
-## across games (≈0.6 s airborne, ≈0.9 m peak).
-const JUMP_VELOCITY: float = 6.2
+## across games. The launch carries your pace: a standing hop clears a hurdle
+## (JUMP_VELOCITY, ≈0.7 s airborne, ≈1.0 m peak) and a full-tilt sprint adds up
+## to JUMP_PACE_BOOST for a longer, higher clearance (≈1.0 s airborne).
+const JUMP_VELOCITY: float = 7.0
+const JUMP_PACE_BOOST: float = 3.0
 const GRAVITY: float = 22.0
+## A hurdle leap travels down-track: while airborne the athlete surges forward
+## (-Z, toward the oncoming bar) and arcs back onto its lane mark by touchdown,
+## so a jump reads as a real forward leap rather than a hop in place. The reach
+## scales with pace, like JUMP_PACE_BOOST — a full-tilt sprint leaps farther.
+const JUMP_LUNGE: float = 1.7
+const JUMP_LUNGE_PACE: float = 1.3
 ## Above this height the athlete counts as clearing a hurdle.
 const CLEAR_HEIGHT: float = 0.35
 
@@ -33,6 +44,10 @@ const RUN_STRIDE_MAX: float = 2.9
 
 var _y: float = 0.0            # current jump height
 var _vy: float = 0.0           # vertical velocity
+var _z: float = 0.0            # forward lunge offset (-Z ahead) while airborne
+var _air_t: float = 0.0        # elapsed airtime of the current jump
+var _air_total: float = 0.0    # total ballistic airtime of the current jump
+var _lunge: float = 0.0        # this jump's forward reach, locked in at launch
 var _grounded: bool = true
 var _run: float = 0.0          # smoothed pace 0..1, set by sprint.gd each frame
 var _stumble_t: float = 0.0    # brief hit-reaction timer
@@ -93,7 +108,7 @@ func tick(delta: float, run: float) -> void:
 		if _stumble_t > 0.0:
 			lean = sin(_stumble_t * 40.0) * 0.12 * _stumble_t
 		_character.rotation.z = lerpf(_character.rotation.z, lean, 0.3)
-	position = Vector3(_base_x, _y, 0.0)
+	position = Vector3(_base_x, _y, _z)
 	_update_animation()
 
 
@@ -103,15 +118,26 @@ func _update_jump(delta: float) -> void:
 	# line, and not a second jump mid-air).
 	var jumped: bool = MotionManager.consume_jump()
 	if jumped and _grounded and _start_pose == "" and not _finished:
-		_vy = JUMP_VELOCITY
+		_vy = JUMP_VELOCITY + JUMP_PACE_BOOST * clampf(_run, 0.0, 1.0)
 		_grounded = false
+		# Lock in this leap's forward reach and its ballistic airtime so the lunge
+		# arc (below) tops out near the apex and settles home at touchdown.
+		_air_t = 0.0
+		_air_total = 2.0 * _vy / GRAVITY
+		_lunge = JUMP_LUNGE + JUMP_LUNGE_PACE * clampf(_run, 0.0, 1.0)
 		_play_jump()
 	_vy -= GRAVITY * delta
 	_y += _vy * delta
 	if _y <= 0.0:
 		_y = 0.0
 		_vy = 0.0
+		_z = 0.0
 		_grounded = true
+	else:
+		# Surge forward through the flight, back to the lane mark at touchdown.
+		_air_t += delta
+		var p: float = clampf(_air_t / maxf(_air_total, 0.0001), 0.0, 1.0)
+		_z = -_lunge * sin(PI * p)
 
 
 func _play_jump() -> void:

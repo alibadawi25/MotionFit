@@ -380,6 +380,20 @@ EFFORT_WINDOW_SEC = 5.0      # rolling window for the jump-rate term
 EFFORT_SMOOTH_HZ = 0.4       # low-pass MET so the calorie counter reads steadily
 SQUAT_SPEED_SMOOTH_HZ = 0.3  # low-pass on the leg-fold speed feeding SQUAT_MET_GAIN
 
+# --- Punch detection (Boxing) -----------------------------------------------
+# A punch is a fast arm EXTENSION: the wrist shoots away from the shoulder to
+# near-full reach, then must retract before another counts (so one throw = one
+# hit). Reach is measured from the metric world landmarks and normalised by torso
+# length, so it is distance/scale invariant and needs no calibration. It's
+# direction-agnostic (any quick full extension counts) so jabs, crosses and hooks
+# all register. Mirrors the jump detector: an EDGE event, fired once on the throw.
+PUNCH_EXTEND_MIN = 0.95      # wrist->shoulder reach (torso lengths) that reads as extended
+PUNCH_RESET_EXTEND = 0.78    # must retract below this before that hand can punch again
+PUNCH_SPEED_MIN = 2.0        # reach growth (torso/s) to fire -- a real snap, not a drift
+PUNCH_SPEED_MAX = 6.0        # reach growth mapped to full power (1.0)
+PUNCH_MIN_INTERVAL = 0.26    # per-hand debounce (s)
+PUNCH_SMOOTH_HZ = 9.0        # light low-pass on reach so landmark jitter can't fire it
+
 # MediaPipe Pose landmark indices we use.
 NOSE = 0
 L_SHOULDER, R_SHOULDER = 11, 12
@@ -1207,6 +1221,7 @@ def main(args: argparse.Namespace | None = None) -> None:
     state = ControlState()
     steps = StepCounter()
     effort = _EffortEstimator()
+    punch_detector = _PunchDetector()  # left/right punch edges for Boxing
     # Per-user calibration: load a saved profile (personalises crouch depth + seeds
     # the standing reference) and keep a Calibrator ready to (re)capture on demand
     # -- 'c' in the preview window, or a {"cmd":"calibrate"} packet from Godot.
@@ -1330,6 +1345,7 @@ def main(args: argparse.Namespace | None = None) -> None:
             pose_msg = ""
             jumped = False
             hands_up = False
+            punch = ""
             lm = None
             wlm = None
             if detected:
@@ -1337,6 +1353,10 @@ def main(args: argparse.Namespace | None = None) -> None:
                 wlm = result.pose_world_landmarks[0] if result.pose_world_landmarks else None
                 if show_window:
                     _draw_pose(frame, lm)
+                # Punches are upper-body and don't need the marching-stance gate, so
+                # they're read from `detected` (like hands_up) -- a standing boxer
+                # throwing a jab still lands even if the leg gate flickers.
+                punch = punch_detector.update(lm, wlm, now, dt)
                 # Once we're already tracking a valid stance, relax the leg-drop
                 # gate so squatting down (knees fold up to the hips) stays valid
                 # and reads as a crouch rather than dropping out with "STAND UP".
@@ -1391,6 +1411,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                     state.reset()
                     forward_filter.reset()
                     turn_filter.reset()
+                    punch_detector.reset()  # no phantom punch on reacquire
                     lost_reset_done = True
                 if detected:
                     # Seen, but not in a valid stance: tell them how to fix it.
@@ -1425,6 +1446,7 @@ def main(args: argparse.Namespace | None = None) -> None:
             packet = _build_packet(forward, turn, jumped, crouch,
                                    detected and pose_ok, steps.steps, cadence, met, hr,
                                    hands_up=hands_up, duck=duck,
+                                   punch=punch, punch_power=punch_detector.power,
                                    status=status, ready_hint=ready_hint,
                                    calib_state=calibrator.state, calib_prompt=calibrator.prompt,
                                    calib_progress=calibrator.progress,
@@ -1741,6 +1763,7 @@ def _compute_controls(
 def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
                   detected: bool, steps: int, cadence: float,
                   met: float, hr: float, hands_up: bool = False, duck: float = 0.0,
+                  punch: str = "", punch_power: float = 0.0,
                   status: str = "ready", ready_hint: str = "",
                   calib_state: str = "idle", calib_prompt: str = "",
                   calib_progress: float = 0.0,
@@ -1778,6 +1801,8 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
         "met": round(met, 2),   # body-mass-independent effort; Godot -> calories
         "hr": round(hr, 1),     # heart rate bpm, 0 = no reading (motion fallback)
         "hands_up": hands_up,   # "ready" gesture: both hands above the head
+        "punch": punch,         # Boxing: "left"/"right" on the throw frame, else ""
+        "punch_power": round(punch_power, 3),  # 0..1 strength of that punch
         "status": status,       # service/camera state (see docstring); CONTEXT.md §9
         "ready_hint": ready_hint,  # setup coaching line; "" = framed and ready
         "calib_state": calib_state,      # calibration phase (see docstring)
@@ -1789,6 +1814,85 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
         "calib_squat": round(calib_squat, 5),
         "ts": time.time(),
     }
+
+
+class _PunchDetector:
+    """Detects left/right punches as fast arm-extension EDGE events, mirroring the
+    jump detector's shape (fire once on the throw, re-arm on the retract). Reach is
+    read from the metric world landmarks (falling back to image landmarks) and
+    normalised by torso length, so it's scale/distance invariant with no
+    calibration. `power` carries the strength (0..1) of the punch that just fired.
+
+    Handedness follows the mirrored preview: `L_WRIST`/`R_WRIST` are MediaPipe's
+    own left/right, which on the flipped frame reads as the player's on-screen
+    side -- so a "left" punch is the glove on the left of their mirror image.
+    """
+
+    def __init__(self) -> None:
+        self._reach = {"left": None, "right": None}   # smoothed wrist reach
+        self._armed = {"left": True, "right": True}    # ready to fire (retracted)
+        self._peak = {"left": 0.0, "right": 0.0}       # peak extend speed since re-arm
+        self._last = {"left": -1e9, "right": -1e9}     # last fire time per hand
+        self.power = 0.0
+
+    def reset(self) -> None:
+        self.__init__()
+
+    def update(self, lm, wlm, now: float, dt: float) -> str:
+        """Returns the hand that punched this frame ("left"/"right"), or "" -- at
+        most one per frame (the stronger, if both extend at once)."""
+        pts = wlm if wlm is not None else lm
+        if pts is None or dt <= 0.0:
+            return ""
+
+        def dist(a, b) -> float:
+            return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
+
+        # Torso length (shoulder centre -> hip centre) is the normalising scale.
+        torso = 0.5 * (dist(pts[L_SHOULDER], pts[L_HIP])
+                       + dist(pts[R_SHOULDER], pts[R_HIP]))
+        if torso < 1e-3:
+            return ""
+
+        fired = ""
+        best_power = 0.0
+        for side, sh_i, wr_i in (("left", L_SHOULDER, L_WRIST),
+                                 ("right", R_SHOULDER, R_WRIST)):
+            if (lm[wr_i].visibility or 0.0) < MIN_VISIBILITY:
+                self._reach[side] = None   # lost the hand; don't fire on reacquire
+                continue
+            reach = dist(pts[sh_i], pts[wr_i]) / torso
+            prev = self._reach[side]
+            if prev is None:
+                self._reach[side] = reach
+                continue
+            a = 1.0 - math.exp(-dt * PUNCH_SMOOTH_HZ)
+            sm = prev + (reach - prev) * a
+            speed = (sm - prev) / dt
+            self._reach[side] = sm
+            # Re-arm on the retract, and zero the peak so the NEXT throw is judged
+            # on its own speed.
+            if sm < PUNCH_RESET_EXTEND:
+                self._armed[side] = True
+                self._peak[side] = 0.0
+            self._peak[side] = max(self._peak[side], speed)
+            # Fire once the arm reaches full extension, provided it snapped out fast
+            # at some point during the throw. Smoothing delays the reach a few frames
+            # behind the speed peak, so the two are checked over the extension (peak
+            # speed) rather than demanded on the same frame.
+            if (self._armed[side] and sm >= PUNCH_EXTEND_MIN
+                    and self._peak[side] >= PUNCH_SPEED_MIN
+                    and (now - self._last[side]) >= PUNCH_MIN_INTERVAL):
+                self._armed[side] = False
+                self._last[side] = now
+                p = _clamp((self._peak[side] - PUNCH_SPEED_MIN)
+                           / (PUNCH_SPEED_MAX - PUNCH_SPEED_MIN), 0.0, 1.0)
+                if p >= best_power:
+                    best_power = p
+                    fired = side
+        if fired:
+            self.power = best_power
+        return fired
 
 
 def _detect_hands_up(lm) -> bool:

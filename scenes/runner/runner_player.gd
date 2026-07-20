@@ -32,8 +32,12 @@ const STRAFE_SPEED: float = 10.0
 const STRAFE_LEAN: float = 0.28
 
 ## Kinematic jump: a punchy arc independent of project gravity so hops feel
-## crisp in a runner (≈0.6 s airborne, ≈0.9 m peak).
-const JUMP_VELOCITY: float = 6.2
+## crisp in a runner. The launch carries your run: a standing hop still clears a
+## low barrier (JUMP_VELOCITY, ≈0.7 s airborne, ≈1.0 m peak), and the faster you
+## were marching the longer and higher the leap (up to +JUMP_PACE_BOOST at full
+## pace, ≈1.0 s airborne), so a sprint into a hurdle sails over it.
+const JUMP_VELOCITY: float = 7.0
+const JUMP_PACE_BOOST: float = 3.0
 const GRAVITY: float = 22.0
 ## Above this height the runner counts as clearing a low barrier.
 const CLEAR_HEIGHT: float = 0.35
@@ -125,7 +129,7 @@ func _update_strafe(delta: float) -> void:
 
 func _update_jump(delta: float) -> void:
 	if _grounded and MotionManager.consume_jump():
-		_vy = JUMP_VELOCITY
+		_vy = JUMP_VELOCITY + JUMP_PACE_BOOST * clampf(_run, 0.0, 1.0)
 		_grounded = false
 		_play_jump()
 	elif not _grounded:

@@ -38,6 +38,13 @@ const STUMBLE_SEC: float = 1.2
 const CLEAR_BONUS: int = 5
 ## Placement bonus at the line, indexed by (place - 1).
 const PLACE_BONUS: Array[int] = [250, 150, 90, 40]
+## A hurdle clears if the athlete was airborne at any point while their mark was
+## inside this band around it — a bit before it (JUMP_CLEAR_LEAD, metres) through
+## a bit past it (JUMP_CLEAR_TRAIL). This turns the single-frame crossing check
+## into a forgiving window, so a leap that starts a touch early or late still
+## carries the athlete OVER the hurdle instead of clipping it on the way down.
+const JUMP_CLEAR_LEAD: float = 2.4
+const JUMP_CLEAR_TRAIL: float = 0.8
 
 ## Warm-up card time before the starter takes over.
 const BRIEFING_SEC: float = 8.0
@@ -90,6 +97,9 @@ var _dist: float = 0.0
 var _dist_accum: float = 0.0
 var _race_time: float = 0.0
 var _next_hurdle: int = 0
+## Latched true once the athlete is airborne over the pending hurdle's clearance
+## band; read (and reset) when that hurdle is finally resolved.
+var _hurdle_latched: bool = false
 var _stumble_left: float = 0.0
 ## Smoothed post-line pace so the stride winds down instead of stopping dead.
 var _glide_pace: float = 0.0
@@ -271,12 +281,18 @@ func _accumulate_score(metres: float) -> void:
 		_dist_accum -= 1.0
 
 
-## Resolves each hurdle row the moment the player's mark crosses it: airborne
-## high enough = cleared (bonus), otherwise a stumble the whole stadium sees.
+## Resolves each hurdle over a clearance band rather than a single frame: latch
+## while the athlete is airborne over the approaching hurdle, then settle the
+## outcome once their mark is past it. Airborne anywhere in the band = cleared
+## (bonus); otherwise a stumble the whole stadium sees.
 func _resolve_hurdles() -> void:
-	while _next_hurdle < _hurdle_dists.size() and _dist >= _hurdle_dists[_next_hurdle]:
-		_next_hurdle += 1
-		if _player.is_clearing():
+	if _next_hurdle >= _hurdle_dists.size():
+		return
+	var mark: float = _hurdle_dists[_next_hurdle]
+	if _dist >= mark - JUMP_CLEAR_LEAD and _player.is_clearing():
+		_hurdle_latched = true
+	if _dist >= mark + JUMP_CLEAR_TRAIL:
+		if _hurdle_latched:
 			add_score(CLEAR_BONUS)
 			_audio.clear_tick()
 			_track.cheer_burst(0.5)
@@ -287,6 +303,8 @@ func _resolve_hurdles() -> void:
 			_audio.clatter()
 			_hud.flash_hit()
 			_hud.flash_toast("CLIPPED!", SprintHud.DANGER)
+		_next_hurdle += 1
+		_hurdle_latched = false
 
 
 func _call_milestones() -> void:

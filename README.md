@@ -35,6 +35,10 @@ and Godot only receives processed movement data over a local socket.
   how you escape; jump, bow forward to slide, and lean to dodge. Tension is deliberately
   unquantified: a closing vignette, a phase-locked heartbeat and dragging
   footsteps behind you instead of any proximity gauge.
+- **Boxing** mini-game *(early work-in-progress — not yet playable)* — an indoor
+  arena set (ring, crowd bowl, jumbotron) with fighter, HUD and cinematic
+  scaffolding in place. Gameplay is **incomplete and does not work well yet**;
+  it still needs substantial updates before it's ready to play.
 - **Difficulty select** — an effort-framed EASY / NORMAL / HARD picker between
   Game Select and the game intro (free-roam games skip it), plus smooth fade
   transitions on every scene change.

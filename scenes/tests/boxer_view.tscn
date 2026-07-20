@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/tests/boxer_view.gd" id="1_v"]
+
+[sub_resource type="Environment" id="env"]
+background_mode = 0
+background_color = Color(0.08, 0.09, 0.12, 1)
+ambient_light_source = 1
+ambient_light_color = Color(0.5, 0.53, 0.6, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+
+[node name="BoxerView" type="Node3D"]
+script = ExtResource("1_v")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Key" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.86602540, 0.25, -0.43301270, 0, 0.86602540, 0.5, 0.5, -0.43301270, 0.75, 0, 3, 0)
+light_energy = 1.3
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9962, 0.0872, 0, -0.0872, 0.9962, 0, 0.55, 2.6)
+current = true
+fov = 40.0

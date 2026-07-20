@@ -57,12 +57,25 @@ BOTTOM_COLORS = {
     "gray":  (0.45, 0.45, 0.48),
     "jeans": (0.30, 0.42, 0.58),
 }
+GLOVE_COLORS = {
+    "red":   (0.80, 0.14, 0.14),
+    "blue":  (0.13, 0.30, 0.72),
+    "black": (0.12, 0.12, 0.14),
+    "gold":  (0.85, 0.66, 0.18),
+    "white": (0.92, 0.92, 0.94),
+    "green": (0.16, 0.55, 0.32),
+}
 HAIR_STYLES = ("short", "long", "ponytail", "bun", "spiky", "bald")
 TOP_STYLES = ("tshirt", "longsleeve", "tank")
 BOTTOM_STYLES = ("pants", "shorts")
+# Optional gear layer worn over the base figure. "boxing" swaps the bare hands
+# for laced gloves, adds a trunks waistband and high-top boots.
+GEAR_STYLES = ("none", "boxing")
 
 EYE_COLOR = (0.10, 0.12, 0.18)
 SHOE_COLOR = (0.95, 0.94, 0.96)
+GLOVE_TRIM = (0.94, 0.94, 0.96)   # laces / cuff band on the gloves
+BOOT_COLOR = (0.11, 0.11, 0.13)   # high-top boxing boots
 
 
 def parse_color(value, table):
@@ -106,7 +119,8 @@ class Character:
                  hair="short", hair_color=(0.25, 0.16, 0.13),
                  top="tshirt", top_color=(0.45, 0.70, 0.90),
                  bottom="pants", bottom_color=(0.22, 0.26, 0.36),
-                 skin=(0.98, 0.83, 0.70)):
+                 skin=(0.98, 0.83, 0.70),
+                 gear="none", glove_color=(0.80, 0.14, 0.14)):
         self.sex = sex
         self.age = age
         self.height_cm = height_cm
@@ -118,6 +132,8 @@ class Character:
         self.bottom = bottom
         self.bottom_color = bottom_color
         self.skin = skin
+        self.gear = gear
+        self.glove_color = glove_color
 
         self.body_fat, self.bmi = estimate_body_fat(sex, age, height_cm, weight_kg)
         # fatness: torso girth. Belly (depth) gains more than girth; limbs
@@ -462,6 +478,31 @@ def build(ch=None, clip_builders=None):
         ("nose",  geoms["nose"],  "skin"),
     ]}
 
+    # ---- optional boxing gear (added only when worn, so the default figure and
+    # its material/mesh indices are byte-for-byte unchanged) ----
+    boxing = ch.gear == "boxing"
+    if boxing:
+        mtl["glove"] = b.add_material("glove", ch.glove_color)
+        mtl["gtrim"] = b.add_material("glovetrim", GLOVE_TRIM)
+        mtl["boot"] = b.add_material("boot", BOOT_COLOR)
+        # A big rounded fist that swallows the hand, a white wrist cuff, high-top
+        # boots that swallow the shoe, a boot shaft up the shin, and a trunks
+        # waistband ring at the hips (trunks share the bottom colour).
+        mesh["glove"] = b.add_mesh(*ellipsoid_geom(0.14*Fl, 0.16*Fl, 0.17*Fl),
+                                   mtl["glove"])
+        mesh["cuff"] = b.add_mesh(*ellipsoid_geom(0.10*Fl, 0.06, 0.10*Fl),
+                                  mtl["gtrim"])
+        # Both boot parts are ellipsoids (radius clearly EXCEEDING the bare shin
+        # 0.115, or the skin z-fights through): a forward-pointing foot plus a
+        # tall ankle shaft that reads as a high-top over the lower shin.
+        mesh["boot"] = b.add_mesh(*ellipsoid_geom(0.145*Fl, 0.09, 0.235*Fl),
+                                  mtl["boot"])
+        mesh["bootshaft"] = b.add_mesh(*ellipsoid_geom(0.15*Fl, 0.15, 0.16*Fl),
+                                       mtl["boot"])
+        mesh["waist"] = b.add_mesh(
+            *ellipsoid_geom(0.31*Ft*(0.7 + 0.3*ch.shoulder_factor), 0.11, 0.235*Fb),
+            mtl["pants"])
+
     # ---- node hierarchy (build leaves first so we know child indices) ----
     # node indices we want to animate get stashed in `nd`
     nd = {}
@@ -519,9 +560,16 @@ def build(ch=None, clip_builders=None):
                         children=[head_n])
     nd["neck"] = neck_n
 
-    # arms: shoulder -> (arm mesh) elbow -> (fore mesh) wrist -> hand
+    # arms: shoulder -> (arm mesh) elbow -> (fore mesh) wrist -> hand/glove.
+    # The glove parents to the same wrist node the bare hand did, so it rides
+    # every arm animation (jab, hook, block) for free — exactly like the hair.
     def build_arm(side_sign, name):
-        hand = b.add_node(f"hand{name}", mesh=mesh["hand"], translation=(0, -0.20, 0))
+        if boxing:
+            cuff = b.add_node(f"cuff{name}", mesh=mesh["cuff"], translation=(0, 0.13, -0.02))
+            hand = b.add_node(f"hand{name}", mesh=mesh["glove"],
+                              translation=(0, -0.26, 0.03), children=[cuff])
+        else:
+            hand = b.add_node(f"hand{name}", mesh=mesh["hand"], translation=(0, -0.20, 0))
         fore = b.add_node(f"fore{name}", mesh=mesh["fore"], translation=(0, -0.17, 0))
         elbow = b.add_node(f"elbow{name}", translation=(0, -0.20, 0),
                            children=[fore, hand])
@@ -537,8 +585,12 @@ def build(ch=None, clip_builders=None):
     nd["shL"], nd["elL"] = sh_l, el_l
     nd["shR"], nd["elR"] = sh_r, el_r
 
+    torso_kids = [neck_n, sh_l, sh_r]
+    if boxing:
+        torso_kids.append(b.add_node("waistband", mesh=mesh["waist"],
+                                     translation=(0, -0.30, 0)))
     torso_n = b.add_node("torso", mesh=mesh["torso"], translation=(0, 0.30, 0),
-                         children=[neck_n, sh_l, sh_r])
+                         children=torso_kids)
     nd["torso"] = torso_n
 
     # legs: hip -> (thigh mesh) knee -> (shin mesh) ankle -> shoe
@@ -546,10 +598,17 @@ def build(ch=None, clip_builders=None):
         # shin mesh sits at knee-local y=-0.20 and reaches down to ~-0.43
         # (half_len 0.11 + cap radius 0.115), so the shoe belongs at the
         # ankle just below that, not at mid-shin
-        shoe = b.add_node(f"shoe{name}", mesh=mesh["shoe"], translation=(0, -0.42, 0.07))
-        knee = b.add_node(f"knee{name}", translation=(0, -0.40, 0),
-                          children=[b.add_node(f"shin{name}", mesh=mesh["shin"],
-                                               translation=(0, -0.20, 0)), shoe])
+        knee_kids = [b.add_node(f"shin{name}", mesh=mesh["shin"],
+                                translation=(0, -0.20, 0))]
+        if boxing:
+            knee_kids.append(b.add_node(f"boot{name}", mesh=mesh["bootshaft"],
+                                        translation=(0, -0.30, 0)))
+            knee_kids.append(b.add_node(f"shoe{name}", mesh=mesh["boot"],
+                                        translation=(0, -0.45, 0.07)))
+        else:
+            knee_kids.append(b.add_node(f"shoe{name}", mesh=mesh["shoe"],
+                                        translation=(0, -0.42, 0.07)))
+        knee = b.add_node(f"knee{name}", translation=(0, -0.40, 0), children=knee_kids)
         thigh = b.add_node(f"thigh{name}", mesh=mesh["thigh"], translation=(0, -0.20, 0))
         hip = b.add_node(f"hip{name}",
                          translation=(0.13*(0.7+0.3*Ft)*ch.hip_factor*side_sign,
@@ -708,6 +767,112 @@ def clip_crouch(b, nd):
     return c
 
 
+# ===================== the boxing clips ================================
+# An alternate animation set for --clips boxing (fighters in the Boxing game).
+# The rest pose has arms hanging -Y and elbows near-straight; a negative shoulder
+# rot_x lifts the arm forward, a negative elbow rot_x flexes it. The GUARD holds
+# both gloves up by the face (shoulders a little forward, elbows deeply folded),
+# and JAB/CROSS drive one arm out to full extension (shoulder to near-horizontal,
+# elbow straightening) before snapping back to guard. Legs stay in a braced,
+# knees-soft stance -- a boxer never marches on the spot.
+
+# Shared guard angles the punches return to.
+SH_GUARD = -0.52      # upper arms a touch forward of hanging
+EL_GUARD = -1.85      # elbows folded deep so the gloves ride up by the chin
+KNEE_BRACE = 0.22     # soft-knee fighting stance
+
+
+def clip_box_guard(b, nd):
+    """Looping fight stance: gloves up by the face, a light bob and weave, knees
+    soft. The Boxing fighters play this whenever they aren't throwing or taking a
+    punch, so their arms are always up in a guard (never hanging like idle)."""
+    c = Clip(b, "guard", 2.4, n=32)
+    A = c.phase()
+    bob = [math.sin(a * 2.0) * 0.010 for a in A]        # quick, low bounce
+    weave = [math.sin(a) * 0.05 for a in A]             # slow side-to-side sway
+    breathe = [math.sin(a * 2.0) * 0.012 for a in A]
+    c.trans_y(nd["root"], 0.0, bob)
+    c.rot_z(nd["torso"], weave)
+    c.rot_z(nd["hips"], [-w * 0.6 for w in weave])
+    c.scale_breath(nd["torso"], breathe)
+    c.rot_yz(nd["neck"], [w * 0.4 for w in weave], [0.06 for _ in A])  # chin tucked
+    # gloves held up, with a whisper of life so it isn't a statue
+    c.rot_x(nd["shL"], [SH_GUARD + math.sin(a * 2.0) * 0.03 for a in A])
+    c.rot_x(nd["shR"], [SH_GUARD - math.sin(a * 2.0) * 0.03 for a in A])
+    c.rot_x(nd["elL"], [EL_GUARD + math.sin(a * 2.0) * 0.03 for a in A])
+    c.rot_x(nd["elR"], [EL_GUARD - math.sin(a * 2.0) * 0.03 for a in A])
+    # braced stance: knees soft, feet planted (no stride)
+    c.rot_x(nd["kneeL"], [KNEE_BRACE for _ in A])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE for _ in A])
+    return c
+
+
+def _throw(P, out0, out1, back0, back1):
+    """A punch envelope over progress P: 0 at rest, 1 at full extension, back to
+    0. Snaps out over [out0,out1] and recovers over [back0,back1]."""
+    return [smoothstep(out0, out1, p) * (1.0 - smoothstep(back0, back1, p))
+            for p in P]
+
+
+def clip_box_jab(b, nd):
+    """One-shot LEFT straight: the lead glove fires out to full extension and
+    snaps back to guard. Fast and short -- a jab."""
+    c = Clip(b, "jab", 0.36, n=24)
+    P = c.progress()
+    e = _throw(P, 0.0, 0.30, 0.42, 0.9)
+    c.rot_x(nd["shL"], [SH_GUARD + (-1.5 - SH_GUARD) * t for t in e])
+    c.rot_x(nd["elL"], [EL_GUARD + (-0.12 - EL_GUARD) * t for t in e])
+    # rear hand stays home; a small torso turn feeds the reach
+    c.rot_x(nd["shR"], [SH_GUARD for _ in P])
+    c.rot_x(nd["elR"], [EL_GUARD for _ in P])
+    c.rot_yz(nd["torso"], [-0.12 * t for t in e], [0.0 for _ in P])
+    c.rot_x(nd["kneeL"], [KNEE_BRACE for _ in P])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE for _ in P])
+    return c
+
+
+def clip_box_cross(b, nd):
+    """One-shot RIGHT straight: the rear glove drives through with a hip/torso
+    turn behind it -- longer and heavier than the jab."""
+    c = Clip(b, "cross", 0.46, n=24)
+    P = c.progress()
+    e = _throw(P, 0.0, 0.34, 0.5, 0.95)
+    c.rot_x(nd["shR"], [SH_GUARD + (-1.42 - SH_GUARD) * t for t in e])
+    c.rot_x(nd["elR"], [EL_GUARD + (-0.08 - EL_GUARD) * t for t in e])
+    c.rot_x(nd["shL"], [SH_GUARD for _ in P])
+    c.rot_x(nd["elL"], [EL_GUARD for _ in P])
+    # rotate the trunk into the punch (rear side comes forward)
+    c.rot_yz(nd["torso"], [0.34 * t for t in e], [0.0 for _ in P])
+    c.rot_z(nd["hips"], [0.12 * t for t in e])
+    c.rot_x(nd["kneeL"], [KNEE_BRACE for _ in P])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE for _ in P])
+    return c
+
+
+def clip_box_hit(b, nd):
+    """One-shot recoil: the head and trunk snap to the side as a punch lands, the
+    gloves pull in tight, then the fighter recovers to guard. Played on the
+    fighter that just got tagged."""
+    c = Clip(b, "hit", 0.5, n=24)
+    P = c.progress()
+    r = _throw(P, 0.0, 0.12, 0.3, 0.95)          # sharp snap, slower recover
+    c.trans_y(nd["root"], 0.0, [-0.03 * t for t in r])
+    c.rot_z(nd["torso"], [0.3 * t for t in r])   # rocked to the side
+    c.rot_yz(nd["neck"], [0.42 * t for t in r], [0.3 * t for t in r])  # head snaps
+    # cover up: gloves pull in a touch tighter than guard
+    c.rot_x(nd["shL"], [SH_GUARD - 0.12 * t for t in r])
+    c.rot_x(nd["shR"], [SH_GUARD - 0.12 * t for t in r])
+    c.rot_x(nd["elL"], [EL_GUARD - 0.15 * t for t in r])
+    c.rot_x(nd["elR"], [EL_GUARD - 0.15 * t for t in r])
+    c.rot_x(nd["kneeL"], [KNEE_BRACE + 0.1 * t for t in r])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE + 0.1 * t for t in r])
+    return c
+
+
+# The boxing animation set, selected by --clips boxing.
+BOXING_CLIP_BUILDERS = (clip_box_guard, clip_box_jab, clip_box_cross, clip_box_hit)
+
+
 # ===================== serialize to GLB =================================
 def to_gltf_dict(b, root_n):
     return {
@@ -773,6 +938,14 @@ def parse_args(argv=None):
     p.add_argument("--skin", default="light",
                    type=lambda v: parse_color(v, SKIN_TONES),
                    help=f"{sorted(SKIN_TONES)} or #rrggbb")
+    p.add_argument("--gear", choices=GEAR_STYLES, default="none",
+                   help="worn gear layer (boxing = gloves + trunks + boots)")
+    p.add_argument("--glove-color", default="red",
+                   type=lambda v: parse_color(v, GLOVE_COLORS),
+                   help=f"{sorted(GLOVE_COLORS)} or #rrggbb (with --gear boxing)")
+    p.add_argument("--clips", choices=("locomotion", "boxing"), default="locomotion",
+                   help="animation set: locomotion (idle/walk/jump/crouch) or "
+                        "boxing (guard/jab/cross/hit) for a fighter")
     p.add_argument("--out", default="human.glb")
     a = p.parse_args(argv)
     if a.height is None:
@@ -790,10 +963,12 @@ if __name__ == "__main__":
                    weight_kg=args.weight, hair=args.hair,
                    hair_color=args.hair_color, top=args.top,
                    top_color=args.top_color, bottom=args.bottom,
-                   bottom_color=args.bottom_color, skin=args.skin)
+                   bottom_color=args.bottom_color, skin=args.skin,
+                   gear=args.gear, glove_color=args.glove_color)
     print(f"{ch.sex}, {ch.age:.0f}y, {ch.height_cm:.0f}cm/{ch.weight_kg:.0f}kg"
           f" -> BMI {ch.bmi:.1f}, est. body fat {ch.body_fat:.1f}%,"
           f" fatness {ch.f_torso:.2f}, height scale {ch.height_scale:.2f}")
-    b, root = build(ch)
+    clip_builders = BOXING_CLIP_BUILDERS if args.clips == "boxing" else None
+    b, root = build(ch, clip_builders)
     d = to_gltf_dict(b, root)
     write_glb(args.out, d, bytes(b.buffer))

@@ -103,6 +103,27 @@ func build_stock(body: Dictionary, appearance: Dictionary, slot: String) -> Node
 	return packed.instantiate() as Node3D if packed != null else null
 
 
+## Builds a fighter for the Boxing game from explicit [param body] and
+## [param appearance] (same shapes as [method build_stock]), with the boxing gear
+## layer (laced gloves in [param glove_color], trunks and boots) and the boxing
+## animation set (guard / jab / cross / hit instead of the locomotion clips).
+## Cached under user://characters/<slot>.glb like other stock figures (same inputs
+## → no regeneration). Falls back to the bundled default model when generation or
+## loading fails, so a fighter always appears.
+func build_boxer(body: Dictionary, appearance: Dictionary, slot: String,
+		glove_color: String = "red") -> Node3D:
+	var extra := PackedStringArray([
+		"--gear", "boxing", "--glove-color", glove_color, "--clips", "boxing"])
+	var path: String = _ensure_generated(body, appearance,
+			"%s/%s.glb" % [OUT_DIR, slot], extra)
+	if path != "":
+		var figure: Node3D = _load_glb(path)
+		if figure != null:
+			return figure
+	var packed: PackedScene = load(FALLBACK_MODEL)
+	return packed.instantiate() as Node3D if packed != null else null
+
+
 ## Builds a throwaway preview figure from UNSAVED editor state — [param body]
 ## ({sex, age, height_cm, weight_kg}) and [param appearance] (the keys of
 ## ProfileManager.DEFAULT_APPEARANCE) — so a customization screen can show the
@@ -130,8 +151,8 @@ func _active_body() -> Dictionary:
 ## the previous run (~0.15 s when it does run). Returns [param out_path], or ""
 ## when generation failed (missing Python, bad exit, no file written).
 func _ensure_generated(body: Dictionary, appearance: Dictionary,
-		out_path: String) -> String:
-	var args: PackedStringArray = _build_args(body, appearance, out_path)
+		out_path: String, extra_args: PackedStringArray = []) -> String:
+	var args: PackedStringArray = _build_args(body, appearance, out_path, extra_args)
 	var stamp: String = " ".join(args)
 	var sidecar: String = out_path + ".args"
 	if FileAccess.file_exists(out_path) and _read_text(sidecar) == stamp:
@@ -152,7 +173,7 @@ func _ensure_generated(body: Dictionary, appearance: Dictionary,
 ## male/female (it shapes the mesh), so "unspecified" renders as the default
 ## male build; "auto" hair is omitted so the generator picks the sex default.
 func _build_args(body: Dictionary, appearance: Dictionary,
-		out_path: String) -> PackedStringArray:
+		out_path: String, extra_args: PackedStringArray = []) -> PackedStringArray:
 	var sex: String = String(body.get("sex", "male"))
 	if sex != "male" and sex != "female":
 		sex = "male"
@@ -173,6 +194,9 @@ func _build_args(body: Dictionary, appearance: Dictionary,
 	var hair: String = String(appearance.get("hair", "auto"))
 	if hair != "auto":
 		args.append_array(PackedStringArray(["--hair", hair]))
+	# Caller-supplied extras (e.g. the boxing gear + clip flags) go last, and are
+	# part of the .args stamp so a change in gear regenerates the cached GLB.
+	args.append_array(extra_args)
 	return args
 
 

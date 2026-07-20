@@ -30,6 +30,13 @@ const RECYCLE_Z: float = 24.0
 const SPAWN_Z: float = -140.0
 ## Player's forgiveness half-width for side-block collisions (metres).
 const PLAYER_HALF_W: float = 0.55
+## A leap clears a barrier if the player was airborne at any point while the
+## barrier was inside this Z band around the player plane — a bit before it
+## arrives (JUMP_CLEAR_LEAD) through a bit past it (JUMP_CLEAR_TRAIL). This turns
+## a single-frame check into a forgiving window, so a jump that starts a touch
+## early or late still carries you OVER the hurdle instead of landing on it.
+const JUMP_CLEAR_LEAD: float = 2.4
+const JUMP_CLEAR_TRAIL: float = 0.8
 
 ## Distance (m) between consecutive obstacles; scaled by difficulty via
 ## [member spacing_scale] (smaller = denser = harder).
@@ -113,8 +120,18 @@ func _scroll_obstacles(dz: float) -> void:
 		if not is_instance_valid(node):
 			continue
 		node.position.z += dz
-		# Resolve the hit/clear the moment the hazard reaches the player plane.
-		if not entry["resolved"] and node.position.z >= 0.0:
+		var z: float = node.position.z
+		# JUMP barriers clear over a Z band: latch the moment the player is
+		# airborne over the approaching hurdle, then settle the outcome once the
+		# hurdle has passed the trailing plane. Other hazards resolve instantly
+		# at the player plane.
+		if not entry["resolved"] and entry["type"] == ObstacleType.JUMP:
+			if z >= -JUMP_CLEAR_LEAD and not entry["cleared"] and _player.is_clearing():
+				entry["cleared"] = true
+			if z >= JUMP_CLEAR_TRAIL:
+				entry["resolved"] = true
+				_resolve(entry)
+		elif not entry["resolved"] and z >= 0.0:
 			entry["resolved"] = true
 			_resolve(entry)
 		if node.position.z > RECYCLE_Z:
@@ -129,7 +146,7 @@ func _resolve(entry: Dictionary) -> void:
 	var hit: bool = false
 	match type:
 		ObstacleType.JUMP:
-			hit = not _player.is_clearing()
+			hit = not entry["cleared"]  # latched across the clearance band
 		ObstacleType.DUCK:
 			hit = not _player.is_sliding()
 		ObstacleType.SIDE:
@@ -183,7 +200,7 @@ func _spawn_obstacle() -> void:
 	node.position = Vector3(0, 0, SPAWN_Z)
 	add_child(node)
 	_obstacles.append({"node": node, "type": type,
-			"x_min": x_min, "x_max": x_max, "resolved": false})
+			"x_min": x_min, "x_max": x_max, "resolved": false, "cleared": false})
 
 
 ## Returns the coaching cue for the nearest un-resolved hazard bearing down on the

@@ -1,0 +1,47 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/boxing/boxing_arena.gd" id="1_arena"]
+
+[sub_resource type="Environment" id="env"]
+background_mode = 0
+background_color = Color(0.02, 0.02, 0.03, 1)
+ambient_light_source = 1
+ambient_light_color = Color(0.16, 0.18, 0.24, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.5
+glow_bloom = 0.1
+glow_hdr_threshold = 0.9
+fog_enabled = true
+fog_light_color = Color(0.1, 0.12, 0.18, 1)
+fog_light_energy = 0.6
+fog_density = 0.006
+
+[node name="BoxingArena" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Arena" type="Node3D" parent="."]
+script = ExtResource("1_arena")
+
+[node name="Fill" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.86602540, 0.25, -0.43301270, 0, 0.86602540, 0.5, 0.5, -0.43301270, 0.75, 0, 30, 0)
+light_color = Color(0.7, 0.75, 0.9, 1)
+light_energy = 0.35
+shadow_enabled = false
+
+[node name="RingSpot" type="SpotLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -0.08715574, 0.9961947, 0, -0.9961947, -0.08715574, 0, 15, 0)
+light_color = Color(1, 0.98, 0.92, 1)
+light_energy = 9.0
+shadow_enabled = true
+spot_range = 26.0
+spot_angle = 34.0
+spot_angle_attenuation = 0.8
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.7499, -0.2323, 0.6195, 0, 0.9364, 0.3511, -0.6616, -0.2633, 0.7021, 15, 10, 17)
+current = true
+fov = 60.0

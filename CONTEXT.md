@@ -301,7 +301,7 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 **Packet schema (Python → Godot), newline-free JSON per datagram:**
 ```json
 { "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "duck": 0.0,
-  "hands_up": false,
+  "hands_up": false, "punch": "", "punch_power": 0.0,
   "walking": false, "detected": true, "steps": 0, "cadence": 0.0, "met": 1.2,
   "hr": 0.0, "status": "ready", "ready_hint": "", "ts": 0.0 }
 ```
@@ -318,6 +318,11 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
   The setup screen (§7) times how long it's held to start the countdown; exposed
   as `MotionManager.is_hands_up()`. Checked independently of the marching stance,
   so you can signal ready before getting into position.
+- `punch` string / `punch_power` 0..1 — the **Boxing** upper-body intent: `"left"`
+  or `"right"` on the single frame a punch (fast arm extension to full reach) is
+  thrown (edge event, like `jump`), else `""`; `punch_power` is how hard it
+  snapped. Read from `detected` (no marching gate — a standing boxer). Exposed as
+  `MotionManager.consume_punch()` / `get_last_punch_power()` + the `punched` signal.
 - `steps` int / `cadence` float — cumulative steps and current pace (steps/min).
 - `met` float    — effort as a metabolic equivalent (body-mass-independent).
   Godot turns this into calories via `ProfileManager` weight × time; MET is used
@@ -407,10 +412,11 @@ by design — with no service running the texture is null and the UI falls back 
 - `scripts/managers/motion_manager.gd` — `MotionManager` autoload. Exposes
   `get_forward()`, `get_turn()`, `is_walking()`, `get_crouch()`,
   `is_crouching()`, `get_duck()`, `is_ducking()`, `consume_jump()`,
-  `is_hands_up()`, `is_receiving()`,
+  `consume_punch()` / `get_last_punch_power()` (Boxing), `is_hands_up()`,
+  `is_receiving()`,
   `is_hr_connected()`, the camera-control API `camera_on()` / `camera_off()` and
   state readouts `get_status()` / `is_camera_ready()` / `is_camera_error()`, and
-  the `motion_updated` / `jumped` / `crouch_changed` signals. `get_forward()` /
+  the `motion_updated` / `jumped` / `crouch_changed` / `punched` signals. `get_forward()` /
   `get_turn()` / `get_crouch()` are time-smoothed (`SMOOTH_TIME`) so ~20-30 Hz
   packets drive 60+ fps games without stair-stepping (`get_forward_raw()` etc.
   give the exact packet values). If the service isn't running, values stay 0 and
