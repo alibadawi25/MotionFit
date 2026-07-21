@@ -36,6 +36,7 @@ const PREVIEWS := {
 	"open_world": "res://assets/game_previews/open_world.png",
 	"runner": "res://assets/game_previews/runner.png",
 	"sprint": "res://assets/game_previews/sprint.png",
+	"boxing": "res://assets/game_previews/boxing.png",
 }
 const PREVIEW_SHADER := preload("res://assets/ui/card_preview.gdshader")
 ## Card corner radius; the preview rounds just inside it so no square pokes out.
