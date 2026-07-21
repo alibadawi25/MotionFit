@@ -13,10 +13,14 @@ shader_type canvas_item;
 uniform vec2 rect_size = vec2(336.0, 228.0);
 uniform float radius = 12.0;
 // Peak darkening applied at the very bottom edge (0 = none, 1 = black).
-uniform float scrim : hint_range(0.0, 1.0) = 0.92;
+uniform float scrim : hint_range(0.0, 1.0) = 0.95;
 // Where the scrim starts fading in (0 = top, 1 = bottom). Kept low enough to
 // only touch the bottom text band so the upper cinematic art stays bright.
-uniform float scrim_start : hint_range(0.0, 1.0) = 0.4;
+uniform float scrim_start : hint_range(0.0, 1.0) = 0.34;
+// Floor the scrim never drops below across the whole text band (title sits high
+// in the band, above where the gradient would otherwise reach), so light text
+// keeps contrast even over a bright shot. 0 = disabled.
+uniform float scrim_floor : hint_range(0.0, 1.0) = 0.28;
 
 // Rect-local pixel position, spanning (0,0)..rect_size regardless of the
 // texture crop applied by KEEP_ASPECT_COVERED.
@@ -35,10 +39,15 @@ void fragment() {
 	float dist = length(max(d, vec2(0.0)));
 	float a = 1.0 - smoothstep(radius - 1.0, radius + 1.0, dist);
 
-	// Bottom-weighted gradient scrim for text legibility. Squared so it ramps in
-	// gently and only bites hard right at the bottom text band.
+	// Bottom-weighted gradient scrim for text legibility. A gentle smoothstep ramp
+	// (not squared — squaring left the mid-band where the description sits too
+	// bright over light shots) that darkens toward the bottom text band, lifted by
+	// a constant floor across that band so even the higher-sitting title/description
+	// keep contrast over a bright image.
 	float yn = clamp(pos.y / rect_size.y, 0.0, 1.0);
 	float g = smoothstep(scrim_start, 1.0, yn);
-	COLOR.rgb *= (1.0 - g * g * scrim);
+	float band = smoothstep(scrim_start, scrim_start + 0.12, yn);
+	float darken = max(g * scrim, band * scrim_floor);
+	COLOR.rgb *= (1.0 - darken);
 	COLOR.a *= a;
 }
