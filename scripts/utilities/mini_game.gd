@@ -237,6 +237,12 @@ func _start_game() -> void:
 ## to the launcher. Both preserve the effort already measured — neither discards
 ## it. Returns the menu so the game can toggle it (open/close) on Esc.
 func attach_pause_menu(parent: Node) -> Control:
+	# The pause overlay must sit above every HUD. Game HUDs live on their own
+	# CanvasLayer (often layer 10), so a default-layer pause menu would be drawn
+	# *under* them — e.g. Boxing's centre "JAB!/CROSS!" prompt bleeding over the
+	# pause screen. Raise the host CanvasLayer above any HUD to keep it on top.
+	if parent is CanvasLayer:
+		(parent as CanvasLayer).layer = 100
 	var menu: Control = load(SceneManager.PAUSE_MENU).instantiate()
 	menu.hide()
 	parent.add_child(menu)

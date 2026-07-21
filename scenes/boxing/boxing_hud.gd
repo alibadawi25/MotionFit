@@ -74,8 +74,11 @@ func _chip() -> StyleBoxFlat:
 # --- Health bars -------------------------------------------------------------
 
 func _build_health_bars() -> void:
-	_you_fill = _build_bar(Vector2(40, 40), "YOU", SAFE, false)
-	_opp_fill = _build_bar(Vector2(1920 - 40 - BAR_W, 40), "OPPONENT", DANGER, true)
+	# Pinned to the bottom of the screen so the right-hand bar clears the top-right
+	# in-game camera window (GameCameraHUD's corner mirror) instead of overlapping it.
+	var y: float = 1080.0 - 40.0 - BAR_H - 28.0
+	_you_fill = _build_bar(Vector2(40, y), "YOU", SAFE, false)
+	_opp_fill = _build_bar(Vector2(1920 - 40 - BAR_W, y), "OPPONENT", DANGER, true)
 
 
 ## One captioned bar. [param align_right] fills the bar from the right edge so the
@@ -309,9 +312,9 @@ func show_briefing() -> void:
 
 	box.add_child(HSeparator.new())
 	for how in [
-		"WATCH THE CALL — a glowing side means throw that glove",
-		"LEFT punch for a JAB, RIGHT punch for a CROSS",
-		"MISS THE WINDOW and they counter — keep your guard honest",
+		"GOLD OPENING: throw that glove — LEFT jab, RIGHT cross",
+		"MARCH IN PLACE to press forward, ease off to step back",
+		"'DODGE!' — LEAN or STEP to a side (or duck) to slip it",
 		"EMPTY THEIR HEALTH FOR THE KNOCKOUT",
 	]:
 		var row := Label.new()

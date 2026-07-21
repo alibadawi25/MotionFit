@@ -38,6 +38,7 @@ const BOARD_COLORS: Array[Color] = [
 
 var _mats: Dictionary = {}
 var _bowl: BoxingBowl
+var _jumbo: SubViewport      # the fight-card screen content (boxing_jumbotron.gd)
 
 
 func _ready() -> void:
@@ -65,6 +66,13 @@ func set_crowd_energy(base: float) -> void:
 func cheer_burst(amount: float = 0.6) -> void:
 	if _bowl != null:
 		_bowl.cheer_burst(amount)
+
+
+## Sets the main-event card shown on the jumbotron: the two corners' names and a
+## strapline. Safe to call before/after [method build].
+func set_bout(player_name: String, opp_name: String, subtitle: String) -> void:
+	if _jumbo != null and _jumbo.has_method("configure"):
+		_jumbo.configure(player_name, opp_name, subtitle)
 
 
 # --- Ground, ringside & bowl -------------------------------------------------
@@ -143,13 +151,33 @@ func _jumbotron() -> void:
 							sz * half * 0.7), TRUSS_COLOR)
 	_box(Vector3(half * 2.0 + 0.4, 3.4, half * 2.0 + 0.4),
 			Vector3(0.0, cy, 0.0), Color(0.03, 0.03, 0.04))
+	# Live fight-card content, rendered once and shared across all four faces.
+	_jumbo = preload("res://scenes/boxing/boxing_jumbotron.gd").new()
+	_jumbo.name = "Jumbotron"
+	add_child(_jumbo)
+	var screen_mat := StandardMaterial3D.new()
+	screen_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	screen_mat.albedo_texture = _jumbo.get_texture()
+	screen_mat.emission_enabled = true
+	screen_mat.emission_texture = _jumbo.get_texture()
+	screen_mat.emission = Color.WHITE
+	screen_mat.emission_energy_multiplier = 0.9
+	screen_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for yaw in [0.0, PI * 0.5, PI, PI * 1.5]:
 		var fwd := Vector3(sin(yaw), 0.0, cos(yaw))
-		var screen := _box(Vector3(half * 1.8, 2.0, 0.08),
-				fwd * (half + 0.22) + Vector3(0.0, cy + 0.2, 0.0),
-				SCREEN_COLOR, 1.9)
+		# A flat quad (upright UVs) is the right primitive for a screen — a BoxMesh
+		# rotates the card across its faces.
+		var screen := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.size = Vector2(half * 1.8, 2.0)
+		quad.material = screen_mat
+		screen.mesh = quad
+		# Clear of the cube face (half-extent half+0.2) so it isn't occluded.
+		screen.position = fwd * (half + 0.25) + Vector3(0.0, cy + 0.2, 0.0)
+		# +yaw turns the quad's textured front face outward (toward viewers).
 		screen.rotation.y = yaw
 		screen.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(screen)
 		var skirt := _box(Vector3(half * 1.9, 0.6, 0.06),
 				fwd * (half + 0.24) + Vector3(0.0, cy - 1.2, 0.0),
 				Color(0.8, 0.14, 0.12), 0.8)

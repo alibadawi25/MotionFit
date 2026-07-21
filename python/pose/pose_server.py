@@ -387,9 +387,9 @@ SQUAT_SPEED_SMOOTH_HZ = 0.3  # low-pass on the leg-fold speed feeding SQUAT_MET_
 # length, so it is distance/scale invariant and needs no calibration. It's
 # direction-agnostic (any quick full extension counts) so jabs, crosses and hooks
 # all register. Mirrors the jump detector: an EDGE event, fired once on the throw.
-PUNCH_EXTEND_MIN = 0.95      # wrist->shoulder reach (torso lengths) that reads as extended
-PUNCH_RESET_EXTEND = 0.78    # must retract below this before that hand can punch again
-PUNCH_SPEED_MIN = 2.0        # reach growth (torso/s) to fire -- a real snap, not a drift
+PUNCH_EXTEND_MIN = 0.82      # wrist->shoulder reach (torso lengths) that reads as extended
+PUNCH_RESET_EXTEND = 0.70    # must retract below this before that hand can punch again
+PUNCH_SPEED_MIN = 1.4        # reach growth (torso/s) to fire -- a real snap, not a drift
 PUNCH_SPEED_MAX = 6.0        # reach growth mapped to full power (1.0)
 PUNCH_MIN_INTERVAL = 0.26    # per-hand debounce (s)
 PUNCH_SMOOTH_HZ = 9.0        # light low-pass on reach so landmark jitter can't fire it

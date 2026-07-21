@@ -56,8 +56,8 @@ and Godot only receives processed movement data over a local socket.
   ```bash
   cd assets/models/generated_human
   python export_glb.py --sex female --age 30 --height 164 --weight 78 \
-      --hair long --hair-color blonde --top tank --top-color red \
-      --bottom shorts --skin tan --out custom.glb
+	  --hair long --hair-color blonde --top tank --top-color red \
+	  --bottom shorts --skin tan --out custom.glb
   ```
   `viewer.html` (three.js, in the same folder) previews any exported GLB and its
   clips in a browser — serve the folder over HTTP, e.g.
@@ -78,7 +78,7 @@ the single source of truth for the project.
 ```
 addons/     Editor plugins (godot_mcp) and the HTerrain terrain plugin.
 assets/     Art & media (audio, fonts, sprites, ui themes, shaders, models,
-            procedurally-generated textures).
+			procedurally-generated textures).
 data/       Bundled default/template data (runtime saves live in user://).
 python/     The AI pipeline (separate process): pose, heart_rate, calories.
 scenes/     Godot scenes — menus/ (shared UI & flow) and per-game folders.

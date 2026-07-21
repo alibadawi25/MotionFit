@@ -24,9 +24,15 @@ const BANK_HALF: float = 15.0
 const AISLE_OFFSETS: Array[float] = [-10.0, -5.0, 0.0, 5.0, 10.0]
 const AISLE_HALF: float = 0.95     # clear half-width of an aisle lane
 
-const STAND_COLOR := Color(0.17, 0.18, 0.22)
-const STAND_COLOR_ALT := Color(0.13, 0.14, 0.17)
-const WALL_COLOR := Color(0.08, 0.08, 0.1)
+## Camera-flash sparkle: a pool of tiny additive points scattered through the
+## crowd that pop bright for a beat on a cheer and twinkle while the house is hot.
+const FLASH_COUNT: int = 180
+const FLASH_LIFE_MIN: float = 0.10
+const FLASH_LIFE_MAX: float = 0.26
+
+const STAND_COLOR := Color(0.10, 0.11, 0.14)
+const STAND_COLOR_ALT := Color(0.07, 0.08, 0.10)
+const WALL_COLOR := Color(0.05, 0.05, 0.07)
 const RAIL_COLOR := Color(0.55, 0.57, 0.63)
 const STEP_COLOR := Color(0.32, 0.33, 0.38)     # lighter aisle tread
 const CROWD_COLORS: Array[Color] = [
@@ -48,6 +54,11 @@ var _excite: float = 0.14
 var _excite_base: float = 0.14
 var _excite_burst: float = 0.0
 
+var _flash_mm: MultiMesh
+var _flash_life: PackedFloat32Array = PackedFloat32Array()
+var _flash_peak: PackedFloat32Array = PackedFloat32Array()
+var _flash_rng := RandomNumberGenerator.new()
+
 
 ## Builds all four banks. The bank facing [param entrance_yaw] gets a central
 ## vomitory gap [param entrance_half] wide (no seats, no centre aisle) for the
@@ -60,15 +71,18 @@ func build(entrance_yaw: float, entrance_half: float) -> void:
 		_bank(yaw, acc, is_ent, entrance_half)
 	add_child(_crowd_layer(_body_mesh, acc.xforms, acc.jerseys, acc.customs))
 	add_child(_crowd_layer(_head_mesh, acc.xforms, acc.skins, acc.customs))
+	_build_flashes(acc)
 
 
-## Smooths crowd energy toward its base + a decaying burst, feeding the shader.
+## Smooths crowd energy toward its base + a decaying burst, feeding the shader,
+## and advances the camera-flash sparkle.
 func _process(delta: float) -> void:
 	_excite_burst = maxf(0.0, _excite_burst - delta * 0.7)
 	var target: float = clampf(_excite_base + _excite_burst, 0.0, 1.0)
 	_excite = lerpf(_excite, target, 1.0 - exp(-6.0 * delta))
 	if _crowd_mat != null:
 		_crowd_mat.set_shader_parameter("excitement", _excite)
+	_tick_flashes(delta)
 
 
 ## Resting crowd energy (0 murmur … 1 roar).
@@ -76,9 +90,112 @@ func set_crowd_energy(base: float) -> void:
 	_excite_base = clampf(base, 0.0, 1.0)
 
 
-## A one-off surge (a knockdown, the bell) that decays back down.
+## A one-off surge (a knockdown, the bell) that decays back down, and sets off a
+## volley of camera flashes across the stands scaled to the surge.
 func cheer_burst(amount: float = 0.6) -> void:
 	_excite_burst = maxf(_excite_burst, clampf(amount, 0.0, 1.0))
+	_pop_flashes(int(clampf(amount, 0.0, 1.0) * FLASH_COUNT * 0.35))
+
+
+# --- Camera-flash sparkle ----------------------------------------------------
+
+## Scatters the flash pool through the seated crowd (each point just above a
+## random spectator's head) as one additive MultiMesh, all dark to begin with.
+func _build_flashes(acc: _Crowd) -> void:
+	if acc.xforms.is_empty():
+		return
+	var dot := SphereMesh.new()
+	dot.radius = 0.09
+	dot.height = 0.18
+	dot.radial_segments = 6
+	dot.rings = 3
+	# Additive HDR points: brightness rides INSTANCE_CUSTOM.x and is pushed well
+	# past 1.0 so the scene's glow (hdr_threshold 0.9) flares each into a real
+	# camera-flash burst, not just a white dot.
+	var mat := ShaderMaterial.new()
+	mat.shader = _flash_shader()
+	dot.material = mat
+
+	_flash_mm = MultiMesh.new()
+	_flash_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_flash_mm.use_custom_data = true
+	_flash_mm.mesh = dot
+	_flash_mm.instance_count = FLASH_COUNT
+	_flash_life.resize(FLASH_COUNT)
+	_flash_peak.resize(FLASH_COUNT)
+	for i in FLASH_COUNT:
+		var src: Transform3D = acc.xforms[_flash_rng.randi() % acc.xforms.size()]
+		# Just above head height (heads sit ~0.68 up) so a spectator's own body
+		# doesn't occlude their flash at grazing angles.
+		var pos := src.origin + Vector3(0.0, 0.82, 0.0)
+		_flash_mm.set_instance_transform(i, Transform3D(Basis(), pos))
+		_flash_mm.set_instance_custom_data(i, Color(0, 0, 0, 0))
+		_flash_life[i] = 0.0
+		_flash_peak[i] = 0.0
+
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = _flash_mm
+	mmi.material_override = mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.custom_aabb = AABB(Vector3(-40, 0, -40), Vector3(80, 30, 80))
+	add_child(mmi)
+
+
+## Lights [param count] random points for a brief pop (used by a cheer surge).
+func _pop_flashes(count: int) -> void:
+	if _flash_mm == null:
+		return
+	for n in count:
+		var i: int = _flash_rng.randi() % FLASH_COUNT
+		var life: float = _flash_rng.randf_range(FLASH_LIFE_MIN, FLASH_LIFE_MAX)
+		_flash_life[i] = life
+		_flash_peak[i] = life
+
+
+## Fades each lit point (a sharp pop that eases out) and sprinkles a few fresh
+## twinkles while the house is hot, so the stands shimmer even between surges.
+func _tick_flashes(delta: float) -> void:
+	if _flash_mm == null:
+		return
+	# A steady sprinkle of twinkles while the house is warm, denser the hotter it
+	# gets, so the stands shimmer with camera flashes even between surges.
+	if _excite > 0.2:
+		var rate: float = _excite * _excite * 140.0
+		var n: int = int(rate * delta)
+		if _flash_rng.randf() < rate * delta - n:
+			n += 1
+		if n > 0:
+			_pop_flashes(n)
+	for i in FLASH_COUNT:
+		var l: float = _flash_life[i]
+		if l <= 0.0:
+			continue
+		l -= delta
+		var b: float = 0.0
+		if l > 0.0 and _flash_peak[i] > 0.0:
+			b = l / _flash_peak[i]
+			b *= b
+		_flash_life[i] = maxf(l, 0.0)
+		_flash_mm.set_instance_custom_data(i, Color(b, 0.0, 0.0, 0.0))
+
+
+## The additive HDR shader for the flash points: a warm-white core scaled by the
+## per-instance brightness in INSTANCE_CUSTOM.x, energy > 1 so glow flares it.
+func _flash_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = "shader_type spatial;\n" \
+		+ "render_mode unshaded, blend_add, cull_disabled, depth_draw_never," \
+		+ " shadows_disabled;\n" \
+		+ "const vec3 TINT = vec3(1.0, 0.98, 0.92);\n" \
+		+ "const float ENERGY = 4.5;\n" \
+		+ "varying float bright;\n" \
+		+ "void vertex() {\n" \
+		+ "\tbright = INSTANCE_CUSTOM.x;\n" \
+		+ "}\n" \
+		+ "void fragment() {\n" \
+		+ "\tALBEDO = TINT * bright * ENERGY;\n" \
+		+ "}\n"
+	return sh
 
 
 # --- One grandstand bank -----------------------------------------------------

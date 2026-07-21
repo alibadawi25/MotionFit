@@ -99,11 +99,12 @@ func _build_shots() -> void:
 			fa = 60.0, fb = 62.0, energy = 0.40, cheer = 0.55,
 			title = "A SOLD-OUT HOUSE", tcol = COOL,
 		},
-		{  # 3 — the marquee: climb up to the centre-hung jumbotron screen
+		{  # 3 — the marquee: rise up and settle square-on to a jumbotron face so
+			#     the whole main-event card (name · VS · name) reads
 			dur = 3.0,
-			pa = Vector3(11.8, 7.6, 4.4), pb = Vector3(10.2, 10.4, 1.8),
-			la = Vector3(3.4, 11.3, 0.0), lb = Vector3(3.4, 11.9, 0.0),
-			fa = 58.0, fb = 54.0, energy = 0.46, cheer = 0.0,
+			pa = Vector3(9.6, 8.4, 3.2), pb = Vector3(8.4, 11.6, 0.4),
+			la = Vector3(3.6, 11.6, 0.6), lb = Vector3(3.6, 12.2, 0.0),
+			fa = 60.0, fb = 40.0, energy = 0.46, cheer = 0.0,
 			title = "TONIGHT — THE MAIN EVENT", tcol = ACCENT,
 		},
 		{  # 4 — the walk: glide in through the tunnel, down the red carpet
