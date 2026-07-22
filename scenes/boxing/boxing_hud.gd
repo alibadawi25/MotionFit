@@ -8,7 +8,7 @@ extends CanvasLayer
 ## Blocks:
 ##   - top corners: two health bars (YOU left, the OPPONENT right),
 ##   - top-centre chip: the round clock + score,
-##   - centre: the big punch call ("JAB!", "CROSS!") and the combo tally,
+##   - centre: the big punch call ("LEFT!", "RIGHT!") and the combo tally,
 ##   - transient toasts (HIT / COUNTERED / KO), the hit flash, the briefing card
 ##     and the result card.
 class_name BoxingHud
@@ -38,9 +38,14 @@ var _prompt_text: String = ""
 var _combo: Label
 var _toast: Label
 var _flash: ColorRect
+var _prompt_sub: Label
 var _briefing: Control
 var _brief_count: Label
 var _result_card: Control
+var _kcal: Label
+var _punches: Label
+var _assist_fill: Panel
+var _assist_label: Label
 
 
 func _ready() -> void:
@@ -52,6 +57,8 @@ func _ready() -> void:
 	_build_prompt()
 	_build_combo()
 	_build_toast()
+	_build_workout()
+	_build_assist()
 
 
 # --- Shared chip -------------------------------------------------------------
@@ -177,7 +184,9 @@ func set_score(score: int) -> void:
 func _build_prompt() -> void:
 	_prompt = Label.new()
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.position = Vector2(560, 250)
+	# Low, over the empty canvas: at eye level the call sits on the opponent's
+	# face, which is exactly where the player needs to be looking.
+	_prompt.position = Vector2(560, 596)
 	_prompt.size = Vector2(800, 120)
 	_prompt.add_theme_font_override("font", _anton)
 	_prompt.add_theme_font_size_override("font_size", 96)
@@ -185,14 +194,29 @@ func _build_prompt() -> void:
 	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	add_child(_prompt)
 
+	# A plain-language line under the call, so a player who has never boxed knows
+	# what the shot actually is ("swing it wide", "cover up") without guessing.
+	_prompt_sub = Label.new()
+	_prompt_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt_sub.position = Vector2(460, 700)
+	_prompt_sub.size = Vector2(1000, 44)
+	_prompt_sub.add_theme_font_size_override("font_size", 28)
+	_prompt_sub.add_theme_constant_override("outline_size", 6)
+	_prompt_sub.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_prompt_sub.add_theme_color_override("font_color", TEXT)
+	add_child(_prompt_sub)
 
-## The big punch call ("JAB!", "CROSS!", "BLOCK!") — a scale-pop when it changes.
-func set_prompt(text: String, color: Color = TEXT) -> void:
+
+## The big call ("LEFT HOOK", "BLOCK!") with [param sub] spelling out how to
+## throw or slip it — a scale-pop when it changes.
+func set_prompt(text: String, color: Color = TEXT, sub: String = "") -> void:
 	if text == _prompt_text:
 		return
 	_prompt_text = text
 	_prompt.text = text
 	_prompt.add_theme_color_override("font_color", color)
+	_prompt_sub.text = sub
+	_prompt_sub.add_theme_color_override("font_color", Color(color, 0.85))
 	if text == "":
 		return
 	_prompt.pivot_offset = _prompt.size * 0.5
@@ -204,7 +228,7 @@ func set_prompt(text: String, color: Color = TEXT) -> void:
 func _build_combo() -> void:
 	_combo = Label.new()
 	_combo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_combo.position = Vector2(560, 380)
+	_combo.position = Vector2(560, 776)
 	_combo.size = Vector2(800, 60)
 	_combo.add_theme_font_override("font", _anton)
 	_combo.add_theme_font_size_override("font_size", 40)
@@ -225,6 +249,85 @@ func set_combo(count: int) -> void:
 	_combo.scale = Vector2(1.3, 1.3)
 	var tween := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_combo, "scale", Vector2.ONE, 0.18)
+
+
+# --- Workout readout ---------------------------------------------------------
+
+## The live fitness read, top-left under the clock: calories burned this bout and
+## punches thrown. It's the reason the game exists, so it stays on screen the
+## whole round rather than only turning up on the results card.
+func _build_workout() -> void:
+	var chip := PanelContainer.new()
+	chip.add_theme_stylebox_override("panel", _chip())
+	chip.position = Vector2(40, 30)
+	add_child(chip)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
+	chip.add_child(box)
+
+	_kcal = Label.new()
+	_kcal.add_theme_font_override("font", _anton)
+	_kcal.add_theme_font_size_override("font_size", 38)
+	_kcal.add_theme_color_override("font_color", ACCENT)
+	_kcal.text = "0 KCAL"
+	box.add_child(_kcal)
+
+	_punches = Label.new()
+	_punches.add_theme_font_size_override("font_size", 16)
+	_punches.add_theme_color_override("font_color", MUTED)
+	_punches.text = "0 PUNCHES"
+	box.add_child(_punches)
+
+
+## [param kcal] is the live session burn and [param punches] every punch thrown,
+## landed or not — swinging counts toward the workout even when the timing missed.
+func set_workout(kcal: float, punches: int) -> void:
+	_kcal.text = "%d KCAL" % int(round(maxf(kcal, 0.0)))
+	_punches.text = "%d PUNCH%s" % [punches, "" if punches == 1 else "ES"]
+
+
+# --- Auto-guard meter --------------------------------------------------------
+
+## The assist meter above the player's health bar. It fills on its own and spends
+## itself to auto-block a shot the player didn't answer, so a missed read costs a
+## sliver of health instead of the round — the difference between a game anyone
+## can play and one only a boxer enjoys.
+func _build_assist() -> void:
+	var box := VBoxContainer.new()
+	box.position = Vector2(40, 1080.0 - 40.0 - BAR_H - 28.0 - 46.0)
+	box.add_theme_constant_override("separation", 2)
+	add_child(box)
+
+	_assist_label = Label.new()
+	_assist_label.text = "AUTO-GUARD"
+	_assist_label.add_theme_font_size_override("font_size", 14)
+	_assist_label.add_theme_color_override("font_color", MUTED)
+	box.add_child(_assist_label)
+
+	var track := Panel.new()
+	track.custom_minimum_size = Vector2(BAR_W * 0.5, 8)
+	var track_sb := StyleBoxFlat.new()
+	track_sb.bg_color = Color(0.02, 0.03, 0.05, 0.8)
+	track_sb.set_corner_radius_all(4)
+	track.add_theme_stylebox_override("panel", track_sb)
+	box.add_child(track)
+
+	_assist_fill = Panel.new()
+	var fill_sb := StyleBoxFlat.new()
+	fill_sb.bg_color = ACCENT
+	fill_sb.set_corner_radius_all(4)
+	_assist_fill.add_theme_stylebox_override("panel", fill_sb)
+	_assist_fill.size = Vector2(0, 8)
+	track.add_child(_assist_fill)
+
+
+## [param charge] 0..1 — full means the next unanswered shot is auto-blocked.
+func set_assist(charge: float) -> void:
+	var frac: float = clampf(charge, 0.0, 1.0)
+	_assist_fill.size.x = BAR_W * 0.5 * frac
+	var ready: bool = frac >= 1.0
+	_assist_label.text = "AUTO-GUARD READY" if ready else "AUTO-GUARD"
+	_assist_label.add_theme_color_override("font_color", ACCENT if ready else MUTED)
 
 
 # --- Toast + flash -----------------------------------------------------------
@@ -304,24 +407,44 @@ func show_briefing() -> void:
 	box.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "READ THE OPENING — LAND THE SHOT"
+	sub.text = "THREE PUNCHES, TWO WAYS TO DEFEND — THAT'S THE WHOLE GAME"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 18)
 	sub.add_theme_color_override("font_color", MUTED)
 	box.add_child(sub)
 
 	box.add_child(HSeparator.new())
-	for how in [
-		"GOLD OPENING: throw that glove — LEFT jab, RIGHT cross",
-		"MARCH IN PLACE to press forward, ease off to step back",
-		"'DODGE!' — LEAN or STEP to a side (or duck) to slip it",
-		"EMPTY THEIR HEALTH FOR THE KNOCKOUT",
+	# Two blocks, because the whole design is "three punches, two defences":
+	# spell each one out in body language, not boxing jargon.
+	for section in [
+		["PUNCH  (either hand — any punch lands)", [
+			"STRAIGHT — punch forward, straight at them",
+			"WIDE — swing your arm around in a wide arc",
+			"UPPERCUT — drive your fist up from below",
+		]],
+		["DEFEND  (when the call turns red)", [
+			"BLOCK — both hands up, covering your face",
+			"LEAN — bend at the waist, left or right, to slip the shot",
+		]],
 	]:
-		var row := Label.new()
-		row.text = how
-		row.add_theme_font_size_override("font_size", 20)
-		row.add_theme_color_override("font_color", TEXT)
-		box.add_child(row)
+		var head := Label.new()
+		head.text = String(section[0])
+		head.add_theme_font_override("font", _anton)
+		head.add_theme_font_size_override("font_size", 24)
+		head.add_theme_color_override("font_color", ACCENT)
+		box.add_child(head)
+		for how in section[1]:
+			var row := Label.new()
+			row.text = "    " + String(how)
+			row.add_theme_font_size_override("font_size", 20)
+			row.add_theme_color_override("font_color", TEXT)
+			box.add_child(row)
+	var tail := Label.new()
+	tail.text = "Miss one and your corner covers for you — just keep moving."
+	tail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tail.add_theme_font_size_override("font_size", 18)
+	tail.add_theme_color_override("font_color", MUTED)
+	box.add_child(tail)
 	box.add_child(HSeparator.new())
 
 	_brief_count = Label.new()
@@ -347,8 +470,10 @@ func hide_briefing() -> void:
 # --- Result ------------------------------------------------------------------
 
 ## The bout result card (WINNER BY KO / result), shown as the game winds down.
+## [param workout] is the fitness line under the score (calories, punches) — the
+## takeaway that matters most, so it sits on the card whatever the result was.
 func show_result(headline: String, detail: String, score: int,
-		color: Color) -> void:
+		color: Color, workout: String = "") -> void:
 	var centre := CenterContainer.new()
 	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -391,6 +516,14 @@ func show_result(headline: String, detail: String, score: int,
 	score_lbl.add_theme_font_size_override("font_size", 40)
 	score_lbl.add_theme_color_override("font_color", TEXT)
 	box.add_child(score_lbl)
+
+	if workout != "":
+		var work := Label.new()
+		work.text = workout
+		work.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		work.add_theme_font_size_override("font_size", 22)
+		work.add_theme_color_override("font_color", ACCENT)
+		box.add_child(work)
 
 	panel.pivot_offset = panel.size * 0.5
 	panel.scale = Vector2(1.15, 1.15)

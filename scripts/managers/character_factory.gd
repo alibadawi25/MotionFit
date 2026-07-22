@@ -26,6 +26,13 @@ const FALLBACK_MODEL: String = "res://assets/models/generated_human/human.glb"
 const OUT_DIR: String = "user://characters"
 ## Interpreter used to run the generator (resolved from PATH, like run.bat).
 const PYTHON: String = "python"
+## Revision of the boxing clip set, passed as --clips-rev and therefore part of
+## the cached .args stamp. The generator ignores the value — its only job is to
+## invalidate already-cached fighter GLBs when the clip set changes but no other
+## flag does. Bump it whenever BOXING_CLIP_BUILDERS in export_glb.py gains or
+## reworks a clip, or players keep the old animations forever.
+## rev 2 = the three-punch set (straights + hooks + uppercuts) and the block.
+const BOXING_CLIPS_REV: String = "2"
 
 # --- Catalogs (mirroring export_glb.py) --------------------------------------
 # Style names are passed straight to the generator; colors are named entries in
@@ -113,7 +120,8 @@ func build_stock(body: Dictionary, appearance: Dictionary, slot: String) -> Node
 func build_boxer(body: Dictionary, appearance: Dictionary, slot: String,
 		glove_color: String = "red") -> Node3D:
 	var extra := PackedStringArray([
-		"--gear", "boxing", "--glove-color", glove_color, "--clips", "boxing"])
+		"--gear", "boxing", "--glove-color", glove_color, "--clips", "boxing",
+		"--clips-rev", BOXING_CLIPS_REV])
 	var path: String = _ensure_generated(body, appearance,
 			"%s/%s.glb" % [OUT_DIR, slot], extra)
 	if path != "":

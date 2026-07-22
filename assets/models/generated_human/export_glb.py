@@ -869,8 +869,120 @@ def clip_box_hit(b, nd):
     return c
 
 
-# The boxing animation set, selected by --clips boxing.
-BOXING_CLIP_BUILDERS = (clip_box_guard, clip_box_jab, clip_box_cross, clip_box_hit)
+def _clip_box_hook(b, nd, side):
+    """One-shot HOOK -- the wide, swinging punch. Where the straights drive the
+    glove out in a line (elbow straightening to near-0), a hook keeps the elbow
+    locked at roughly a right angle and swings the whole arm around on a big
+    trunk rotation: the power comes from the turn, not the reach. That contrast
+    is what makes the three punch types read differently at a glance.
+
+    [param side] is "l" or "r" -- the on-screen glove, matching the clip names
+    the Boxing game asks for (hook_l / hook_r).
+    """
+    left = side == "l"
+    sh, el = nd["shL" if left else "shR"], nd["elL" if left else "elR"]
+    other_sh = nd["shR" if left else "shL"]
+    other_el = nd["elR" if left else "elL"]
+    c = Clip(b, "hook_" + side, 0.52, n=24)
+    P = c.progress()
+    e = _throw(P, 0.0, 0.32, 0.48, 0.95)
+    # Upper arm swings up to horizontal; the elbow stays folded near 90 degrees
+    # (a hook never extends), so the glove travels on an arc, not a line.
+    c.rot_x(sh, [SH_GUARD + (-1.55 - SH_GUARD) * t for t in e])
+    c.rot_x(el, [EL_GUARD + (-1.05 - EL_GUARD) * t for t in e])
+    c.rot_x(other_sh, [SH_GUARD for _ in P])   # off hand stays home, guarding
+    c.rot_x(other_el, [EL_GUARD for _ in P])
+    # The big trunk turn that carries the arc -- roughly twice the cross's, and
+    # away from the punching side so the shoulder comes around with it.
+    turn = -0.62 if left else 0.62
+    c.rot_yz(nd["torso"], [turn * t for t in e], [0.0 for _ in P])
+    c.rot_z(nd["hips"], [turn * 0.45 * t for t in e])
+    c.rot_x(nd["kneeL"], [KNEE_BRACE for _ in P])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE for _ in P])
+    return c
+
+
+def _clip_box_upper(b, nd, side):
+    """One-shot UPPERCUT -- the short punch that comes up from underneath. The
+    glove dips as the fighter loads into the legs, then the shoulder drives it
+    upward with the elbow held deeply folded, so it rises through the middle
+    rather than reaching out. The root lifts on the way through (leg drive),
+    which is what sells it as the heaviest of the three.
+
+    [param side] is "l" or "r" (clip names upper_l / upper_r).
+    """
+    left = side == "l"
+    sh, el = nd["shL" if left else "shR"], nd["elL" if left else "elR"]
+    other_sh = nd["shR" if left else "shL"]
+    other_el = nd["elR" if left else "elL"]
+    c = Clip(b, "upper_" + side, 0.54, n=24)
+    P = c.progress()
+    dip = [smoothstep(0.0, 0.18, p) * (1.0 - smoothstep(0.18, 0.42, p)) for p in P]
+    e = _throw(P, 0.14, 0.44, 0.58, 0.95)
+    # Shoulder swings back and down on the load (dip), then up and through.
+    c.rot_x(sh, [SH_GUARD + 0.34 * d + (-1.30 - SH_GUARD) * t
+                 for d, t in zip(dip, e)])
+    c.rot_x(el, [EL_GUARD - 0.18 * t for t in e])   # stays folded tight
+    c.rot_x(other_sh, [SH_GUARD for _ in P])
+    c.rot_x(other_el, [EL_GUARD for _ in P])
+    # Load down into the knees, then drive up through the hips and out the top.
+    c.trans_y(nd["root"], 0.0, [-0.05 * d + 0.07 * t for d, t in zip(dip, e)])
+    turn = -0.26 if left else 0.26
+    c.rot_yz(nd["torso"], [turn * t for t in e], [0.0 for _ in P])
+    c.rot_z(nd["hips"], [turn * 0.5 * t for t in e])
+    c.rot_x(nd["kneeL"], [KNEE_BRACE + 0.30 * d - 0.14 * t
+                          for d, t in zip(dip, e)])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE + 0.30 * d - 0.14 * t
+                          for d, t in zip(dip, e)])
+    return c
+
+
+def clip_box_hook_l(b, nd):
+    return _clip_box_hook(b, nd, "l")
+
+
+def clip_box_hook_r(b, nd):
+    return _clip_box_hook(b, nd, "r")
+
+
+def clip_box_upper_l(b, nd):
+    return _clip_box_upper(b, nd, "l")
+
+
+def clip_box_upper_r(b, nd):
+    return _clip_box_upper(b, nd, "r")
+
+
+def clip_box_block(b, nd):
+    """Looping BLOCK: gloves pulled tight over the face, elbows in, chin buried,
+    weight settled down into the knees. Held for as long as the player keeps
+    their own hands up, so it loops (with only a small brace tremor) rather than
+    playing through like the punches."""
+    c = Clip(b, "block", 1.2, n=20)
+    A = c.phase()
+    brace = [math.sin(a * 2.0) * 0.012 for a in A]   # a small tremor under load
+    c.trans_y(nd["root"], 0.0, [-0.055 + t for t in brace])
+    c.rot_yz(nd["torso"], [0.0 for _ in A], [0.10 for _ in A])   # curled forward
+    c.rot_yz(nd["neck"], [0.0 for _ in A], [0.30 for _ in A])    # chin buried
+    # Gloves come up past the guard and squeeze in over the face.
+    c.rot_x(nd["shL"], [SH_GUARD - 0.62 + t for t in brace])
+    c.rot_x(nd["shR"], [SH_GUARD - 0.62 - t for t in brace])
+    c.rot_x(nd["elL"], [EL_GUARD - 0.30 + t for t in brace])
+    c.rot_x(nd["elR"], [EL_GUARD - 0.30 - t for t in brace])
+    c.rot_x(nd["kneeL"], [KNEE_BRACE + 0.20 for _ in A])
+    c.rot_x(nd["kneeR"], [KNEE_BRACE + 0.20 for _ in A])
+    return c
+
+
+# The boxing animation set, selected by --clips boxing. Three punch shapes on
+# both gloves (straight = jab/cross, hook, uppercut) plus the guard, the block
+# and the hit reaction -- the full move list the Boxing game reads from the
+# player's own body. Slipping isn't a clip: the fighter leans live with the
+# player's waist (BoxingFighter.set_lean), so it tracks how far they actually go.
+BOXING_CLIP_BUILDERS = (clip_box_guard, clip_box_jab, clip_box_cross,
+                        clip_box_hook_l, clip_box_hook_r,
+                        clip_box_upper_l, clip_box_upper_r,
+                        clip_box_block, clip_box_hit)
 
 
 # ===================== serialize to GLB =================================
@@ -945,7 +1057,12 @@ def parse_args(argv=None):
                    help=f"{sorted(GLOVE_COLORS)} or #rrggbb (with --gear boxing)")
     p.add_argument("--clips", choices=("locomotion", "boxing"), default="locomotion",
                    help="animation set: locomotion (idle/walk/jump/crouch) or "
-                        "boxing (guard/jab/cross/hit) for a fighter")
+                        "boxing (guard/straights/hooks/uppercuts/block/hit)")
+    p.add_argument("--clips-rev", default="1",
+                   help="opaque revision tag for the chosen clip set. Nothing "
+                        "reads it: it exists so CharacterFactory can bump it and "
+                        "invalidate GLBs it already cached, when a clip set gains "
+                        "or changes animations without any other CLI flag moving.")
     p.add_argument("--out", default="human.glb")
     a = p.parse_args(argv)
     if a.height is None:

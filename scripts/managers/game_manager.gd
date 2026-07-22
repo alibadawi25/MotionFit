@@ -207,7 +207,7 @@ func _build_registry() -> void:
 		{
 			"id": "boxing",
 			"title": "Boxing",
-			"description": "Read the opening and land the shot — throw real jabs and crosses to break the opponent down. Upper-body burn.",
+			"description": "Three punches — straight, wide and uppercut — and two ways to defend: hands up, or lean. No boxing experience needed. Upper-body burn.",
 			"scene": SceneManager.BOXING,
 			"available": true,
 			"uses_difficulty": true,
