@@ -25,10 +25,12 @@ signal jumped
 ## Emitted each packet with the current squat depth, 0.0 (upright) .. 1.0.
 signal crouch_changed(crouch: float)
 ## Emitted once each time the player throws a punch. [param hand] is "left" or
-## "right" and [param power] is 0.0..1.0 (how hard/fast it snapped out). Like
-## [signal jumped] this is an edge event — connect for a reaction, or poll with
-## [method consume_punch]. The upper-body counterpart the Boxing game reads.
-signal punched(hand: String, power: float)
+## "right", [param power] is 0.0..1.0 (how hard/fast it snapped out) and
+## [param kind] names the shape of the throw — "straight" (jab/cross), "hook"
+## (the wide swing) or "uppercut". Like [signal jumped] this is an edge event —
+## connect for a reaction, or poll with [method consume_punch]. The upper-body
+## counterpart the Boxing game reads.
+signal punched(hand: String, power: float, kind: String)
 ## Emitted once when a body calibration finishes, carrying the captured leg
 ## extensions. MotionManager already saves these to the active profile and pushes
 ## them to the pose service; connect only if a UI wants a "calibrated!" cue.
@@ -115,6 +117,11 @@ var _hands_up: bool = false   # "ready" gesture: both hands raised above the hea
 # so a poller in _process picks up a punch landed on any packet since its last frame.
 var _punch_pending: String = ""
 var _punch_power: float = 0.0
+var _punch_kind: String = "straight"
+# Boxing defence, streamed every packet (not edges): both gloves up covering the
+# face, and the waist slip (-1 = leaning to the on-screen left .. +1 right).
+var _guard: bool = false
+var _lean: float = 0.0
 # Calibration setup state mirrored from the pose service (see Python's Calibrator):
 # the phase ("idle"/"still"/"squat"/"done"/"failed"), a short on-screen prompt, and
 # a 0..1 progress for the current phase. Drives the calibration setup UI.
@@ -193,6 +200,8 @@ func _process(delta: float) -> void:
 		_met = 0.0
 		_heart_rate = 0.0
 		_hands_up = false
+		_guard = false
+		_lean = 0.0
 		_status = ""  # service silent: state unknown until packets resume
 		_ready_hint = ""
 		_calib_state = "idle"
@@ -434,6 +443,28 @@ func get_last_punch_power() -> float:
 	return _punch_power
 
 
+## The shape of the most recent punch: "straight" (a jab/cross), "hook" (the wide
+## swinging punch) or "uppercut". Valid right after [method consume_punch] or a
+## [signal punched] emission. Python always names one of the three — a scrappy
+## throw falls back to "straight" rather than being rejected — so a game can
+## reward the called punch without ever punishing a messy one.
+func get_last_punch_kind() -> String:
+	return _punch_kind
+
+
+## True while the player holds a boxing guard: both gloves up covering the face.
+## Streamed live (not an edge), so a game polls it as a held block.
+func is_guarding() -> bool:
+	return _guard
+
+
+## The player's waist slip: -1.0 leaning hard to their on-screen LEFT, +1.0 to
+## the RIGHT, 0.0 upright. This is a lean at the waist (head off the punch line),
+## distinct from [method get_turn], which is rotating the whole torso to steer.
+func get_lean() -> float:
+	return _lean
+
+
 ## Cumulative steps counted since the pose service started this run.
 func get_steps() -> int:
 	return _steps
@@ -552,6 +583,10 @@ func _apply(data: Dictionary) -> void:
 	_met = maxf(float(data.get("met", 0.0)), 0.0)
 	_heart_rate = maxf(float(data.get("hr", 0.0)), 0.0)
 	_hands_up = bool(data.get("hands_up", false))
+	# Boxing defence: the held gloves-up block and the waist slip. Absent on an
+	# older pose build, which reads as "not defending" rather than breaking.
+	_guard = bool(data.get("guard", false))
+	_lean = clampf(float(data.get("lean", 0.0)), -1.0, 1.0)
 	# Service/camera state; default "ready" so an older pose build (no status
 	# field) still reads as a live camera.
 	_status = String(data.get("status", "ready"))
@@ -581,12 +616,13 @@ func _apply(data: Dictionary) -> void:
 		_jump_pending = true
 		jumped.emit()
 	# Punch is likewise a one-frame edge ("left"/"right", "" = none): latch the
-	# hand + power for a poller and fire the signal for listeners.
+	# hand + power + shape for a poller and fire the signal for listeners.
 	var punch: String = String(data.get("punch", ""))
 	if punch != "":
 		_punch_pending = punch
 		_punch_power = clampf(float(data.get("punch_power", 0.0)), 0.0, 1.0)
-		punched.emit(_punch_pending, _punch_power)
+		_punch_kind = String(data.get("punch_kind", "straight"))
+		punched.emit(_punch_pending, _punch_power, _punch_kind)
 
 
 ## The current NET burn rate in kcal/min — exercise energy above resting. Prefers

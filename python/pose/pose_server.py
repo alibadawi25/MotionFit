@@ -9,6 +9,10 @@ control + fitness values that it streams to Godot over a local UDP socket:
     crouch  : 0.0 .. 1.0   how deep you are squatting (0 = upright)
     duck    : 0.0 .. 1.0   how far you are bowing/leaning forward (0 = upright)
     hands_up: bool         the "ready" gesture -- both hands raised above the head
+    punch   : ""/l/r       Boxing: the glove that just threw (an edge event),
+                           with punch_kind naming it: straight / hook / uppercut
+    guard   : bool         Boxing: both gloves up covering the face (a block)
+    lean    : -1.0 .. 1.0  Boxing: waist slip, -1 = on-screen left .. +1 right
     steps   : int          cumulative steps since the service started
     cadence : float        current pace in steps per minute
 
@@ -376,6 +380,17 @@ SQUAT_MET_GAIN = 8.0         # MET per unit of leg-fold speed (torso-lengths/s):
                              # below the stepping band so cadence/forward miss them
 JUMP_MET_PER_MIN = 0.12      # +MET per jump/min (plyometric burn, on top)
 MET_MAX = 14.0               # clamp (sprint / burpee territory)
+# Boxing work is arm- and trunk-driven, so the cadence/forward/squat channels all
+# under-read it -- a player throwing hard combos barely steps. These terms give
+# punching its own MET channel, anchored to the Compendium of Physical Activities
+# boxing entries: punching bag ~5.5 MET, sparring ~7.8, in the ring ~12.8.
+# With the guard term included that lands at 40 punches/min ~ 6.2 (bag work),
+# 60/min ~ 8.2 (sparring) and 100/min ~ 12.2 (a real round) -- close to the
+# published values across the whole range.
+PUNCH_MET_PER_MIN = 0.10     # +MET per punch/min thrown
+GUARD_MET = 1.0              # +MET for holding a guard up (isometric shoulder work)
+SLIP_MET_GAIN = 0.6          # MET per unit of lean speed (slips/s) -- bobbing and weaving
+PUNCH_WINDOW_SEC = 8.0       # rolling window for the punch-rate term (~a combo's worth)
 EFFORT_WINDOW_SEC = 5.0      # rolling window for the jump-rate term
 EFFORT_SMOOTH_HZ = 0.4       # low-pass MET so the calorie counter reads steadily
 SQUAT_SPEED_SMOOTH_HZ = 0.3  # low-pass on the leg-fold speed feeding SQUAT_MET_GAIN
@@ -393,6 +408,42 @@ PUNCH_SPEED_MIN = 1.4        # reach growth (torso/s) to fire -- a real snap, no
 PUNCH_SPEED_MAX = 6.0        # reach growth mapped to full power (1.0)
 PUNCH_MIN_INTERVAL = 0.26    # per-hand debounce (s)
 PUNCH_SMOOTH_HZ = 9.0        # light low-pass on reach so landmark jitter can't fire it
+
+# Which on-screen glove each anatomical wrist drives. Pose runs on the MIRRORED
+# preview (frame is cv2.flip'd), where MediaPipe's L_WRIST lands on the player's
+# on-screen RIGHT and R_WRIST on their on-screen LEFT. So a throw from the hand
+# that appears on the LEFT of the mirror must read "left" -> map R_WRIST->left,
+# L_WRIST->right. Flip this pair if a camera/mirror change ever inverts the read.
+PUNCH_SIDE_OF = {"l_wrist": "right", "r_wrist": "left"}
+
+# --- Punch TYPE (Boxing: straight / hook / uppercut) -------------------------
+# On top of "which glove", the throw is classified by WHERE the glove travelled
+# between its resting guard and full extension, measured in the shoulder's frame
+# and normalised by torso length:
+#   forward (toward the camera) -> a STRAIGHT (jab / cross),
+#   sideways across the body    -> a HOOK (the wide, swinging punch),
+#   upward from below the chest -> an UPPERCUT.
+# Thresholds are deliberately loose and STRAIGHT is the fallback: this is for
+# players who have never boxed, so a sloppy throw still lands as *something*
+# rather than being rejected. Only a clearly wide or clearly rising arc gets
+# reclassified.
+PUNCH_HOOK_LATERAL = 0.30    # sideways travel (torso lengths) that reads as wide
+PUNCH_UPPER_RISE = 0.26      # upward travel that reads as a rising punch
+PUNCH_TYPE_DOMINANCE = 0.85  # how far an axis must beat forward travel to win
+
+# --- Guard + lean (Boxing defence) -------------------------------------------
+# GUARD is the "hands covering your face" block: both gloves up around chin/eye
+# height and tucked in near the head (not flung out wide). Read from image
+# landmarks and normalised by torso length so it is distance invariant.
+GUARD_WRIST_RISE = 0.12      # wrist must be this far above the shoulder line (torso lengths)
+GUARD_WRIST_SPREAD = 0.95    # max |wrist - shoulder centre| horizontally (shoulder spans)
+# LEAN is the waist slip: the shoulder centre displaced sideways from the hip
+# centre, i.e. bending at the waist to take your head off the punch line.
+# Negative = leaning to the player's ON-SCREEN LEFT (same convention as punch
+# sides, which are read off the mirrored preview).
+LEAN_DEADZONE = 0.06         # sideways offset (torso lengths) ignored as posture noise
+LEAN_GAIN = 3.4              # offset -> -1..1; a ~0.35 torso lean reads as a full slip
+LEAN_SMOOTH_HZ = 6.0         # low-pass so a slip is smooth but still snappy
 
 # MediaPipe Pose landmark indices we use.
 NOSE = 0
@@ -749,6 +800,7 @@ class ControlState:
         self.osc = {name: _Oscillator() for name, *_ in FORWARD_CHANNELS}
         self.vertical = _VerticalMotion()  # jump/crouch from hip & leg height
         self.duck_lp = _LowPass()          # smoothed torso-pitch duck (bow forward)
+        self.lean_lp = _LowPass()          # smoothed waist lean (Boxing slip, -1..1)
         # While this is in the future the player is squatting (or just was), so the
         # march signal is suppressed -- a squat's leg sweep mustn't read as walking.
         self.squat_active_until = -1e9
@@ -771,6 +823,7 @@ class ControlState:
             osc.reset()
         self.vertical.reset()
         self.duck_lp.reset()
+        self.lean_lp.reset()
         self.squat_active_until = -1e9
         self.march_active_until = -1e9
         self.active_label = "none"
@@ -964,19 +1017,25 @@ class _EffortEstimator:
 
     MET (metabolic equivalent) is normalised by body mass, so no player profile
     is needed here -- Godot multiplies by the player's weight to get calories.
-    Effort is the strongest of three intensity reads -- stepping cadence
-    (evidence-anchored, see _met_from_cadence), overall marching vigour, and
-    vertical squat work (which the other two can't see) -- plus a bonus for jump
-    activity, then smoothed so the calorie counter doesn't flicker.
+    Effort is the strongest of four intensity reads -- stepping cadence
+    (evidence-anchored, see _met_from_cadence), overall marching vigour,
+    vertical squat work (which the other two can't see) and boxing work
+    (punch rate + guard hold + slipping, which none of the others see) -- plus a
+    bonus for jump activity, then smoothed so the calorie counter doesn't flicker.
     """
 
     def __init__(self) -> None:
-        self._jumps: deque[float] = deque()  # recent jump timestamps
+        self._jumps: deque[float] = deque()    # recent jump timestamps
+        self._punches: deque[float] = deque()  # recent punch timestamps
+        self._lean_prev = 0.0
+        self._lean_work = _LowPass()
         self._smooth = _LowPass()
         self.met = REST_MET
 
     def update(self, forward: float, cadence: float, jumped: bool,
-               vertical_work: float, now: float, dt: float) -> float:
+               vertical_work: float, now: float, dt: float,
+               punched: bool = False, guard: bool = False,
+               lean: float = 0.0) -> float:
         if jumped:
             self._jumps.append(now)
         cutoff = now - EFFORT_WINDOW_SEC
@@ -984,21 +1043,49 @@ class _EffortEstimator:
             self._jumps.popleft()
         jumps_per_min = len(self._jumps) * (60.0 / EFFORT_WINDOW_SEC)
 
-        # Cadence, forward and squat work are three windows on the same effort;
-        # take whichever reads highest (arm-only work lifts forward but not
-        # cadence; slow squats lift neither), then add the jump term on top as
-        # it is extra vertical work.
+        # Cadence, forward, squat work and boxing work are four windows on the
+        # same effort; take whichever reads highest (arm-only work lifts forward
+        # but not cadence; slow squats lift neither; boxing lifts none of them
+        # much), then add the jump term on top as it is extra vertical work.
         met_cadence = _met_from_cadence(cadence)
         met_forward = REST_MET + FORWARD_MET_SPAN * forward
         met_squat = REST_MET + SQUAT_MET_GAIN * vertical_work
-        raw = max(met_cadence, met_forward, met_squat) \
+        met_box = self._boxing_met(punched, guard, lean, now, dt)
+        raw = max(met_cadence, met_forward, met_squat, met_box) \
             + JUMP_MET_PER_MIN * jumps_per_min
         raw = _clamp(raw, REST_MET, MET_MAX)
         self.met = self._smooth(raw, _BandPass._alpha(EFFORT_SMOOTH_HZ, dt))
         return self.met
 
+    def _boxing_met(self, punched: bool, guard: bool, lean: float,
+                    now: float, dt: float) -> float:
+        """Boxing intensity: punch rate over a rolling window, plus the static
+        cost of holding a guard and the trunk work of slipping side to side.
+        Anchored to the Compendium's bag / sparring / in-ring MET values (see
+        PUNCH_MET_PER_MIN). Rest when the player is doing none of it."""
+        if punched:
+            self._punches.append(now)
+        cutoff = now - PUNCH_WINDOW_SEC
+        while self._punches and self._punches[0] < cutoff:
+            self._punches.popleft()
+        punches_per_min = len(self._punches) * (60.0 / PUNCH_WINDOW_SEC)
+        # Lean speed (slips per second) smoothed, so a held lean costs nothing
+        # but bobbing between guards does.
+        lean_speed = abs(lean - self._lean_prev) / dt if dt > 0.0 else 0.0
+        self._lean_prev = lean
+        lean_work = self._lean_work(lean_speed,
+                                    _BandPass._alpha(SQUAT_SPEED_SMOOTH_HZ, dt))
+        met = REST_MET + PUNCH_MET_PER_MIN * punches_per_min \
+            + SLIP_MET_GAIN * lean_work
+        if guard:
+            met += GUARD_MET
+        return met
+
     def reset(self) -> None:
         self._jumps.clear()
+        self._punches.clear()
+        self._lean_prev = 0.0
+        self._lean_work.reset()
         self._smooth.reset()
         self.met = REST_MET
 
@@ -1237,7 +1324,14 @@ def main(args: argparse.Namespace | None = None) -> None:
     turn = 0.0
     crouch = 0.0
     duck = 0.0
+    lean = 0.0
     met = 0.0
+    # Punches are one-frame edge events; latch the last throw so the HUD can show
+    # it (with a fading glow) instead of a flash you'd miss.
+    last_punch = ""
+    last_punch_power = 0.0
+    last_punch_kind = "straight"
+    last_punch_time = -1000.0
     start_time = time.time()
     prev_ts = 0.0
     frame_seq = 0          # last camera frame we processed (latest-frame-wins)
@@ -1296,7 +1390,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                     forward_filter.reset()
                     turn_filter.reset()
                     effort.reset()
-                    forward = turn = crouch = duck = met = 0.0
+                    forward = turn = crouch = duck = lean = met = 0.0
                     last_valid = -1000.0
                     lost_reset_done = True
                     prev_ts = 0.0
@@ -1346,6 +1440,7 @@ def main(args: argparse.Namespace | None = None) -> None:
             jumped = False
             hands_up = False
             punch = ""
+            guard = False
             lm = None
             wlm = None
             if detected:
@@ -1366,6 +1461,14 @@ def main(args: argparse.Namespace | None = None) -> None:
                 # stance -- you raise your hands to start BEFORE getting into
                 # position, so it must not require pose_ok (which wants legs).
                 hands_up = _detect_hands_up(lm)
+                # Boxing defence, also upper-body and gated only on `detected`:
+                # gloves-up block, and the waist lean that slips a punch. Lean is
+                # low-passed here (it drives a pose, so it must be smooth) rather
+                # than through the 1-Euro filters, which are owned by the
+                # marching-stance path below.
+                guard = _detect_guard(lm)
+                lean = state.lean_lp(_lean_from_offset(_lean_offset(lm)),
+                                     _BandPass._alpha(LEAN_SMOOTH_HZ, dt))
 
             if detected and pose_ok:
                 forward, turn, jumped, crouch, duck = _compute_controls(
@@ -1407,6 +1510,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 turn *= decay
                 crouch *= decay
                 duck *= decay
+                lean *= decay
                 if not in_grace and not lost_reset_done:
                     state.reset()
                     forward_filter.reset()
@@ -1422,7 +1526,8 @@ def main(args: argparse.Namespace | None = None) -> None:
             cadence = steps.cadence(now)
             if detected and pose_ok:
                 met = effort.update(forward, cadence, jumped,
-                                    state.vertical.work_speed, now, dt)
+                                    state.vertical.work_speed, now, dt,
+                                    punched=bool(punch), guard=guard, lean=lean)
             elif (now - last_valid) <= LOSS_GRACE_SEC:
                 met = effort.met  # hold effort through a blink -- no calorie dip
             else:
@@ -1447,6 +1552,8 @@ def main(args: argparse.Namespace | None = None) -> None:
                                    detected and pose_ok, steps.steps, cadence, met, hr,
                                    hands_up=hands_up, duck=duck,
                                    punch=punch, punch_power=punch_detector.power,
+                                   punch_kind=punch_detector.kind,
+                                   guard=guard, lean=lean,
                                    status=status, ready_hint=ready_hint,
                                    calib_state=calibrator.state, calib_prompt=calibrator.prompt,
                                    calib_progress=calibrator.progress,
@@ -1464,10 +1571,18 @@ def main(args: argparse.Namespace | None = None) -> None:
                     metronome=metronome,
                 )
 
+            if punch:  # latch the last throw so the HUD shows it with a fading glow
+                last_punch = punch
+                last_punch_power = punch_detector.power
+                last_punch_kind = punch_detector.kind
+                last_punch_time = now
             if show_window:
                 _draw_hud(frame, forward, turn, jumped, crouch, duck, status_text,
                           status_color, steps.steps, cadence, met, state.active_label,
-                          fps_avg, infer_ms_avg)
+                          fps_avg, infer_ms_avg,
+                          punch_side=last_punch, punch_power=last_punch_power,
+                          punch_age=now - last_punch_time, hands_up=hands_up,
+                          punch_kind=last_punch_kind, guard=guard, lean=lean)
                 if hands_up:  # confirm the ready gesture registered, on-camera
                     _put_label(frame, "READY - HANDS UP", (frame.shape[1] // 2 - 130, 40),
                                0.7, (0, 220, 0))
@@ -1764,6 +1879,8 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
                   detected: bool, steps: int, cadence: float,
                   met: float, hr: float, hands_up: bool = False, duck: float = 0.0,
                   punch: str = "", punch_power: float = 0.0,
+                  punch_kind: str = "straight", guard: bool = False,
+                  lean: float = 0.0,
                   status: str = "ready", ready_hint: str = "",
                   calib_state: str = "idle", calib_prompt: str = "",
                   calib_progress: float = 0.0,
@@ -1803,6 +1920,12 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
         "hands_up": hands_up,   # "ready" gesture: both hands above the head
         "punch": punch,         # Boxing: "left"/"right" on the throw frame, else ""
         "punch_power": round(punch_power, 3),  # 0..1 strength of that punch
+        # Boxing: the shape of that punch -- "straight" (jab/cross), "hook" (the
+        # wide swing) or "uppercut". Only meaningful on a frame where `punch` is
+        # set; it holds the last throw's value otherwise.
+        "punch_kind": punch_kind,
+        "guard": guard,         # Boxing: both gloves up covering the face (block)
+        "lean": round(lean, 3),  # Boxing: waist slip, -1 = on-screen left .. +1 right
         "status": status,       # service/camera state (see docstring); CONTEXT.md §9
         "ready_hint": ready_hint,  # setup coaching line; "" = framed and ready
         "calib_state": calib_state,      # calibration phase (see docstring)
@@ -1823,9 +1946,15 @@ class _PunchDetector:
     normalised by torso length, so it's scale/distance invariant with no
     calibration. `power` carries the strength (0..1) of the punch that just fired.
 
-    Handedness follows the mirrored preview: `L_WRIST`/`R_WRIST` are MediaPipe's
-    own left/right, which on the flipped frame reads as the player's on-screen
-    side -- so a "left" punch is the glove on the left of their mirror image.
+    Handedness is the on-screen glove the player sees in the mirror: on the
+    flipped frame MediaPipe's L_WRIST appears on the player's on-screen RIGHT and
+    R_WRIST on their LEFT, so wrists are mapped to sides via PUNCH_SIDE_OF -- a
+    "left" punch is the glove on the LEFT of their mirror image.
+
+    Each throw also carries a TYPE in `kind` -- "straight", "hook" or "uppercut"
+    -- classified from the path the glove took out of the guard (see
+    `_classify`). It is a best-effort read that always yields one of the three,
+    so an untidy punch still lands.
     """
 
     def __init__(self) -> None:
@@ -1833,7 +1962,11 @@ class _PunchDetector:
         self._armed = {"left": True, "right": True}    # ready to fire (retracted)
         self._peak = {"left": 0.0, "right": 0.0}       # peak extend speed since re-arm
         self._last = {"left": -1e9, "right": -1e9}     # last fire time per hand
+        # Where the glove sat (shoulder-relative, torso-normalised) while the
+        # hand was armed -- the origin the throw's travel is measured from.
+        self._rest = {"left": None, "right": None}
         self.power = 0.0
+        self.kind = "straight"
 
     def reset(self) -> None:
         self.__init__()
@@ -1856,15 +1989,24 @@ class _PunchDetector:
 
         fired = ""
         best_power = 0.0
-        for side, sh_i, wr_i in (("left", L_SHOULDER, L_WRIST),
-                                 ("right", R_SHOULDER, R_WRIST)):
+        best_kind = "straight"
+        for wrist_name, sh_i, wr_i in (("l_wrist", L_SHOULDER, L_WRIST),
+                                       ("r_wrist", R_SHOULDER, R_WRIST)):
+            side = PUNCH_SIDE_OF[wrist_name]   # on-screen glove for this wrist
             if (lm[wr_i].visibility or 0.0) < MIN_VISIBILITY:
                 self._reach[side] = None   # lost the hand; don't fire on reacquire
+                self._rest[side] = None
                 continue
+            # Glove position in the shoulder's frame, torso-normalised -- the
+            # basis for both the reach (its length) and the throw's direction.
+            off = ((pts[wr_i].x - pts[sh_i].x) / torso,
+                   (pts[wr_i].y - pts[sh_i].y) / torso,
+                   (pts[wr_i].z - pts[sh_i].z) / torso)
             reach = dist(pts[sh_i], pts[wr_i]) / torso
             prev = self._reach[side]
             if prev is None:
                 self._reach[side] = reach
+                self._rest[side] = off
                 continue
             a = 1.0 - math.exp(-dt * PUNCH_SMOOTH_HZ)
             sm = prev + (reach - prev) * a
@@ -1875,6 +2017,7 @@ class _PunchDetector:
             if sm < PUNCH_RESET_EXTEND:
                 self._armed[side] = True
                 self._peak[side] = 0.0
+                self._rest[side] = off   # glove is home; this is the throw's origin
             self._peak[side] = max(self._peak[side], speed)
             # Fire once the arm reaches full extension, provided it snapped out fast
             # at some point during the throw. Smoothing delays the reach a few frames
@@ -1889,10 +2032,36 @@ class _PunchDetector:
                            / (PUNCH_SPEED_MAX - PUNCH_SPEED_MIN), 0.0, 1.0)
                 if p >= best_power:
                     best_power = p
+                    best_kind = self._classify(self._rest[side], off)
                     fired = side
         if fired:
             self.power = best_power
+            self.kind = best_kind
         return fired
+
+    @staticmethod
+    def _classify(rest, out) -> str:
+        """Names the punch from how the glove travelled between its resting
+        guard (`rest`) and full extension (`out`), both shoulder-relative and
+        torso-normalised. Image/world axes: +x right, +y DOWN, -z toward camera.
+
+        Forward travel is a STRAIGHT, a wide sideways arc is a HOOK, and a clear
+        rise from below is an UPPERCUT. Whichever of the sideways/upward
+        components clearly beats the forward one wins (PUNCH_TYPE_DOMINANCE);
+        otherwise it's a straight, the forgiving default for a scrappy throw."""
+        if rest is None:
+            return "straight"
+        lateral = abs(out[0] - rest[0])
+        rise = rest[1] - out[1]          # +y is down, so a rise is a decrease
+        forward = rest[2] - out[2]       # -z is toward the camera
+        # An uppercut is checked first: it is the most distinctive shape (the
+        # glove climbs), and a rising punch also travels forward a little.
+        if rise >= PUNCH_UPPER_RISE and rise >= forward * PUNCH_TYPE_DOMINANCE \
+                and rise >= lateral:
+            return "uppercut"
+        if lateral >= PUNCH_HOOK_LATERAL and lateral >= forward * PUNCH_TYPE_DOMINANCE:
+            return "hook"
+        return "straight"
 
 
 def _detect_hands_up(lm) -> bool:
@@ -1909,6 +2078,63 @@ def _detect_hands_up(lm) -> bool:
             return False
     nose_y = lm[NOSE].y
     return lm[L_WRIST].y < nose_y and lm[R_WRIST].y < nose_y
+
+
+def _detect_guard(lm) -> bool:
+    """True while BOTH gloves are up covering the face -- Boxing's block.
+
+    The read is "hands high AND tucked in": each wrist above the shoulder line
+    by GUARD_WRIST_RISE (so gloves are around chin/eye height, not resting at
+    the chest) and within GUARD_WRIST_SPREAD of the shoulder centre horizontally
+    (so arms flung out wide, or a punch at full extension, don't count as a
+    block). Normalised by torso length / shoulder span, so it is distance
+    invariant like the other signals.
+    """
+    for i in (L_SHOULDER, R_SHOULDER, L_HIP, R_HIP, L_WRIST, R_WRIST):
+        if (lm[i].visibility or 0.0) < MIN_VISIBILITY:
+            return False
+    sh_cx = (lm[L_SHOULDER].x + lm[R_SHOULDER].x) * 0.5
+    sh_cy = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) * 0.5
+    hip_cy = (lm[L_HIP].y + lm[R_HIP].y) * 0.5
+    torso = abs(hip_cy - sh_cy)
+    span = abs(lm[L_SHOULDER].x - lm[R_SHOULDER].x)
+    if torso < 1e-3 or span < 1e-3:
+        return False
+    for wr in (L_WRIST, R_WRIST):
+        # y grows downward, so "above the shoulders" is a smaller y.
+        if (sh_cy - lm[wr].y) / torso < GUARD_WRIST_RISE:
+            return False
+        if abs(lm[wr].x - sh_cx) / span > GUARD_WRIST_SPREAD:
+            return False
+    return True
+
+
+def _lean_offset(lm) -> float:
+    """Raw waist lean: the shoulder centre's sideways offset from the hip centre
+    in torso lengths. Negative = leaning to the player's on-screen LEFT (the
+    frame is mirrored, matching the punch-side convention). 0 when the landmarks
+    needed aren't trustworthy."""
+    for i in (L_SHOULDER, R_SHOULDER, L_HIP, R_HIP):
+        if (lm[i].visibility or 0.0) < MIN_VISIBILITY:
+            return 0.0
+    sh_cx = (lm[L_SHOULDER].x + lm[R_SHOULDER].x) * 0.5
+    sh_cy = (lm[L_SHOULDER].y + lm[R_SHOULDER].y) * 0.5
+    hip_cx = (lm[L_HIP].x + lm[R_HIP].x) * 0.5
+    hip_cy = (lm[L_HIP].y + lm[R_HIP].y) * 0.5
+    torso = math.hypot(sh_cx - hip_cx, sh_cy - hip_cy)
+    if torso < 1e-3:
+        return 0.0
+    return (sh_cx - hip_cx) / torso
+
+
+def _lean_from_offset(offset: float) -> float:
+    """Shapes the raw waist offset into the -1..1 slip control: a deadzone for
+    ordinary postural sway, then a gain so a committed lean reads as a full
+    slip. Kept separate from `_lean_offset` so the deadzone is testable."""
+    if abs(offset) < LEAN_DEADZONE:
+        return 0.0
+    signed = offset - LEAN_DEADZONE if offset > 0 else offset + LEAN_DEADZONE
+    return _clamp(signed * LEAN_GAIN, -1.0, 1.0)
 
 
 def _send(sock: socket.socket, dest, packet: dict) -> None:
@@ -2002,12 +2228,16 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
               duck: float,
               status_text: str, status_color, steps: int, cadence: float,
               met: float, sources: str = "none",
-              fps: float = 0.0, infer_ms: float = 0.0) -> None:
+              fps: float = 0.0, infer_ms: float = 0.0,
+              punch_side: str = "", punch_power: float = 0.0,
+              punch_age: float = 1e9, hands_up: bool = False,
+              punch_kind: str = "straight", guard: bool = False,
+              lean: float = 0.0) -> None:
     # A translucent dark panel behind the text gives the labels a consistent
     # backdrop, so they read cleanly even when the camera is pointed at a bright
     # window or a white wall.
     panel = frame.copy()
-    cv2.rectangle(panel, (6, 8), (360, 258), (0, 0, 0), -1)
+    cv2.rectangle(panel, (6, 8), (392, 332), (0, 0, 0), -1)
     cv2.addWeighted(panel, 0.4, frame, 0.6, 0, frame)
 
     _put_label(frame, status_text, (12, 28), 0.62, status_color)
@@ -2029,6 +2259,33 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
     perf_color = (200, 200, 200) if fps >= 15.0 else (0, 200, 255)
     _put_label(frame, f"{fps:.0f} fps  ({infer_ms:.0f} ms pose)", (12, 248),
                0.5, perf_color)
+
+    # --- Boxing drivers ------------------------------------------------------
+    # Punch is an EDGE event (fires one frame), so it's latched by the caller and
+    # shown here as the LAST throw, with a white flash that fades over ~0.6s so a
+    # fresh punch is obvious. Left glove = green, right = orange (BGR), matching
+    # the ring's read. hands-up is the "ready" gesture the setup screen waits for.
+    if punch_side:
+        base = (0, 220, 0) if punch_side == "left" else (0, 170, 255)
+        glow = _clamp(1.0 - punch_age * 1.6, 0.0, 1.0)
+        col = tuple(int(b + (255 - b) * glow) for b in base)
+        _put_label(frame,
+                   f"punch   {punch_side.upper()} {punch_kind.upper()}"
+                   f"  pow {punch_power:.2f}",
+                   (12, 274), 0.55, col)
+    else:
+        _put_label(frame, "punch   -  (straight / hook / uppercut)", (12, 274),
+                   0.5, (200, 200, 200))
+    # Defence: the gloves-up block and the waist slip, drawn as a little
+    # left/right meter so a lean is easy to check against the pose on camera.
+    g_color = (0, 220, 0) if guard else (200, 200, 200)
+    slot = int(round(_clamp(lean, -1.0, 1.0) * 4))
+    meter = "".join("#" if i == slot else "-" for i in range(-4, 5))
+    _put_label(frame, f"guard {'UP' if guard else '--'}   lean [{meter}] {lean:+.2f}",
+               (12, 298), 0.55, g_color)
+    hu_color = (0, 220, 0) if hands_up else (255, 255, 255)
+    _put_label(frame, f"hands-up {'YES' if hands_up else 'no'}", (12, 322), 0.6,
+               hu_color)
 
 
 def _draw_calibration_overlay(frame, calibrator) -> None:

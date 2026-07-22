@@ -70,7 +70,7 @@ scenes/
 	menus/         Shared UI/flow scenes (main menu, game select, settings,
 				   pause, results, loading, countdown).
 	runner/        Infinite Runner game (scene + its own gameplay script).
-	boxing/        (planned)
+	boxing/        Boxing game (ring/arena set, fighters, HUD, cinematic).
 	football/      (planned)
 	tennis/        (planned)
 	shared/        Reusable scene fragments used by multiple games (HUD widgets,
@@ -302,6 +302,7 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 ```json
 { "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "duck": 0.0,
   "hands_up": false, "punch": "", "punch_power": 0.0,
+  "punch_kind": "straight", "guard": false, "lean": 0.0,
   "walking": false, "detected": true, "steps": 0, "cadence": 0.0, "met": 1.2,
   "hr": 0.0, "status": "ready", "ready_hint": "", "ts": 0.0 }
 ```
@@ -323,10 +324,31 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
   thrown (edge event, like `jump`), else `""`; `punch_power` is how hard it
   snapped. Read from `detected` (no marching gate — a standing boxer). Exposed as
   `MotionManager.consume_punch()` / `get_last_punch_power()` + the `punched` signal.
+- `punch_kind` string — the **shape** of that punch: `"straight"` (jab/cross),
+  `"hook"` (the wide swing) or `"uppercut"`, classified from how far the glove
+  travelled forward / sideways / upward between its resting guard and full
+  extension (torso-normalised, so it needs no calibration). Deliberately lenient
+  and biased to `"straight"`: Boxing is for players who have never boxed, so a
+  scrappy throw is named, never rejected. Only meaningful on a frame where
+  `punch` is set. `MotionManager.get_last_punch_kind()`.
+- `guard` bool — **Boxing defence**: both gloves up covering the face (each wrist
+  above the shoulder line *and* tucked in near the head, so a wide-flung arm or a
+  punch at full extension doesn't count). A held state, not an edge.
+  `MotionManager.is_guarding()`.
+- `lean` -1..1 — **Boxing defence**: the waist slip, from the shoulder centre's
+  sideways offset from the hip centre. `-1` = leaning to the player's on-screen
+  LEFT (mirrored preview, same convention as `punch` sides). Distinct from
+  `turn`, which is rotating the torso to steer. `MotionManager.get_lean()`.
 - `steps` int / `cadence` float — cumulative steps and current pace (steps/min).
 - `met` float    — effort as a metabolic equivalent (body-mass-independent).
   Godot turns this into calories via `ProfileManager` weight × time; MET is used
   precisely so Python needs no player data. ~1.2 still, ~4-5 march, ~8+ vigorous.
+  Four channels are read and the strongest wins: stepping cadence, marching
+  vigour, squat work, and **boxing work** (punch rate + guard hold + slip work),
+  which exists because the first three all under-read a player throwing hard
+  combos without stepping. The boxing channel is anchored to the Compendium of
+  Physical Activities' boxing entries — bag ~5.5 MET, sparring ~7.8, in-ring
+  ~12.8 — landing at 40/60/100 punches per minute respectively.
 - `hr` float     — heart rate bpm from a wearable, `0` = none (motion fallback).
 - `status` string — service/camera state so Godot can show the right loading /
   permission UI even when no pose is streaming: `ready` (camera on, tracking),
@@ -412,7 +434,8 @@ by design — with no service running the texture is null and the UI falls back 
 - `scripts/managers/motion_manager.gd` — `MotionManager` autoload. Exposes
   `get_forward()`, `get_turn()`, `is_walking()`, `get_crouch()`,
   `is_crouching()`, `get_duck()`, `is_ducking()`, `consume_jump()`,
-  `consume_punch()` / `get_last_punch_power()` (Boxing), `is_hands_up()`,
+  `consume_punch()` / `get_last_punch_power()` / `get_last_punch_kind()` and the
+  defence pair `is_guarding()` / `get_lean()` (all Boxing), `is_hands_up()`,
   `is_receiving()`,
   `is_hr_connected()`, the camera-control API `camera_on()` / `camera_off()` and
   state readouts `get_status()` / `is_camera_ready()` / `is_camera_error()`, and
