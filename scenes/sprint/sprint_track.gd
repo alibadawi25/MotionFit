@@ -29,8 +29,10 @@ class_name SprintTrack
 const LANE_XS: Array[float] = [-3.0, -1.0, 1.0, 3.0]
 const LANE_W: float = 2.0
 const TRACK_HALF_W: float = 4.2
-const TILE_LEN: float = 16.0
-const TILE_COUNT: int = 9
+## The scrolling ground is a shared [TrackTreadmill]; its ring geometry lives
+## there so Hurdle Dash and Zombie Run cannot drift apart on it.
+const TILE_LEN: float = TrackTreadmill.TILE_LEN
+const TILE_COUNT: int = TrackTreadmill.TILE_COUNT
 ## Tiles scrolling past this Z (behind the camera) wrap to the far end.
 const RECYCLE_Z: float = 24.0
 
@@ -81,7 +83,8 @@ const SKIN_TONES: Array[Color] = [
 	Color(0.55, 0.38, 0.27), Color(0.42, 0.29, 0.21),
 ]
 
-var _tiles: Array[Node3D] = []
+## The recycling ground ring (see [TrackTreadmill]).
+var _treadmill := TrackTreadmill.new()
 var _hurdle_rows: Array[Node3D] = []
 var _hurdle_dists: PackedFloat32Array = PackedFloat32Array()
 var _finish: Node3D
@@ -107,11 +110,9 @@ func setup(hurdle_dists: PackedFloat32Array, race_dist: float) -> void:
 	_hurdle_dists = hurdle_dists
 	_race_dist = race_dist
 	_build_crowd_assets()
-	for i in TILE_COUNT:
-		var tile := _make_tile(i)
-		tile.position.z = RECYCLE_Z - TILE_LEN * (i + 1)
-		add_child(tile)
-		_tiles.append(tile)
+	# Tile 0 starts one length behind the recycle line, so the ring is already
+	# full from the first frame of the race.
+	_treadmill.build(self, RECYCLE_Z - TILE_LEN, _make_tile)
 	for d in hurdle_dists:
 		var row := _make_hurdle_row()
 		add_child(row)
@@ -148,10 +149,7 @@ func cheer_burst(amount: float = 0.6) -> void:
 ## Slides the scenery tiles by [param dz] metres (the player's travel this
 ## frame), wrapping tiles that pass behind the camera to the far end.
 func advance(dz: float) -> void:
-	for tile in _tiles:
-		tile.position.z += dz
-		if tile.position.z > RECYCLE_Z:
-			tile.position.z -= TILE_LEN * TILE_COUNT
+	_treadmill.advance(dz)
 
 
 ## Parks every fixed landmark at its position relative to the player's

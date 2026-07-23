@@ -22,8 +22,10 @@ signal obstacle_cleared(type: int)
 enum ObstacleType { JUMP, DUCK, SIDE }
 
 const TRACK_WIDTH: float = 8.0
-const TILE_LEN: float = 16.0
-const TILE_COUNT: int = 9
+## The scrolling ground is a shared [TrackTreadmill]; its ring geometry lives
+## there so Zombie Run and Hurdle Dash cannot drift apart on it.
+const TILE_LEN: float = TrackTreadmill.TILE_LEN
+const TILE_COUNT: int = TrackTreadmill.TILE_COUNT
 ## Anything that scrolls past this Z (behind the camera) is recycled/freed.
 const RECYCLE_Z: float = 24.0
 ## Obstacles are born this far ahead (down -Z) and scroll toward the player.
@@ -65,7 +67,8 @@ const MIST_COLOR: Color = Color(0.5, 0.55, 0.62, 0.04)
 var spacing_scale: float = 1.0
 
 var _player: RunnerPlayer
-var _tiles: Array[Node3D] = []
+## The recycling ground ring (see [TrackTreadmill]).
+var _treadmill := TrackTreadmill.new()
 # Each entry: { node:Node3D, type:int, x_min:float, x_max:float, resolved:bool }
 var _obstacles: Array[Dictionary] = []
 var _dist_since_spawn: float = 0.0
@@ -81,7 +84,7 @@ var _mat_cache: Dictionary = {}
 ## track). Safe to call again to reset.
 func setup(player: RunnerPlayer) -> void:
 	_player = player
-	if _tiles.is_empty():
+	if _treadmill.tiles.is_empty():
 		_build_tiles()
 
 
@@ -104,10 +107,7 @@ func start() -> void:
 ## but no hazards appear.
 func scroll(delta: float, speed: float, spawn: bool = true) -> void:
 	var dz: float = speed * delta
-	for tile in _tiles:
-		tile.position.z += dz
-		if tile.position.z > RECYCLE_Z:
-			tile.position.z -= TILE_COUNT * TILE_LEN
+	_treadmill.advance(dz)
 	if spawn:
 		_scroll_obstacles(dz)
 		_spawn_by_distance(dz)
@@ -233,10 +233,9 @@ func nearest_prompt() -> Dictionary:
 # --- construction ------------------------------------------------------------
 
 func _build_tiles() -> void:
-	for i in TILE_COUNT:
-		var tile := _make_tile(i)
-		add_child(tile)
-		_tiles.append(tile)
+	# Tile 0 sits half a tile ahead of the origin, so the ground starts flush
+	# under the player rather than with a seam at their feet.
+	_treadmill.build(self, TILE_LEN * 0.5, _make_tile)
 
 
 ## One ground segment: the dirt path, rubble side walls, a drifting ribbon of
@@ -244,8 +243,7 @@ func _build_tiles() -> void:
 ## reads speed and the corridor feels genuinely grim. The scenery is seeded off
 ## the tile index so it's varied and non-repeating but stable per tile.
 func _make_tile(index: int) -> Node3D:
-	var tile := Node3D.new()
-	tile.position.z = TILE_LEN * 0.5 - index * TILE_LEN  # tile 0 just ahead
+	var tile := Node3D.new()  # z is assigned by the treadmill
 	# The textures are authored bright enough to inspect; the midnight mood
 	# comes from tinting them down here so the corridor stays near-black.
 	tile.add_child(_prop_box(Vector3(TRACK_WIDTH, 0.2, TILE_LEN),
