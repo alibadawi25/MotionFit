@@ -25,6 +25,9 @@ extends MiniGame
 enum Phase { BRIEFING, MARKS, RACING, GLIDE }
 
 ## Run pace: standing still only jogs; the span is where the workout lives.
+## The HUD is scene-authored, so it is instanced rather than constructed.
+const HUD_SCENE: PackedScene = preload("res://scenes/sprint/sprint_hud.tscn")
+
 const BASE_SPEED: float = 2.2
 const SPEED_SPAN: float = 7.6
 
@@ -389,7 +392,7 @@ func _toggle_pause() -> void:
 
 
 func _build_overlay() -> void:
-	_hud = SprintHud.new()
+	_hud = HUD_SCENE.instantiate()
 	add_child(_hud)
 	var colors: Array[Color] = [
 		RIVALS[0]["dot"], SprintHud.ACCENT, RIVALS[1]["dot"], RIVALS[2]["dot"],

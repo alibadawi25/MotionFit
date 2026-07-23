@@ -161,12 +161,27 @@ The rule for what goes where:
   dark. Games stay visually distinct through *what they show*, not through
   privately re-deriving the shared chrome.
 
-HUD layout is authored in a `.tscn` like every other screen. **Boxing is ported**
-(`scenes/boxing/boxing_hud.tscn`, instanced via `HUD_SCENE.instantiate()` — never
-`BoxingHud.new()`, the script alone has no nodes); Zombie Run and Hurdle Dash are
-still code-built and are next. A scene-authored HUD declares the base's chrome as
-`%Flash` and `%Toast` and `GameHUD` adopts them; the code-built ones call
+HUD layout is authored in a `.tscn` like every other screen. **Boxing and Hurdle
+Dash are ported** (`boxing_hud.tscn`, `sprint_hud.tscn`), each instanced via a
+`HUD_SCENE.instantiate()` const — never `BoxingHud.new()` / `SprintHud.new()`,
+because the script alone has no nodes and would give you an empty HUD. Zombie Run
+is still code-built and is next. A scene-authored HUD declares the base's chrome
+as `%Flash` and `%Toast` and `GameHUD` adopts them; the code-built ones call
 `_build_flash()` / `_build_toast()` from their own `_ready` instead.
+
+Two traps when porting a HUD, both hit in practice:
+
+- The old code set `position`, which fixes an element's **top** edge. A
+  bottom-anchored container defaults to `grow_vertical = 0` (grow *upward*), so
+  it must be set to `1` (`GROW_DIRECTION_END`) or the block rides up by its own
+  height and collides with whatever is above it.
+- Anything genuinely per-item still gets built in code — Hurdle Dash's strip dots
+  are one per runner, so `setup_strip()` stays. The scene owns the track they
+  move along, not the dots.
+
+Port a HUD by screenshotting the same state before and after and diffing the two
+PNGs; both ports so far came out at **0 changed pixels of 2,073,600**, which is
+the bar to hold.
 
 Subclasses **must call `super()` from `_ready()`** (the base loads the display
 font and adopts any scene-authored chrome). Before this base existed each HUD carried its own copy of the palette and
