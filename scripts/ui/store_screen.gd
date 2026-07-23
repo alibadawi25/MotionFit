@@ -151,30 +151,13 @@ func _refresh_balance() -> void:
 	_balance_label.text = "%s %d" % [COIN_GLYPH, _coins]
 
 
+## The active tab swaps to the accented `TabButtonActive` theme variation, so
+## the tab strip's whole look lives in main_theme.tres rather than here.
 func _refresh_tabs() -> void:
 	for child in _tabs.get_children():
 		var button := child as Button
 		var active: bool = _tab_category(button) == _category
-		button.add_theme_stylebox_override("normal", _tab_style(active))
-		button.add_theme_stylebox_override("hover", _tab_style(active))
-		button.add_theme_stylebox_override("pressed", _tab_style(true))
-		button.add_theme_color_override("font_color",
-				TITLE_COLOR if active else CAPTION_COLOR)
-
-
-func _tab_style(active: bool) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.22) if active \
-			else Color(0.06, 0.08, 0.12, 0.7)
-	sb.set_corner_radius_all(10)
-	sb.set_border_width_all(1)
-	sb.border_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.7) if active \
-			else Color(1, 1, 1, 0.08)
-	sb.content_margin_left = 16
-	sb.content_margin_right = 16
-	sb.content_margin_top = 8
-	sb.content_margin_bottom = 8
-	return sb
+		button.theme_type_variation = &"TabButtonActive" if active else &"TabButton"
 
 
 func _on_tab_pressed(category: String) -> void:

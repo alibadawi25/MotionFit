@@ -10,9 +10,9 @@ extends Control
 ## "Recalibrate". Fully playable without a camera — Skip is always available and
 ## the platform stays keyboard-usable.
 ##
-## The layout (mirror, prompts, progress bar, buttons) is authored in
-## scenes/menus/calibration_setup.tscn; this script only drives their text,
-## colour, width and visibility off the pose service's calibration phase.
+## The layout is authored in scenes/menus/calibration_setup.tscn from the shared
+## [CameraMirror] and [MeterBar] components; this script only drives their text,
+## colour, fill and visibility off the pose service's calibration phase.
 
 const ACCENT := Color(1, 0.5, 0.14)
 const OK_COLOR := Color(0.45, 0.9, 0.5)
@@ -24,11 +24,10 @@ const WARN_COLOR := Color(1, 0.72, 0.3)
 const HOLD_SEC := 1.0
 const HOLD_DECAY_SCALE := 1.5
 
-@onready var _mirror: TextureRect = %CameraMirror
+@onready var _mirror: CameraMirror = %CameraMirror
 @onready var _prompt: Label = %PromptLabel
 @onready var _sub: Label = %SubPromptLabel
-@onready var _bar_track: ColorRect = %ProgressTrack
-@onready var _bar_fill: ColorRect = %ProgressFill
+@onready var _meter: MeterBar = %ProgressMeter
 @onready var _start_button: Button = %StartButton
 @onready var _skip_button: Button = %SkipButton
 @onready var _continue_button: Button = %ContinueButton
@@ -47,7 +46,6 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_mirror.texture = CameraPreview.get_texture()
 	_update_hold(delta)
 	_refresh()
 
@@ -77,7 +75,7 @@ func _can_start() -> bool:
 ## phase, coaching the player at every step.
 func _refresh() -> void:
 	var state: String = MotionManager.get_calibration_state()
-	var streaming: bool = CameraPreview.is_streaming()
+	var streaming: bool = _mirror.is_live()
 	var active: bool = state == "still" or state == "squat"
 
 	var ready: bool = streaming and MotionManager.is_pose_ready()
@@ -88,7 +86,7 @@ func _refresh() -> void:
 	_skip_button.visible = not active
 	# The bar shows capture progress mid-run, and doubles as the raise-hands hold
 	# meter while the player is framed and ready to (re)start.
-	_bar_track.visible = active or state == "done" or (ready and _can_start())
+	_meter.visible = active or state == "done" or (ready and _can_start())
 
 	if active:
 		_set_prompt(MotionManager.get_calibration_prompt(), ACCENT)
@@ -151,9 +149,5 @@ func _set_sub(text: String) -> void:
 	_sub.text = text
 
 
-## Fills the progress bar to [param value] (0..1) of the scene-authored track's
-## width, so resizing the track in the editor just works.
 func _set_bar(value: float, color: Color) -> void:
-	_bar_fill.size.x = _bar_track.size.x * clampf(value, 0.0, 1.0)
-	_bar_fill.size.y = _bar_track.size.y
-	_bar_fill.color = color
+	_meter.set_fraction(value, color)

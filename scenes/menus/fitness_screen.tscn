@@ -1,12 +1,13 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/fitness_screen.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
 [ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
 [ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/stat_card.tres" id="5_tile"]
-[ext_resource type="Script" uid="uid://cac18ipm7ue0t" path="res://scripts/ui/bar_chart.gd" id="6_chart"]
-[ext_resource type="Script" uid="uid://byyk164xe5nsf" path="res://scripts/ui/heat_calendar.gd" id="7_calendar"]
+[ext_resource type="Script" uid="uid://cac18ipm7ue0t" path="res://scripts/ui/components/bar_chart.gd" id="6_chart"]
+[ext_resource type="Script" uid="uid://byyk164xe5nsf" path="res://scripts/ui/components/heat_calendar.gd" id="7_calendar"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/stat_tile.tscn" id="8_tile"]
 
 [sub_resource type="StyleBoxFlat" id="notice_style"]
 content_margin_left = 22.0
@@ -162,132 +163,44 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = ExtResource("5_tile")
 
-[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="TodayValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile/ValueRow"]
+[node name="TodayTile" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0 / 0"
-
-[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 14
-text = "kcal"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "TODAY"
+caption = "TODAY"
+unit = "kcal"
 
 [node name="StreakCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = ExtResource("5_tile")
 
-[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="StreakValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile/ValueRow"]
+[node name="StreakTile" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
-
-[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 14
-text = "days"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "STREAK"
+caption = "STREAK"
+unit = "days"
 
 [node name="WeekCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = ExtResource("5_tile")
 
-[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="WeekValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile/ValueRow"]
+[node name="WeekTile" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
-
-[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 14
-text = "kcal"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "THIS WEEK"
+caption = "THIS WEEK"
+unit = "kcal"
 
 [node name="AverageCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = ExtResource("5_tile")
 
-[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="AverageValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile/ValueRow"]
+[node name="AverageTile" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
-
-[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 14
-text = "kcal"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "DAILY AVG"
+caption = "DAILY AVG"
+unit = "kcal"
 
 [node name="DividerUnderKpis" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox/Stats"]
 layout_mode = 2

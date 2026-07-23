@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/profile_picker.gd" id="1"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
@@ -13,30 +13,6 @@ gradient = SubResource("glow_gradient")
 fill = 1
 fill_from = Vector2(0.5, 0.45)
 fill_to = Vector2(1, 0.45)
-
-[sub_resource type="StyleBoxFlat" id="corner_button_normal"]
-bg_color = Color(0.06, 0.08, 0.12, 0.82)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 1, 1, 0.16)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-
-[sub_resource type="StyleBoxFlat" id="corner_button_hover"]
-bg_color = Color(0.12, 0.15, 0.22, 0.95)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 0.5, 0.14, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="confirm_panel"]
 content_margin_left = 36.0
@@ -55,46 +31,6 @@ corner_radius_bottom_right = 18
 corner_radius_bottom_left = 18
 shadow_color = Color(0, 0, 0, 0.5)
 shadow_size = 24
-
-[sub_resource type="StyleBoxFlat" id="cancel_normal"]
-bg_color = Color(1, 1, 1, 0.06)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 1, 1, 0.18)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="cancel_hover"]
-bg_color = Color(1, 1, 1, 0.12)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 1, 1, 0.18)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="danger_button"]
-bg_color = Color(0.93, 0.34, 0.31, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="danger_button_hover"]
-bg_color = Color(0.93, 0.34, 0.31, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-shadow_color = Color(0.93, 0.34, 0.31, 0.35)
-shadow_size = 10
 
 [node name="ProfilePicker" type="Control"]
 layout_mode = 3
@@ -192,10 +128,7 @@ offset_bottom = 96.0
 grow_horizontal = 0
 focus_mode = 0
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 20
-theme_override_styles/normal = SubResource("corner_button_normal")
-theme_override_styles/hover = SubResource("corner_button_hover")
-theme_override_styles/pressed = SubResource("corner_button_hover")
+theme_type_variation = &"CornerButton"
 text = "✕  QUIT"
 
 [node name="DeleteConfirmLayer" type="ColorRect" parent="."]
@@ -252,9 +185,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 46)
 layout_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("cancel_normal")
-theme_override_styles/hover = SubResource("cancel_hover")
-theme_override_styles/pressed = SubResource("cancel_hover")
+theme_type_variation = &"GhostButton"
 text = "CANCEL"
 
 [node name="RemoveButton" type="Button" parent="DeleteConfirmLayer/DialogCenter/Dialog/DialogBody/ConfirmButtons"]
@@ -262,8 +193,5 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 46)
 layout_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_styles/normal = SubResource("danger_button")
-theme_override_styles/hover = SubResource("danger_button_hover")
-theme_override_styles/pressed = SubResource("danger_button_hover")
+theme_type_variation = &"DangerButton"
 text = "REMOVE"

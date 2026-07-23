@@ -130,12 +130,44 @@ the Godot editor instead of only existing at runtime. A UI script should read as
 - **Build in code only what is genuinely per-item**: one card per saved profile,
   per catalogue entry, per achievement, per registered game. Those loops append
   into a scene-authored container (`%CardsRow`, `%AchievementGrid`, `%StatGrid`).
-- Reusable widget groups are their own scenes under `scenes/ui/`
-  (`profile_form.tscn`, `appearance_form.tscn`, `character_preview.tscn`) —
-  instance them, never `Node.new()` the `class_name`.
+- Reusable pieces are their own scenes — **instance them, never `Node.new()` the
+  `class_name`.** Layout is:
+
+  | Folder | Holds |
+  |---|---|
+  | `scenes/menus/` | One `.tscn` per full screen SceneManager can swap to. |
+  | `scenes/ui/` | The in-game overlays MiniGame instances on top of a game: `game_intro`, `game_camera_hud`, `interval_coach`. |
+  | `scenes/ui/components/` | Reusable widgets (below). |
+  | `scripts/ui/` | One script per screen/overlay — wiring only. |
+  | `scripts/ui/components/` | The components' scripts, most `@tool` + `@export`. |
+  | `assets/ui/styles/` | Shared `StyleBoxFlat` `.tres` for panel surfaces. |
+
+### 4.2 The component catalogue (`scenes/ui/components/`)
+
+| Component | What it is | Used by |
+|---|---|---|
+| `stat_tile` | Value + optional unit over a caption. `@export caption/value/unit/value_color`. | Profile, Fitness, Main Menu |
+| `form_row` | Fixed-width label, then whatever control you add as a child. `@export label_text`. | Profile Form, Appearance Form, Settings, Profile, Create Profile |
+| `meter_bar` | Track + coloured fill with an optional target marker. `set_fraction(v, color)`. | Game Intro, Calibration, Interval Coach |
+| `camera_mirror` | The webcam mirror plus its frame and LIVE badge; reads [CameraPreview] itself, `is_live()` / `set_frame_color()`. | Game Intro, Camera HUD, Camera Test, Calibration |
+| `game_card` | One registry game: preview still, title, description, status pill. `bind(game)` / `set_ready()`. | Game Select |
+| `soon_tile` | Compact locked tile for a not-yet-built game. | Game Select |
+| `difficulty_card` | One intensity option; every string and the pip count are `@export`s. | Difficulty Select |
+| `profile_form` / `appearance_form` | The body-attribute and character-look input groups. | Profile, Create Profile |
+| `character_preview` | Self-contained 3D turntable (own World3D, key light, camera). | Profile |
+
+- Repeated *button* looks are **theme variations** in `assets/ui/main_theme.tres`,
+  not per-scene styleboxes: `PrimaryButton`, `CornerButton` (the dark ◄ MENU /
+  ✕ QUIT corner affordances), `CardButton` (the big selectable cards),
+  `TabButton` / `TabButtonActive` (the Store's category strip), `GhostButton` /
+  `DangerButton` (the destructive-confirm pair). Restyling every card or corner
+  button is a theme edit. **Never mutate a stylebox you got from the theme** —
+  it's shared; `duplicate()` it into a local override first (see
+  `game_intro.gd`'s calibrate button).
 - The centred-card screens share `PanelScreen` (`scripts/ui/panel_screen.gd`),
   which is now just the palette plus `set_header()`; each screen's `.tscn`
-  supplies `%TitleLabel`, `%SubtitleLabel` and `%ContentBox`.
+  supplies `%TitleLabel`, `%SubtitleLabel` and `%ContentBox`, and its card uses
+  `assets/ui/styles/screen_card.tres`.
 
 ---
 

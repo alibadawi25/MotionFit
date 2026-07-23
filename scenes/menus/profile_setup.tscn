@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/profile_setup.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
 [ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
-[ext_resource type="PackedScene" path="res://scenes/ui/profile_form.tscn" id="5_form"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/profile_form.tscn" id="5_form"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/form_row.tscn" id="6_row"]
 
 [node name="ProfileSetup" type="Control"]
 layout_mode = 3
@@ -82,17 +83,10 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="NameRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+[node name="NameRow" parent="ScreenCenter/Card/CardBody/ContentBox" instance=ExtResource("6_row")]
 layout_mode = 2
-theme_override_constants/separation = 18
+label_text = "Name"
 
-[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
-custom_minimum_size = Vector2(150, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
-theme_override_font_sizes/font_size = 22
-text = "Name"
-vertical_alignment = 1
 
 [node name="NameEdit" type="LineEdit" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
 unique_name_in_owner = true

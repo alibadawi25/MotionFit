@@ -38,6 +38,13 @@ const ACHIEVEMENTS: String = "res://scenes/menus/achievements_screen.tscn"
 const STORE: String = "res://scenes/menus/store_screen.tscn"
 const CAMERA_TEST: String = "res://scenes/menus/camera_test.tscn"
 
+# --- In-game overlays ------------------------------------------------------
+# Reusable, instanced by MiniGame on top of whatever game is running (never
+# swapped to as a whole scene), so they have loaders here only for the path.
+const GAME_INTRO: String = "res://scenes/ui/game_intro.tscn"
+const GAME_CAMERA_HUD: String = "res://scenes/ui/game_camera_hud.tscn"
+const INTERVAL_COACH: String = "res://scenes/ui/interval_coach.tscn"
+
 # --- Mini-game scenes ------------------------------------------------------
 # Every game registered in GameManager references one of these constants.
 # Open World is a free-roam MiniGame (no fail state; steps/calories are still

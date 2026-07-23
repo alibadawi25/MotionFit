@@ -1,12 +1,14 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/profile_screen.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
 [ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
-[ext_resource type="PackedScene" path="res://scenes/ui/profile_form.tscn" id="5_body_form"]
-[ext_resource type="PackedScene" path="res://scenes/ui/appearance_form.tscn" id="6_look_form"]
-[ext_resource type="PackedScene" path="res://scenes/ui/character_preview.tscn" id="7_preview"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/profile_form.tscn" id="5_body_form"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/appearance_form.tscn" id="6_look_form"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/character_preview.tscn" id="7_preview"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/stat_tile.tscn" id="8_tile"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/form_row.tscn" id="9_row"]
 
 [node name="ProfileScreen" type="Control"]
 layout_mode = 3
@@ -88,118 +90,35 @@ theme_override_constants/separation = 20
 layout_mode = 2
 theme_override_constants/separation = 40
 
-[node name="CaloriesTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="CaloriesValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile/ValueRow"]
+[node name="CaloriesTile" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
+caption = "CALORIES"
+unit = "kcal"
 
-[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 14
-text = "kcal"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "CALORIES"
-
-[node name="StepsTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/StepsTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="StepsValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/StepsTile/ValueRow"]
+[node name="StepsTile" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
+caption = "STEPS"
 
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/StepsTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "STEPS"
-
-[node name="ActiveTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="ActiveValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile/ValueRow"]
+[node name="ActiveTile" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
+caption = "ACTIVE"
+unit = "min"
 
-[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 14
-text = "min"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "ACTIVE"
-
-[node name="WorkoutsTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
-layout_mode = 2
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/WorkoutsTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="WorkoutsValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/WorkoutsTile/ValueRow"]
+[node name="WorkoutsTile" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow" instance=ExtResource("8_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
-
-[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/WorkoutsTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "WORKOUTS"
+caption = "WORKOUTS"
 
 [node name="DividerUnderStats" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox"]
 layout_mode = 2
 
-[node name="NameRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+[node name="NameRow" parent="ScreenCenter/Card/CardBody/ContentBox" instance=ExtResource("9_row")]
 layout_mode = 2
-theme_override_constants/separation = 18
+label_text = "Name"
 
-[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
-custom_minimum_size = Vector2(150, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
-theme_override_font_sizes/font_size = 22
-text = "Name"
-vertical_alignment = 1
 
 [node name="NameEdit" type="LineEdit" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
 unique_name_in_owner = true

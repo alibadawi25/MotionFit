@@ -21,9 +21,10 @@ extends Control
 ## [CameraPreview], exactly as [GameIntro] does. With no pose service running the
 ## mirror stays dark and the banner explains how to start it.
 ##
-## The whole layout — mirror, banner, the three action cards — is authored in
-## scenes/menus/camera_test.tscn at design-space 1920×1080 (canvas_items stretch,
-## so absolute offsets scale cleanly). This script only recolours and relabels it.
+## The whole layout — the shared [CameraMirror], the banner, and the three action
+## cards — is authored in scenes/menus/camera_test.tscn at design-space 1920×1080
+## (canvas_items stretch, so absolute offsets scale cleanly). This script only
+## recolours and relabels it.
 
 const ACCENT: Color = Color(1.0, 0.5, 0.14)       # "detecting now" orange
 const GREEN: Color = Color(0.45, 0.9, 0.5)        # "works!" green
@@ -38,8 +39,7 @@ const MOVING_THRESHOLD: float = 0.12
 ## How long the "YOU JUMPED!" flash and the jump lamp stay lit after a jump.
 const JUMP_FLASH_SEC: float = 0.9
 
-@onready var _camera: TextureRect = %CameraMirror
-@onready var _camera_frame: Panel = %MirrorFrame
+@onready var _camera: CameraMirror = %CameraMirror
 @onready var _cam_pill: Label = %CameraStatusPill
 @onready var _banner: Label = %BannerLabel
 @onready var _hint: Label = %HintLabel
@@ -96,11 +96,10 @@ func _on_jump() -> void:
 
 
 func _process(delta: float) -> void:
-	_camera.texture = CameraPreview.get_texture()
 	if _jump_flash > 0.0:
 		_jump_flash -= delta
 
-	var streaming: bool = CameraPreview.is_streaming()
+	var streaming: bool = _camera.is_live()
 	var pose_ready: bool = MotionManager.is_pose_ready()
 	_update_camera_status(streaming)
 	_update_cards(streaming, pose_ready)
@@ -110,13 +109,12 @@ func _process(delta: float) -> void:
 ## Greens the mirror frame and pill while a live picture is arriving; otherwise
 ## shows the reason the camera isn't up, in plain language.
 func _update_camera_status(streaming: bool) -> void:
-	var frame_sb := _card_style(_camera_frame)
 	if streaming:
-		frame_sb.border_color = GREEN
+		_camera.set_frame_color(GREEN)
 		_cam_pill.text = "●  CAMERA WORKING"
 		_cam_pill.add_theme_color_override("font_color", GREEN)
 	else:
-		frame_sb.border_color = LAMP_OFF
+		_camera.set_frame_color(LAMP_OFF)
 		if MotionManager.is_camera_error():
 			_cam_pill.text = "●  CAMERA BLOCKED"
 		elif MotionManager.is_receiving():

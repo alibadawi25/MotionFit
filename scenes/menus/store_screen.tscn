@@ -140,6 +140,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"TabButton"
 text = "KIT"
 metadata/category_id = "kit"
 
@@ -147,6 +148,7 @@ metadata/category_id = "kit"
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"TabButton"
 text = "GLOVES"
 metadata/category_id = "gloves"
 
@@ -154,6 +156,7 @@ metadata/category_id = "gloves"
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"TabButton"
 text = "HAIR"
 metadata/category_id = "hair"
 
@@ -161,6 +164,7 @@ metadata/category_id = "hair"
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"TabButton"
 text = "COLOURS"
 metadata/category_id = "colour"
 
@@ -168,6 +172,7 @@ metadata/category_id = "colour"
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"TabButton"
 text = "VENUE"
 metadata/category_id = "venue"
 

@@ -1,9 +1,10 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/difficulty_select.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
 [ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="4_anton"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/difficulty_card.tscn" id="5_card"]
 
 [sub_resource type="Gradient" id="grad_left"]
 offsets = PackedFloat32Array(0, 0.35, 0.62)
@@ -137,6 +138,33 @@ mouse_filter = 2
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 34
+
+[node name="EasyCard" parent="Content/Layout/CardCenter/CardContainer" instance=ExtResource("5_card")]
+unique_name_in_owner = true
+layout_mode = 2
+difficulty = 0
+level_name = "EASY"
+tag = "WARM-UP"
+pips = 1
+description = "A gentler pace with room to breathe. Great for first sessions and recovery days."
+
+[node name="NormalCard" parent="Content/Layout/CardCenter/CardContainer" instance=ExtResource("5_card")]
+unique_name_in_owner = true
+layout_mode = 2
+difficulty = 1
+level_name = "NORMAL"
+tag = "STEADY BURN"
+pips = 2
+description = "The intended challenge — a steady push that keeps your heart rate up."
+
+[node name="HardCard" parent="Content/Layout/CardCenter/CardContainer" instance=ExtResource("5_card")]
+unique_name_in_owner = true
+layout_mode = 2
+difficulty = 2
+level_name = "HARD"
+tag = "ALL OUT"
+pips = 3
+description = "Relentless. Everything comes faster and closes in sooner. Expect to sweat."
 
 [node name="Footer" type="HBoxContainer" parent="Content/Layout"]
 layout_mode = 2

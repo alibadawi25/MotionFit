@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3 uid="uid://te18r6k0coi1"]
+[gd_scene load_steps=30 format=3 uid="uid://te18r6k0coi1"]
 
 [ext_resource type="Script" uid="uid://c2oikvb35gp4" path="res://scripts/ui/main_menu.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/textures/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
@@ -11,7 +11,8 @@
 [ext_resource type="Texture2D" uid="uid://db58hh0x2nrxx" path="res://assets/ui/icons/gear.svg" id="9_gear"]
 [ext_resource type="Texture2D" uid="uid://2up8ysi0uoyy" path="res://assets/ui/icons/power.svg" id="10_power"]
 [ext_resource type="Texture2D" uid="uid://etruj1xo2ycr" path="res://assets/ui/icons/swap.svg" id="11_swap"]
-[ext_resource type="Script" uid="uid://cac18ipm7ue0t" path="res://scripts/ui/bar_chart.gd" id="12_chart"]
+[ext_resource type="Script" uid="uid://cac18ipm7ue0t" path="res://scripts/ui/components/bar_chart.gd" id="12_chart"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/stat_tile.tscn" id="13_tile"]
 
 [sub_resource type="Gradient" id="grad_left"]
 offsets = PackedFloat32Array(0, 0.35, 0.62)
@@ -554,85 +555,25 @@ show_percentage = false
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="StreakTile" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 1
-
-[node name="ValueRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="StreakValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile/ValueRow"]
+[node name="StreakTile" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow" instance=ExtResource("13_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
-
-[node name="UnitLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "days"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 12
-text = "STREAK"
-
-[node name="WeekTile" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow"]
-layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 1
+caption = "STREAK"
+unit = "days"
 
-[node name="ValueRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="WeekValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile/ValueRow"]
+[node name="WeekTile" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow" instance=ExtResource("13_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0"
-
-[node name="UnitLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile/ValueRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
-text = "kcal"
-vertical_alignment = 2
-
-[node name="CaptionLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 12
-text = "THIS WEEK"
-
-[node name="BadgesTile" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow"]
-layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 1
+caption = "THIS WEEK"
+unit = "kcal"
 
-[node name="ValueRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/BadgesTile"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="BadgesValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/BadgesTile/ValueRow"]
+[node name="BadgesTile" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow" instance=ExtResource("13_tile")]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 28
-text = "0 / 0"
-
-[node name="CaptionLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/BadgesTile"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 12
-text = "BADGES"
+size_flags_horizontal = 3
+caption = "BADGES"
 
 [node name="RuleAboveLevel" type="ColorRect" parent="TodayPanelHolder/TodayPanel/PanelBody"]
 custom_minimum_size = Vector2(0, 1)

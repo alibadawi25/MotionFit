@@ -13,8 +13,16 @@ Achievements / Audio / Save systems. Built to scale to 20+ games.
 ## Layout
 - `scenes/` — one folder per game: `runner` (Zombie Run), `sprint` (Hurdle Dash),
   `boxing`, `football`, `tennis`, `open-world`, plus `menus`, `ui`, `shared`, `tests`.
+  - `scenes/menus/` one `.tscn` per screen · `scenes/ui/` in-game overlays ·
+    `scenes/ui/components/` reusable widgets (stat_tile, form_row, meter_bar,
+    camera_mirror, game_card, …).
 - `scripts/` — `managers/` (autoloads: game_manager, profile_manager, scene_manager,
-  motion_manager, character_factory, achievement_manager…) and `ui/`.
+  motion_manager, character_factory, achievement_manager…), `ui/` (one per screen)
+  and `ui/components/`.
+- **UI is authored in `.tscn`, not built in `_ready()`** — see CONTEXT.md §4.1/§4.2
+  for the rule, the component catalogue and the theme variations
+  (`CornerButton`, `CardButton`, `TabButton`, …). Build in code only what is
+  genuinely per-item (one card per profile / game / achievement).
 - `python/` — MediaPipe pose pipeline (`pose/pose_server.py`, UDP :9990) + heart rate.
 - `assets/models/generated_human/export_glb.py` — procedural character GLB generator.
 - `tools/` — dev scripts (see below). `addons/godot_mcp` — MCP autoloads.

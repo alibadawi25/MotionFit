@@ -64,7 +64,7 @@ func _process(delta: float) -> void:
 ## player has signalled ready and the count has run.
 func _run_intro() -> void:
 	_freeze_world(true)
-	var intro := GameIntro.new()
+	var intro: GameIntro = load(SceneManager.GAME_INTRO).instantiate()
 	add_child(intro)
 	intro.intro_finished.connect(_on_intro_finished)
 
@@ -106,7 +106,7 @@ func begin() -> void:
 	# Show the in-game corner camera + live coaching, so the player can keep an eye
 	# on their framing (it hides itself when no camera is streaming). Reusable, so
 	# every game gets it without any per-game code.
-	add_child(GameCameraHUD.new())
+	add_child(load(SceneManager.GAME_CAMERA_HUD).instantiate())
 	# If this session is today's Daily Challenge, overlay the interval coach on top
 	# of the game and let it drive the workout (see WorkoutManager / IntervalCoach).
 	_start_workout(GameManager.take_pending_workout())
@@ -122,7 +122,7 @@ func _start_workout(plan: Dictionary) -> void:
 	if plan.is_empty():
 		return
 	_workout_plan = plan
-	var coach := IntervalCoach.new()
+	var coach: IntervalCoach = load(SceneManager.INTERVAL_COACH).instantiate()
 	coach.setup(plan)
 	coach.workout_completed.connect(_on_workout_completed)
 	add_child(coach)

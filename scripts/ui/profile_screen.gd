@@ -15,10 +15,10 @@ extends PanelScreen
 ## run the (~0.15 s, blocking) Python generator on every tick.
 const PREVIEW_DEBOUNCE: float = 0.35
 
-@onready var _calories_value: Label = %CaloriesValue
-@onready var _steps_value: Label = %StepsValue
-@onready var _active_value: Label = %ActiveValue
-@onready var _workouts_value: Label = %WorkoutsValue
+@onready var _calories_tile: StatTile = %CaloriesTile
+@onready var _steps_tile: StatTile = %StepsTile
+@onready var _active_tile: StatTile = %ActiveTile
+@onready var _workouts_tile: StatTile = %WorkoutsTile
 @onready var _name_edit: LineEdit = %NameEdit
 @onready var _form: ProfileForm = %BodyForm
 @onready var _appearance: AppearanceForm = %AppearanceForm
@@ -58,10 +58,10 @@ func _ready() -> void:
 
 ## Real lifetime activity, derived from this profile's daily log — no gamification.
 func _fill_stats() -> void:
-	_calories_value.text = "%d" % int(ActivityManager.get_total_calories())
-	_steps_value.text = str(ActivityManager.get_total_steps())
-	_active_value.text = "%d" % int(ActivityManager.get_total_active_sec() / 60.0)
-	_workouts_value.text = str(ActivityManager.get_total_sessions())
+	_calories_tile.value = "%d" % int(ActivityManager.get_total_calories())
+	_steps_tile.value = str(ActivityManager.get_total_steps())
+	_active_tile.value = "%d" % int(ActivityManager.get_total_active_sec() / 60.0)
+	_workouts_tile.value = str(ActivityManager.get_total_sessions())
 
 
 ## Calibration status + the Recalibrate button's wording, so a player can see at

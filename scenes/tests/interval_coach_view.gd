@@ -23,6 +23,6 @@ func _ready() -> void:
 		"total_sec": 63,
 		"push_count": 1,
 	}
-	var coach := IntervalCoach.new()
+	var coach: IntervalCoach = load(SceneManager.INTERVAL_COACH).instantiate()
 	coach.setup(plan)
 	add_child(coach)

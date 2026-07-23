@@ -21,10 +21,10 @@ const CALENDAR_WEEKS: int = 17
 @onready var _goal_spin: SpinBox = %GoalSpin
 @onready var _goal_auto: CheckButton = %GoalAutoToggle
 @onready var _empty_notice: PanelContainer = %EmptyNotice
-@onready var _today_value: Label = %TodayValue
-@onready var _streak_value: Label = %StreakValue
-@onready var _week_value: Label = %WeekValue
-@onready var _average_value: Label = %AverageValue
+@onready var _today_tile: StatTile = %TodayTile
+@onready var _streak_tile: StatTile = %StreakTile
+@onready var _week_tile: StatTile = %WeekTile
+@onready var _average_tile: StatTile = %AverageTile
 @onready var _chart: BarChart = %CalorieChart
 @onready var _calendar: HeatCalendar = %ConsistencyCalendar
 @onready var _consistency_caption: Label = %ConsistencyCaption
@@ -69,10 +69,10 @@ func _on_goal_auto_toggled(on: bool) -> void:
 ## calendar tint together.
 func _refresh_stats() -> void:
 	var goal: float = ActivityManager.get_daily_calorie_goal()
-	_today_value.text = "%d / %d" % [int(ActivityManager.get_today_calories()), int(goal)]
-	_streak_value.text = str(ActivityManager.get_streak())
-	_week_value.text = "%d" % int(ActivityManager.get_calories_last_days(7))
-	_average_value.text = "%d" % int(ActivityManager.get_average_calories(7))
+	_today_tile.value = "%d / %d" % [int(ActivityManager.get_today_calories()), int(goal)]
+	_streak_tile.value = str(ActivityManager.get_streak())
+	_week_tile.value = "%d" % int(ActivityManager.get_calories_last_days(7))
+	_average_tile.value = "%d" % int(ActivityManager.get_average_calories(7))
 
 	var labels := PackedStringArray()
 	var values := PackedFloat32Array()

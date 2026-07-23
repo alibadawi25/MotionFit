@@ -42,9 +42,9 @@ extends Control
 @onready var _calories_value: Label = %CaloriesValue
 @onready var _calorie_goal_label: Label = %CalorieGoalLabel
 @onready var _calorie_bar: ProgressBar = %CalorieBar
-@onready var _streak_value: Label = %StreakValue
-@onready var _week_value: Label = %WeekValue
-@onready var _badges_value: Label = %BadgesValue
+@onready var _streak_tile: StatTile = %StreakTile
+@onready var _week_tile: StatTile = %WeekTile
+@onready var _badges_tile: StatTile = %BadgesTile
 @onready var _level_label: Label = %LevelLabel
 @onready var _xp_to_next_label: Label = %XpToNextLabel
 @onready var _level_bar: ProgressBar = %LevelBar
@@ -171,9 +171,9 @@ func _fill_today_panel() -> void:
 	_calorie_bar.value = clampf(float(today) / float(goal), 0.0, 1.0)
 	(_calorie_bar.get_theme_stylebox("fill") as StyleBoxFlat).bg_color = cal_color
 
-	_streak_value.text = str(ActivityManager.get_streak())
-	_week_value.text = "%d" % int(ActivityManager.get_calories_last_days(7))
-	_badges_value.text = "%d / %d" % [
+	_streak_tile.value = str(ActivityManager.get_streak())
+	_week_tile.value = "%d" % int(ActivityManager.get_calories_last_days(7))
+	_badges_tile.value = "%d / %d" % [
 		AchievementManager.get_unlocked_count(),
 		AchievementManager.get_definitions().size()]
 

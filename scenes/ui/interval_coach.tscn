@@ -1,0 +1,122 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/interval_coach.gd" id="1"]
+[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="2_anton"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/meter_bar.tscn" id="3_meter"]
+
+[sub_resource type="StyleBoxFlat" id="coach_panel"]
+content_margin_left = 30.0
+content_margin_top = 14.0
+content_margin_right = 30.0
+content_margin_bottom = 14.0
+bg_color = Color(0.04, 0.05, 0.08, 0.86)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.12)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 14
+
+[node name="IntervalCoach" type="CanvasLayer"]
+layer = 60
+script = ExtResource("1")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CoachPanel" type="PanelContainer" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_top = 128.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("coach_panel")
+
+[node name="PanelBody" type="VBoxContainer" parent="Root/CoachPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="KickerLabel" type="Label" parent="Root/CoachPanel/PanelBody"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.5, 0.14, 1)
+theme_override_font_sizes/font_size = 13
+text = "DAILY CHALLENGE"
+horizontal_alignment = 1
+
+[node name="PhaseRow" type="HBoxContainer" parent="Root/CoachPanel/PanelBody"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="PhaseLabel" type="Label" parent="Root/CoachPanel/PanelBody/PhaseRow"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("2_anton")
+theme_override_font_sizes/font_size = 34
+text = "WARM UP"
+
+[node name="TimerLabel" type="Label" parent="Root/CoachPanel/PanelBody/PhaseRow"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.5, 0.14, 1)
+theme_override_fonts/font = ExtResource("2_anton")
+theme_override_font_sizes/font_size = 34
+text = "0:00"
+
+[node name="VerdictLabel" type="Label" parent="Root/CoachPanel/PanelBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 1
+
+[node name="EffortMeter" parent="Root/CoachPanel/PanelBody" instance=ExtResource("3_meter")]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 16)
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="NextLabel" type="Label" parent="Root/CoachPanel/PanelBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+
+[node name="TimelineBar" parent="Root/CoachPanel/PanelBody" instance=ExtResource("3_meter")]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 4)
+layout_mode = 2
+size_flags_horizontal = 4
+fill_color = Color(1, 0.5, 0.14, 0.75)
+
+[node name="ProgressLabel" type="Label" parent="Root/CoachPanel/PanelBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1

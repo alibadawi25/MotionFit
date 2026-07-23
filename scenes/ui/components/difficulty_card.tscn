@@ -1,0 +1,104 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/components/difficulty_card.gd" id="2"]
+
+[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="1_anton"]
+
+[sub_resource type="StyleBoxFlat" id="go_pill"]
+content_margin_left = 12.0
+content_margin_top = 5.0
+content_margin_right = 12.0
+content_margin_bottom = 5.0
+bg_color = Color(1, 0.5, 0.14, 0.14)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="DifficultyCard" type="Button"]
+clip_contents = false
+custom_minimum_size = Vector2(300, 330)
+mouse_default_cursor_shape = 2
+theme_type_variation = &"CardButton"
+script = ExtResource("2")
+
+[node name="CardPad" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 26
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 26
+theme_override_constants/margin_bottom = 26
+
+[node name="CardBody" type="VBoxContainer" parent="CardPad"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="NameLabel" type="Label" parent="CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("1_anton")
+theme_override_font_sizes/font_size = 44
+text = "NORMAL"
+
+[node name="TagLabel" type="Label" parent="CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 16
+text = "STEADY BURN"
+
+[node name="IntensityPips" type="HBoxContainer" parent="CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Pip1" type="Label" parent="CardPad/CardBody/IntensityPips"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.16)
+theme_override_font_sizes/font_size = 20
+text = "●"
+
+[node name="Pip2" type="Label" parent="CardPad/CardBody/IntensityPips"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.16)
+theme_override_font_sizes/font_size = 20
+text = "●"
+
+[node name="Pip3" type="Label" parent="CardPad/CardBody/IntensityPips"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.16)
+theme_override_font_sizes/font_size = 20
+text = "●"
+
+[node name="DescriptionLabel" type="Label" parent="CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.8, 0.84, 0.9, 0.92)
+theme_override_font_sizes/font_size = 16
+text = "What this intensity asks of you."
+autowrap_mode = 3
+
+[node name="StartBadge" type="Label" parent="CardPad/CardBody"]
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.5, 0.14, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("go_pill")
+text = "▶  START"

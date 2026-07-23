@@ -1,20 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/calibration_setup.gd" id="1"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
 [ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
-
-[sub_resource type="StyleBoxFlat" id="mirror_frame"]
-bg_color = Color(0, 0, 0, 0)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.14)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
+[ext_resource type="PackedScene" path="res://scenes/ui/components/camera_mirror.tscn" id="4_mirror"]
+[ext_resource type="PackedScene" path="res://scenes/ui/components/meter_bar.tscn" id="5_meter"]
 
 [node name="CalibrationSetup" type="Control"]
 layout_mode = 3
@@ -56,26 +46,16 @@ theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 40
 text = "CALIBRATE YOUR BODY"
 
-[node name="CameraMirror" type="TextureRect" parent="."]
+[node name="CameraMirror" parent="." instance=ExtResource("4_mirror")]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 600.0
 offset_top = 210.0
 offset_right = 1320.0
 offset_bottom = 750.0
-mouse_filter = 2
-expand_mode = 1
-stretch_mode = 5
-
-[node name="MirrorFrame" type="Panel" parent="CameraMirror"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("mirror_frame")
+show_badge = false
+frame_width = 2
+auto_frame_color = false
 
 [node name="PromptLabel" type="Label" parent="."]
 unique_name_in_owner = true
@@ -101,23 +81,14 @@ theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 1)
 theme_override_font_sizes/font_size = 18
 horizontal_alignment = 1
 
-[node name="ProgressTrack" type="ColorRect" parent="."]
+[node name="ProgressMeter" parent="." instance=ExtResource("5_meter")]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 12)
 layout_mode = 0
 offset_left = 680.0
 offset_top = 862.0
 offset_right = 1240.0
 offset_bottom = 874.0
-mouse_filter = 2
-color = Color(1, 1, 1, 0.12)
-
-[node name="ProgressFill" type="ColorRect" parent="ProgressTrack"]
-unique_name_in_owner = true
-layout_mode = 0
-offset_right = 0.0
-offset_bottom = 12.0
-mouse_filter = 2
-color = Color(1, 0.5, 0.14, 1)
 
 [node name="ButtonsRow" type="HBoxContainer" parent="."]
 layout_mode = 1
