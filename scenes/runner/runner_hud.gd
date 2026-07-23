@@ -1,4 +1,4 @@
-extends CanvasLayer
+extends GameHUD
 ## RunnerHud
 ##
 ## The Infinite Runner's on-screen feedback AND its tension overlay, built in code
@@ -22,19 +22,6 @@ extends CanvasLayer
 ## the heartbeat is computed by runner.gd and passed in, so the whole tension
 ## picture stays in one place there.
 class_name RunnerHud
-
-const ACCENT: Color = Color(1.0, 0.5, 0.14)
-const TEXT: Color = Color(0.96, 0.97, 0.99)
-const MUTED: Color = Color(0.72, 0.76, 0.82)
-const SAFE: Color = Color(0.30, 0.75, 0.42)
-const WARN: Color = Color(0.95, 0.65, 0.15)
-const DANGER: Color = Color(0.90, 0.16, 0.16)
-
-## The shared surface treatment: every HUD block sits on the same translucent
-## slate chip (matching the main menu's profile chip) so nothing floats as raw
-## text over the scene.
-const PANEL_BG: Color = Color(0.05, 0.07, 0.11, 0.72)
-const PANEL_BORDER: Color = Color(1, 1, 1, 0.10)
 
 ## The closing dark: the game's ONLY proximity readout. [code]intensity[/code]
 ## (0…1, from the gap) drags the vignette's clear centre from a wide cinematic
@@ -79,34 +66,28 @@ void fragment() {
 const BADGE_PX: float = 44.0
 const BADGE_ICON_PX: float = 26.0
 
-var _anton: Font
 var _vignette: ColorRect
-var _flash: ColorRect
 var _lightning: ColorRect
 var _distance_value: Label
 var _pace_fill: Panel
 var _prompt: Label
 var _prompt_text: String = ""
-var _toast: Label
 var _last_pace: float = 0.0
 # Runtime-rasterized SVG icon textures (keyed body|px).
 var _icon_cache: Dictionary = {}
-# Briefing "how to play" card, shown for the grace period before the chase.
-var _briefing: Control
-var _brief_count: Label
-var _brief_bar: Panel
-var _brief_bar_fill: Panel
-var _brief_total: float = 0.0
 
 
 func _ready() -> void:
-	_anton = load("res://assets/fonts/Anton-Regular.ttf")
+	super()
 	_build_vignette()
 	_build_stats()
 	_build_prompt()
-	_build_toast()
+	_build_toast(40, 0.9)
+	_position_toast()
 
 
+## The vignette goes down first so the chips sit on top of it, then the hit
+## flash (from [GameHUD]) and the lightning sheet over everything.
 func _build_vignette() -> void:
 	var shader := Shader.new()
 	shader.code = VIGNETTE_SHADER
@@ -118,11 +99,7 @@ func _build_vignette() -> void:
 	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_vignette)
 
-	_flash = ColorRect.new()
-	_flash.color = Color(0.9, 0.1, 0.1, 0.0)
-	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_flash)
+	_build_flash()
 
 	# A cold blue-white sheet for the distant lightning scare (see flash_lightning).
 	_lightning = ColorRect.new()
@@ -135,18 +112,18 @@ func _build_vignette() -> void:
 ## Top-left: DISTANCE (the score) as a big Anton value over a small pace bar,
 ## sitting on a shared chip so it reads as an instrument, not floating text.
 func _build_stats() -> void:
-	var chip := PanelContainer.new()
-	chip.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	chip.offset_left = 36.0
-	chip.offset_top = 28.0
-	chip.add_theme_stylebox_override("panel", _chip(16, 22.0, 14.0))
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(chip)
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.offset_left = 36.0
+	panel.offset_top = 28.0
+	panel.add_theme_stylebox_override("panel", chip(16, 22.0, 14.0, 14.0))
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(panel)
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	chip.add_child(box)
+	panel.add_child(box)
 
 	var cap := Label.new()
 	cap.text = "DISTANCE"
@@ -172,7 +149,7 @@ func _build_stats() -> void:
 
 	var track := Panel.new()
 	track.custom_minimum_size = Vector2(230, 14)
-	var track_sb := _rounded(Color(0.03, 0.04, 0.07, 0.9), 7)
+	var track_sb := rounded(Color(0.03, 0.04, 0.07, 0.9), 7)
 	track_sb.set_border_width_all(1)
 	track_sb.border_color = PANEL_BORDER
 	track.add_theme_stylebox_override("panel", track_sb)
@@ -180,7 +157,7 @@ func _build_stats() -> void:
 	_pace_fill = Panel.new()
 	_pace_fill.position = Vector2(2, 2)
 	_pace_fill.size = Vector2(0, 10)
-	_pace_fill.add_theme_stylebox_override("panel", _rounded(ACCENT, 5))
+	_pace_fill.add_theme_stylebox_override("panel", rounded(ACCENT, 5))
 	track.add_child(_pace_fill)
 
 
@@ -211,25 +188,11 @@ func _build_prompt() -> void:
 	add_child(_prompt)
 
 
-## A short-lived shout in the upper-centre (milestones, "RUN!", zombie taunts). It
-## pops in with a little scale and fades, and a new call interrupts the last.
-func _build_toast() -> void:
-	_toast = Label.new()
+## The chase's shouts span the top of the screen, under the distance chip.
+func _position_toast() -> void:
 	_toast.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_toast.offset_top = 168.0
 	_toast.offset_bottom = 240.0
-	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_toast.add_theme_font_override("font", _anton)
-	_toast.add_theme_font_size_override("font_size", 40)
-	_toast.add_theme_constant_override("outline_size", 8)
-	_toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
-	_toast.add_theme_constant_override("shadow_offset_x", 2)
-	_toast.add_theme_constant_override("shadow_offset_y", 4)
-	_toast.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
-	_toast.modulate.a = 0.0
-	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_toast)
 
 
 # --- live updates ------------------------------------------------------------
@@ -271,30 +234,7 @@ func set_prompt(text: String, color: Color = TEXT) -> void:
 
 ## A red slam when an obstacle is hit.
 func flash_hit() -> void:
-	if _flash == null:
-		return
-	_flash.color = Color(0.9, 0.1, 0.1, 0.45)
-	var tween := create_tween()
-	tween.tween_property(_flash, "color:a", 0.0, 0.4)
-
-
-## A short-lived headline in the upper-centre — milestones, "RUN!", zombie taunts.
-func flash_toast(text: String, color: Color = TEXT) -> void:
-	if _toast == null:
-		return
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
-	_toast.pivot_offset = _toast.size * 0.5
-	_toast.scale = Vector2(1.25, 1.25)
-	_toast.modulate.a = 0.0
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(_toast, "modulate:a", 1.0, 0.14)
-	tween.tween_property(_toast, "scale", Vector2.ONE, 0.28) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.set_parallel(false)
-	tween.tween_interval(0.9)
-	tween.tween_property(_toast, "modulate:a", 0.0, 0.4)
+	flash(Color(0.9, 0.1, 0.1), 0.45, 0.4)
 
 
 ## A distant lightning strike: a quick cold double-flash over the whole screen.
@@ -313,104 +253,25 @@ func flash_lightning() -> void:
 ## Shows the "how to play" card for the pre-chase grace period: the goal, the four
 ## body controls, and a live countdown to the chase. Reassuring in tone — the
 ## briefing is where the player is set up to succeed before the scare kicks in.
-func show_briefing() -> void:
-	if _briefing != null:
-		return
-	_briefing = Control.new()
-	_briefing.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_briefing.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_briefing)
-
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.02, 0.03, 0.06, 0.55)
-	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_briefing.add_child(backdrop)
-
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_briefing.add_child(center)
-
-	var card := PanelContainer.new()
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var card_sb := _rounded(Color(0.06, 0.08, 0.12, 0.97), 22)
-	card_sb.set_border_width_all(2)
-	card_sb.border_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.9)
-	card_sb.shadow_color = Color(0, 0, 0, 0.5)
-	card_sb.shadow_size = 28
-	card_sb.content_margin_left = 56.0
-	card_sb.content_margin_right = 56.0
-	card_sb.content_margin_top = 38.0
-	card_sb.content_margin_bottom = 40.0
-	card.add_theme_stylebox_override("panel", card_sb)
-	center.add_child(card)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(box)
-
-	var kicker := HBoxContainer.new()
-	kicker.alignment = BoxContainer.ALIGNMENT_CENTER
-	kicker.add_theme_constant_override("separation", 8)
-	kicker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	kicker.add_child(_icon_rect(ICON_ZOMBIE, 24.0, DANGER))
-	var kick_lab := Label.new()
-	kick_lab.text = "A ZOMBIE IS ON YOUR HEELS"
-	kick_lab.add_theme_font_size_override("font_size", 20)
-	kick_lab.add_theme_color_override("font_color", DANGER)
-	kicker.add_child(kick_lab)
-	box.add_child(kicker)
-
-	var title := Label.new()
-	title.text = "OUTRUN THE DEAD"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_override("font", _anton)
-	title.add_theme_font_size_override("font_size", 62)
-	title.add_theme_color_override("font_color", TEXT)
-	box.add_child(title)
-
-	var sub := Label.new()
-	sub.text = "You've got this. Here's how you stay alive:"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 20)
-	sub.add_theme_color_override("font_color", MUTED)
-	box.add_child(sub)
-
-	box.add_child(_spacer(6))
-	box.add_child(_divider())
-	box.add_child(_spacer(6))
-	box.add_child(_brief_row(ICON_RUN_A, "run", "MARCH IN PLACE",
+##
+## The card shell is the shared [HudBriefing]; what's specific to the chase is the
+## four animated control badges, which go in as rows.
+func show_briefing() -> HudBriefing:
+	var card := super()
+	card.set_kicker("A ZOMBIE IS ON YOUR HEELS", DANGER,
+			_icon(ICON_ZOMBIE, 24.0))
+	card.set_header("OUTRUN THE DEAD", "You've got this. Here's how you stay alive:")
+	card.add_row(_brief_row(ICON_RUN_A, "run", "MARCH IN PLACE",
 			"run — march harder to pull ahead", SAFE))
-	box.add_child(_brief_row(ICON_UP, "rise", "JUMP", "leap the low barriers", TEXT))
-	box.add_child(_brief_row(ICON_DOWN, "sink", "DUCK",
+	card.add_row(_brief_row(ICON_UP, "rise", "JUMP", "leap the low barriers", TEXT))
+	card.add_row(_brief_row(ICON_DOWN, "sink", "DUCK",
 			"bow forward to slide under the bars", TEXT))
-	box.add_child(_brief_row(ICON_LEAN, "sway", "LEAN", "dodge the wreckage", TEXT))
-	box.add_child(_spacer(6))
-	box.add_child(_divider())
-	box.add_child(_spacer(4))
-
-	_brief_count = Label.new()
-	_brief_count.text = "CHASE BEGINS IN 10"
-	_brief_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_brief_count.add_theme_font_override("font", _anton)
-	_brief_count.add_theme_font_size_override("font_size", 34)
-	_brief_count.add_theme_color_override("font_color", ACCENT)
-	box.add_child(_brief_count)
-
-	# A thin draining bar under the countdown so the grace period is visible
-	# even mid-march, when reading a number is hard.
-	_brief_bar = Panel.new()
-	_brief_bar.custom_minimum_size = Vector2(0, 6)
-	_brief_bar.add_theme_stylebox_override("panel",
-			_rounded(Color(1, 1, 1, 0.08), 3))
-	box.add_child(_brief_bar)
-	_brief_bar_fill = Panel.new()
-	_brief_bar_fill.position = Vector2.ZERO
-	_brief_bar_fill.size = Vector2(0, 6)
-	_brief_bar_fill.add_theme_stylebox_override("panel", _rounded(ACCENT, 3))
-	_brief_bar.add_child(_brief_bar_fill)
+	card.add_row(_brief_row(ICON_LEAN, "sway", "LEAN", "dodge the wreckage", TEXT))
+	card.set_countdown("CHASE BEGINS IN 10")
+	# The grace period is long and the player is already marching, so back the
+	# number with a draining bar — reading a digit mid-march is hard.
+	card.enable_time_bar()
+	return card
 
 
 ## One control row in the briefing card: an animated icon badge on a dark tile,
@@ -426,7 +287,7 @@ func _brief_row(icon_body: String, anim: String, move_name: String, desc: String
 
 	var badge := Panel.new()
 	badge.custom_minimum_size = Vector2(BADGE_PX, BADGE_PX)
-	var badge_sb := _rounded(Color(0.10, 0.13, 0.19, 0.9), 12)
+	var badge_sb := rounded(Color(0.10, 0.13, 0.19, 0.9), 12)
 	badge_sb.set_border_width_all(1)
 	badge_sb.border_color = PANEL_BORDER
 	badge.add_theme_stylebox_override("panel", badge_sb)
@@ -489,62 +350,14 @@ func _spacer(height: int) -> Control:
 	return s
 
 
-## A hairline divider for the briefing card's sections.
-func _divider() -> Control:
-	var d := Panel.new()
-	d.custom_minimum_size = Vector2(0, 2)
-	d.add_theme_stylebox_override("panel", _rounded(Color(1, 1, 1, 0.08), 1))
-	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return d
-
-
 ## Updates the briefing card's live countdown (and its draining time bar) from
 ## the seconds remaining.
 func set_briefing_countdown(seconds: float) -> void:
-	if _brief_count == null:
-		return
-	_brief_total = maxf(_brief_total, seconds)
-	var s: int = maxi(0, int(ceil(seconds)))
-	_brief_count.text = "GET READY…" if s <= 0 else "CHASE BEGINS IN %d" % s
-	if _brief_bar_fill != null and _brief_total > 0.0:
-		var frac: float = clampf(seconds / _brief_total, 0.0, 1.0)
-		_brief_bar_fill.size.x = _brief_bar.size.x * frac
-
-
-## Fades and frees the briefing card once the chase begins.
-func hide_briefing() -> void:
 	if _briefing == null:
 		return
-	var card := _briefing
-	_briefing = null
-	_brief_count = null
-	_brief_bar = null
-	_brief_bar_fill = null
-	var tween := create_tween()
-	tween.tween_property(card, "modulate:a", 0.0, 0.35)
-	tween.tween_callback(card.queue_free)
-
-
-func _rounded(color: Color, radius: int) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = color
-	sb.set_corner_radius_all(radius)
-	return sb
-
-
-## The shared HUD chip: translucent slate, hairline border, soft drop shadow —
-## the same treatment the app's menu chips use, so the HUD belongs to the app.
-func _chip(radius: int, margin_h: float, margin_v: float) -> StyleBoxFlat:
-	var sb := _rounded(PANEL_BG, radius)
-	sb.set_border_width_all(1)
-	sb.border_color = PANEL_BORDER
-	sb.content_margin_left = margin_h
-	sb.content_margin_right = margin_h
-	sb.content_margin_top = margin_v
-	sb.content_margin_bottom = margin_v
-	sb.shadow_color = Color(0, 0, 0, 0.35)
-	sb.shadow_size = 10
-	return sb
+	var s: int = maxi(0, int(ceil(seconds)))
+	_briefing.set_countdown("GET READY…" if s <= 0 else "CHASE BEGINS IN %d" % s)
+	_briefing.set_time_remaining(seconds)
 
 
 ## A wide soft horizontal gradient band (transparent → dark → transparent), used

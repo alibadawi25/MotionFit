@@ -3,11 +3,9 @@ extends Node
 ## the prompt and the pre-chase briefing card) over a flat dark backdrop, so the
 ## 2D layer can be screenshotted and eyeballed without the track, the zombie or a
 ## live webcam.
-## Load the script rather than the RunnerHud global: booting this scene directly
-## skips the class-cache pass that registers class_name globals.
-
-const HUD_SCRIPT: String = "res://scenes/runner/runner_hud.gd"
-
+## Uses the RunnerHud global rather than load()-ing the script: the HUD extends
+## the GameHUD base, and a script loaded by path can't resolve a class_name base
+## unless the global class cache is in play anyway.
 
 func _ready() -> void:
 	var bg := ColorRect.new()
@@ -15,7 +13,7 @@ func _ready() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var hud: CanvasLayer = load(HUD_SCRIPT).new()
+	var hud: RunnerHud = RunnerHud.new()
 	add_child(hud)
 	hud.set_stats(0, 0.42)
 	hud.set_danger(0.35, 0.0)

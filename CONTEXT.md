@@ -142,6 +142,35 @@ the Godot editor instead of only existing at runtime. A UI script should read as
   | `scripts/ui/components/` | The components' scripts, most `@tool` + `@export`. |
   | `assets/ui/styles/` | Shared `StyleBoxFlat` `.tres` for panel surfaces. |
 
+### 4.1a In-game HUDs extend `GameHUD`
+
+Every game's HUD extends **`GameHUD`** (`scripts/utilities/game_hud.gd`), which
+owns the chrome that must look identical in every game: the palette (`ACCENT`,
+`TEXT`, `MUTED`, `SAFE`, `WARN`, `DANGER`, `PANEL_BG`, `PANEL_BORDER`), the
+`chip()` / `rounded()` styleboxes, the `pop()` attention tween, the full-screen
+`flash()`, the toast (`_build_toast()` + `flash_toast()`) and the briefing card
+(`show_briefing()` / `hide_briefing()`).
+
+The rule for what goes where:
+
+- **In `GameHUD`** — anything a player should not be able to tell apart between
+  games. A toast that pops differently in Boxing than in Hurdle Dash reads as a
+  bug, not as character.
+- **In the game's HUD** — the readouts that *are* the game: Boxing's health bars
+  and round clock, Hurdle Dash's field strip and placing, Zombie Run's closing
+  dark. Games stay visually distinct through *what they show*, not through
+  privately re-deriving the shared chrome.
+
+Subclasses **must call `super()` from `_ready()`** (the base loads the display
+font). Before this base existed each HUD carried its own copy of the palette and
+its own `_chip()` — two byte-identical, the third quietly shipping a heavier
+shadow — and Hurdle Dash's briefing had lost its backdrop dim entirely. Add
+shared chrome to the base, never to a fourth copy.
+
+> New `class_name` globals are not visible to a directly-booted scene
+> (`tools/shot.sh`) until the class cache is rebuilt:
+> `godot --headless --path . --import`.
+
 ### 4.2 The component catalogue (`scenes/ui/components/`)
 
 | Component | What it is | Used by |
@@ -155,6 +184,7 @@ the Godot editor instead of only existing at runtime. A UI script should read as
 | `difficulty_card` | One intensity option; every string and the pip count are `@export`s. | Difficulty Select |
 | `profile_form` / `appearance_form` | The body-attribute and character-look input groups. | Profile, Create Profile |
 | `character_preview` | Self-contained 3D turntable (own World3D, key light, camera). | Profile |
+| `hud_briefing` | The pre-game "how to play" card: kicker, title/subtitle, a body the game fills (`add_row` / `add_line` / `add_section` / `add_note`), countdown and optional draining time bar. Instanced by `GameHUD.show_briefing()`. | Zombie Run, Hurdle Dash, Boxing |
 
 - Repeated *button* looks are **theme variations** in `assets/ui/main_theme.tres`,
   not per-scene styleboxes: `PrimaryButton`, `CornerButton` (the dark ◄ MENU /

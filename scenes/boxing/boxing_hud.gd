@@ -1,34 +1,24 @@
-extends CanvasLayer
+extends GameHUD
 ## BoxingHud
 ##
-## Boxing's on-screen feedback, built in code on the shared app look (translucent
-## slate chips, Anton values, orange accent) like SprintHud/RunnerHud. It owns no
-## game state — boxing.gd feeds it live numbers every frame.
+## Boxing's on-screen feedback. It owns no game state — boxing.gd feeds it live
+## numbers every frame.
 ##
-## Blocks:
-##   - top corners: two health bars (YOU left, the OPPONENT right),
+## Blocks it owns (the bout-specific half — the palette, chip, flash, toast and
+## briefing shell come from [GameHUD]):
+##   - bottom corners: two health bars (YOU left, the OPPONENT right),
 ##   - top-centre chip: the round clock + score,
 ##   - centre: the big punch call ("LEFT!", "RIGHT!") and the combo tally,
-##   - transient toasts (HIT / COUNTERED / KO), the hit flash, the briefing card
-##     and the result card.
+##   - the workout readout, the auto-guard meter and the result card.
 class_name BoxingHud
 
-const ACCENT: Color = Color(1.0, 0.5, 0.14)
-const TEXT: Color = Color(0.96, 0.97, 0.99)
-const MUTED: Color = Color(0.72, 0.76, 0.82)
-const SAFE: Color = Color(0.30, 0.75, 0.42)
-const WARN: Color = Color(0.95, 0.65, 0.15)
-const DANGER: Color = Color(0.90, 0.16, 0.16)
 ## Full-screen slam colour on a landed hit (a warm gold), vs DANGER when tagged.
 const GOLD_FLASH: Color = Color(1.0, 0.82, 0.25)
-const PANEL_BG: Color = Color(0.05, 0.07, 0.11, 0.72)
-const PANEL_BORDER: Color = Color(1, 1, 1, 0.10)
 
 ## Health-bar geometry (design space is a fixed 1920×1080).
 const BAR_W: float = 620.0
 const BAR_H: float = 26.0
 
-var _anton: Font
 var _you_fill: Panel
 var _opp_fill: Panel
 var _clock: Label
@@ -36,11 +26,7 @@ var _score_value: Label
 var _prompt: Label
 var _prompt_text: String = ""
 var _combo: Label
-var _toast: Label
-var _flash: ColorRect
 var _prompt_sub: Label
-var _briefing: Control
-var _brief_count: Label
 var _result_card: Control
 var _kcal: Label
 var _punches: Label
@@ -49,33 +35,17 @@ var _assist_label: Label
 
 
 func _ready() -> void:
+	super()
 	layer = 10
-	_anton = load("res://assets/fonts/Anton-Regular.ttf")
 	_build_flash()
 	_build_health_bars()
 	_build_clock()
 	_build_prompt()
 	_build_combo()
-	_build_toast()
+	_build_toast(58, 0.9)
+	_position_toast()
 	_build_workout()
 	_build_assist()
-
-
-# --- Shared chip -------------------------------------------------------------
-
-func _chip() -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = PANEL_BG
-	sb.border_color = PANEL_BORDER
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(10)
-	sb.shadow_color = Color(0, 0, 0, 0.25)
-	sb.shadow_size = 8
-	sb.content_margin_left = 18.0
-	sb.content_margin_right = 18.0
-	sb.content_margin_top = 10.0
-	sb.content_margin_bottom = 12.0
-	return sb
 
 
 # --- Health bars -------------------------------------------------------------
@@ -143,15 +113,15 @@ func _set_fill(fill: Panel, frac: float) -> void:
 # --- Clock + score -----------------------------------------------------------
 
 func _build_clock() -> void:
-	var chip := PanelContainer.new()
-	chip.add_theme_stylebox_override("panel", _chip())
-	chip.position = Vector2(960 - 120, 30)
-	chip.custom_minimum_size = Vector2(240, 0)
-	add_child(chip)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", chip())
+	panel.position = Vector2(960 - 120, 30)
+	panel.custom_minimum_size = Vector2(240, 0)
+	add_child(panel)
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 0)
-	chip.add_child(box)
+	panel.add_child(box)
 
 	_clock = Label.new()
 	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -219,10 +189,7 @@ func set_prompt(text: String, color: Color = TEXT, sub: String = "") -> void:
 	_prompt_sub.add_theme_color_override("font_color", Color(color, 0.85))
 	if text == "":
 		return
-	_prompt.pivot_offset = _prompt.size * 0.5
-	_prompt.scale = Vector2(1.25, 1.25)
-	var tween := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(_prompt, "scale", Vector2.ONE, 0.16)
+	pop(_prompt, 1.25, 0.16)
 
 
 func _build_combo() -> void:
@@ -245,10 +212,7 @@ func set_combo(count: int) -> void:
 		return
 	_combo.text = "%d HIT COMBO" % count
 	_combo.modulate.a = 1.0
-	_combo.pivot_offset = _combo.size * 0.5
-	_combo.scale = Vector2(1.3, 1.3)
-	var tween := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(_combo, "scale", Vector2.ONE, 0.18)
+	pop(_combo, 1.3, 0.18)
 
 
 # --- Workout readout ---------------------------------------------------------
@@ -257,13 +221,13 @@ func set_combo(count: int) -> void:
 ## punches thrown. It's the reason the game exists, so it stays on screen the
 ## whole round rather than only turning up on the results card.
 func _build_workout() -> void:
-	var chip := PanelContainer.new()
-	chip.add_theme_stylebox_override("panel", _chip())
-	chip.position = Vector2(40, 30)
-	add_child(chip)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", chip())
+	panel.position = Vector2(40, 30)
+	add_child(panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 0)
-	chip.add_child(box)
+	panel.add_child(box)
 
 	_kcal = Label.new()
 	_kcal.add_theme_font_override("font", _anton)
@@ -330,141 +294,39 @@ func set_assist(charge: float) -> void:
 	_assist_label.add_theme_color_override("font_color", ACCENT if ready else MUTED)
 
 
-# --- Toast + flash -----------------------------------------------------------
+# --- Toast -------------------------------------------------------------------
 
-func _build_toast() -> void:
-	_toast = Label.new()
-	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+## The bout's shouts (HIT, COUNTERED, KO) sit high, clear of the round clock.
+func _position_toast() -> void:
 	_toast.position = Vector2(560, 150)
 	_toast.size = Vector2(800, 80)
-	_toast.add_theme_font_override("font", _anton)
-	_toast.add_theme_font_size_override("font_size", 58)
-	_toast.add_theme_constant_override("outline_size", 8)
-	_toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_toast.modulate.a = 0.0
-	add_child(_toast)
-
-
-## A short-lived shout in the upper-centre (HIT, COUNTERED, KO).
-func flash_toast(text: String, color: Color = TEXT) -> void:
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
-	_toast.pivot_offset = _toast.size * 0.5
-	_toast.scale = Vector2(1.25, 1.25)
-	_toast.modulate.a = 1.0
-	var tween := create_tween()
-	tween.tween_property(_toast, "scale", Vector2.ONE, 0.18) \
-			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_interval(0.9)
-	tween.tween_property(_toast, "modulate:a", 0.0, 0.4)
-
-
-func _build_flash() -> void:
-	_flash = ColorRect.new()
-	_flash.color = Color(0.8, 0.05, 0.05, 0.0)
-	_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_flash)
-
-
-## A full-screen colour slam: red when the player is tagged, gold on a landed hit.
-func flash(color: Color, alpha: float = 0.4) -> void:
-	_flash.color = Color(color.r, color.g, color.b, alpha)
-	var tween := create_tween()
-	tween.tween_property(_flash, "color:a", 0.0, 0.4)
 
 
 # --- Briefing ----------------------------------------------------------------
 
-## The pre-bout how-to card, revealed while the ringside frame settles.
-func show_briefing() -> void:
-	var centre := CenterContainer.new()
-	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(centre)
-	_briefing = centre
-
-	var panel := PanelContainer.new()
-	var sb := _chip()
-	sb.bg_color = Color(0.05, 0.07, 0.11, 0.92)
-	sb.content_margin_left = 44.0
-	sb.content_margin_right = 44.0
-	sb.content_margin_top = 30.0
-	sb.content_margin_bottom = 30.0
-	panel.add_theme_stylebox_override("panel", sb)
-	centre.add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	panel.add_child(box)
-
-	var title := Label.new()
-	title.text = "TITLE FIGHT"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_override("font", _anton)
-	title.add_theme_font_size_override("font_size", 56)
-	title.add_theme_color_override("font_color", ACCENT)
-	box.add_child(title)
-
-	var sub := Label.new()
-	sub.text = "THREE PUNCHES, TWO WAYS TO DEFEND — THAT'S THE WHOLE GAME"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 18)
-	sub.add_theme_color_override("font_color", MUTED)
-	box.add_child(sub)
-
-	box.add_child(HSeparator.new())
-	# Two blocks, because the whole design is "three punches, two defences":
-	# spell each one out in body language, not boxing jargon.
-	for section in [
-		["PUNCH  (either hand — any punch lands)", [
-			"STRAIGHT — punch forward, straight at them",
-			"WIDE — swing your arm around in a wide arc",
-			"UPPERCUT — drive your fist up from below",
-		]],
-		["DEFEND  (when the call turns red)", [
-			"BLOCK — both hands up, covering your face",
-			"LEAN — bend at the waist, left or right, to slip the shot",
-		]],
-	]:
-		var head := Label.new()
-		head.text = String(section[0])
-		head.add_theme_font_override("font", _anton)
-		head.add_theme_font_size_override("font_size", 24)
-		head.add_theme_color_override("font_color", ACCENT)
-		box.add_child(head)
-		for how in section[1]:
-			var row := Label.new()
-			row.text = "    " + String(how)
-			row.add_theme_font_size_override("font_size", 20)
-			row.add_theme_color_override("font_color", TEXT)
-			box.add_child(row)
-	var tail := Label.new()
-	tail.text = "Miss one and your corner covers for you — just keep moving."
-	tail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tail.add_theme_font_size_override("font_size", 18)
-	tail.add_theme_color_override("font_color", MUTED)
-	box.add_child(tail)
-	box.add_child(HSeparator.new())
-
-	_brief_count = Label.new()
-	_brief_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_brief_count.add_theme_font_override("font", _anton)
-	_brief_count.add_theme_font_size_override("font_size", 30)
-	_brief_count.add_theme_color_override("font_color", TEXT)
-	box.add_child(_brief_count)
+## The pre-bout how-to card, revealed while the ringside frame settles. Two
+## blocks, because the whole design is "three punches, two defences": each one
+## spelled out in body language, not boxing jargon.
+func show_briefing() -> HudBriefing:
+	var card := super()
+	card.set_header("TITLE FIGHT",
+			"THREE PUNCHES, TWO WAYS TO DEFEND — THAT'S THE WHOLE GAME")
+	card.add_section("PUNCH  (either hand — any punch lands)")
+	card.add_line("STRAIGHT — punch forward, straight at them", TEXT, true)
+	card.add_line("WIDE — swing your arm around in a wide arc", TEXT, true)
+	card.add_line("UPPERCUT — drive your fist up from below", TEXT, true)
+	card.add_section("DEFEND  (when the call turns red)")
+	card.add_line("BLOCK — both hands up, covering your face", TEXT, true)
+	card.add_line("LEAN — bend at the waist, left or right, to slip the shot",
+			TEXT, true)
+	card.add_note("Miss one and your corner covers for you — just keep moving.")
+	return card
 
 
 func set_briefing_countdown(seconds_left: float) -> void:
-	if _brief_count != null:
-		_brief_count.text = "FIRST BELL IN %d" % int(ceil(maxf(seconds_left, 0.0)))
-
-
-func hide_briefing() -> void:
 	if _briefing != null:
-		_briefing.queue_free()
-		_briefing = null
-		_brief_count = null
+		_briefing.set_countdown("FIRST BELL IN %d"
+				% int(ceil(maxf(seconds_left, 0.0))))
 
 
 # --- Result ------------------------------------------------------------------
@@ -481,12 +343,8 @@ func show_result(headline: String, detail: String, score: int,
 	_result_card = centre
 
 	var panel := PanelContainer.new()
-	var sb := _chip()
+	var sb := chip(10, 60.0, 34.0, 34.0)
 	sb.bg_color = Color(0.05, 0.07, 0.11, 0.92)
-	sb.content_margin_left = 60.0
-	sb.content_margin_right = 60.0
-	sb.content_margin_top = 34.0
-	sb.content_margin_bottom = 34.0
 	panel.add_theme_stylebox_override("panel", sb)
 	centre.add_child(panel)
 
@@ -525,7 +383,4 @@ func show_result(headline: String, detail: String, score: int,
 		work.add_theme_color_override("font_color", ACCENT)
 		box.add_child(work)
 
-	panel.pivot_offset = panel.size * 0.5
-	panel.scale = Vector2(1.15, 1.15)
-	var tween := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(panel, "scale", Vector2.ONE, 0.25)
+	pop(panel, 1.15, 0.25)

@@ -14,6 +14,9 @@ extends Node
 
 ## Directory (inside user://) where all runtime save files live.
 const SAVE_DIR: String = "user://saves"
+## Suffix for the scratch file [method save_data] writes before promoting it over
+## the real save. See that method for why.
+const TEMP_SUFFIX: String = ".tmp"
 
 func _ready() -> void:
 	_ensure_save_dir()
@@ -21,16 +24,36 @@ func _ready() -> void:
 
 ## Writes [param data] as pretty-printed JSON to [param file_name] (for example
 ## "profile.json"). Returns true on success, false if the file could not be
-## opened for writing.
+## written.
+##
+## The write is atomic: the JSON goes to a "<name>.tmp" scratch file which is
+## only renamed over the real save once it is fully flushed and closed. Opening
+## the save directly with FileAccess.WRITE would truncate it first, so a crash or
+## power loss mid-write would leave a half-written file and lose every profile in
+## it. With the rename, an interrupted save leaves the previous good save intact.
 func save_data(file_name: String, data: Dictionary) -> bool:
 	_ensure_save_dir()
-	var file: FileAccess = FileAccess.open(_path_for(file_name), FileAccess.WRITE)
+	var temp_name: String = file_name + TEMP_SUFFIX
+	var file: FileAccess = FileAccess.open(_path_for(temp_name), FileAccess.WRITE)
 	if file == null:
 		push_error("SaveManager: could not open '%s' for writing (error %d)"
-			% [file_name, FileAccess.get_open_error()])
+			% [temp_name, FileAccess.get_open_error()])
 		return false
 	file.store_string(JSON.stringify(data, "\t"))
 	file.close()
+
+	var dir: DirAccess = DirAccess.open(ProjectSettings.globalize_path(SAVE_DIR))
+	if dir == null:
+		push_error("SaveManager: could not open the save directory (error %d)"
+			% DirAccess.get_open_error())
+		return false
+	# rename() replaces an existing destination on the platforms we ship to; the
+	# scratch file is left behind on failure so the data is still recoverable.
+	var err: int = dir.rename(temp_name, file_name)
+	if err != OK:
+		push_error("SaveManager: could not promote '%s' over '%s' (error %d)"
+			% [temp_name, file_name, err])
+		return false
 	return true
 
 
