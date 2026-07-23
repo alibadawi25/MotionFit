@@ -161,8 +161,15 @@ The rule for what goes where:
   dark. Games stay visually distinct through *what they show*, not through
   privately re-deriving the shared chrome.
 
+HUD layout is authored in a `.tscn` like every other screen. **Boxing is ported**
+(`scenes/boxing/boxing_hud.tscn`, instanced via `HUD_SCENE.instantiate()` — never
+`BoxingHud.new()`, the script alone has no nodes); Zombie Run and Hurdle Dash are
+still code-built and are next. A scene-authored HUD declares the base's chrome as
+`%Flash` and `%Toast` and `GameHUD` adopts them; the code-built ones call
+`_build_flash()` / `_build_toast()` from their own `_ready` instead.
+
 Subclasses **must call `super()` from `_ready()`** (the base loads the display
-font). Before this base existed each HUD carried its own copy of the palette and
+font and adopts any scene-authored chrome). Before this base existed each HUD carried its own copy of the palette and
 its own `_chip()` — two byte-identical, the third quietly shipping a heavier
 shadow — and Hurdle Dash's briefing had lost its backdrop dim entirely. Add
 shared chrome to the base, never to a fourth copy.

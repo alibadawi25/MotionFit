@@ -54,6 +54,20 @@ var _briefing: HudBriefing
 
 func _ready() -> void:
 	_anton = load(ANTON_PATH)
+	_adopt_scene_chrome()
+
+
+## HUDs authored as a .tscn (the direction every HUD is moving — see
+## CONTEXT.md §4.1) declare the shared chrome as nodes named %Flash and %Toast,
+## and the base adopts them here. The HUDs still built in code call
+## [method _build_flash] / [method _build_toast] from their own _ready instead.
+func _adopt_scene_chrome() -> void:
+	var flash_node: Node = get_node_or_null("%Flash")
+	if flash_node is ColorRect:
+		_flash = flash_node
+	var toast_node: Node = get_node_or_null("%Toast")
+	if toast_node is Label:
+		_toast = toast_node
 
 
 # --- Styleboxes --------------------------------------------------------------

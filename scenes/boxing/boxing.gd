@@ -45,6 +45,9 @@ const CAM_POS: Vector3 = Vector3(-1.18, 3.42, 5.35)
 const CAM_LOOK: Vector3 = Vector3(0.42, 1.42, 0.85)
 const BASE_FOV: float = 58.0
 
+## The HUD is scene-authored, so it is instanced rather than constructed.
+const HUD_SCENE: PackedScene = preload("res://scenes/boxing/boxing_hud.tscn")
+
 ## How the player drives the frame. Marching in place presses the camera in
 ## ([member ADVANCE_DOLLY]) and steps the boxer toward the opponent; leaning at
 ## the waist slips the boxer ([member SLIP_MAX]) and the camera trails it
@@ -260,7 +263,7 @@ func _start_game() -> void:
 ## The tour is over and the camera sits ringside: raise the HUD + pause menu and
 ## ring the first bell after a short briefing.
 func _on_cinematic_finished() -> void:
-	_hud = BoxingHud.new()
+	_hud = HUD_SCENE.instantiate()
 	add_child(_hud)
 	var layer := CanvasLayer.new()
 	add_child(layer)
