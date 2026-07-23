@@ -28,6 +28,13 @@
 #   PROJ    path to the project root
 #   OUTDIR  where PNGs land (default: <PROJ>/tools/shots)
 #   WAIT    seconds to let the scene boot before requesting the shot (default 6)
+#   RES     window size, WxH (default 1280x720). The project stretches with
+#           aspect "expand", so a non-16:9 value here is how you check that a
+#           screen reflows instead of letterboxing.
+#           CAVEAT: the project ships fullscreen (window/size/mode=3), and
+#           fullscreen ignores --resolution — the window is always the monitor.
+#           To actually use this, temporarily set window/size/mode=0 in
+#           project.godot, take the shots, and set it back.
 # ---------------------------------------------------------------------------
 set -u
 
@@ -37,6 +44,7 @@ PROJ="${PROJ:-/c/Users/aliba/OneDrive/Documents/CardioFun}"
 UD="${UD:-/c/Users/aliba/AppData/Roaming/Godot/app_userdata/MotionFit}"
 OUTDIR="${OUTDIR:-$PROJ/tools/shots}"
 WAIT="${WAIT:-6}"
+RES="${RES:-1280x720}"
 
 NAME="${1:-shot}"
 SCENE="${2:-}"
@@ -63,7 +71,7 @@ QUIT_FRAMES=$(( (WAIT + 20) * 60 ))
 before=$(pids)
 rm -f "$UD/mcp_screenshot_res.png" "$UD/mcp_screenshot_req.json" "$UD/mcp_screenshot_meta.json"
 
-"$GODOT" --path "$PROJ" $SCENE --windowed --resolution 1280x720 --position 80,80 \
+"$GODOT" --path "$PROJ" $SCENE --windowed --resolution "$RES" --position 80,80 \
   --quit-after "$QUIT_FRAMES" -- --shot-token="$TOKEN" >"$LOG" 2>&1 &
 sleep "$WAIT"
 

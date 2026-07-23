@@ -64,10 +64,27 @@ const WEEKDAY_INITIALS: Array[String] = ["S", "M", "T", "W", "T", "F", "S"]
 ## How far the background drifts from centre toward the screen edges, in pixels.
 const PARALLAX: Vector2 = Vector2(22.0, 13.0)
 
+## What the camera status line can be saying. Kept as a state rather than a
+## string so [method _refresh_hardware_status] can tell "nothing changed" from
+## "same wording, different reason". UNSET is the value before the first poll, so
+## that poll always paints rather than trusting whatever the scene was authored
+## with.
+enum CameraState { UNSET, OFF, BLOCKED, READY }
+
+## The cached bpm meaning "no strap"; a value no reading can collide with is used
+## for "not polled yet" so the first poll always paints.
+const BPM_NONE: int = -1
+const BPM_UNSET: int = -2
+
 ## Parallax rest position (the centred background offset) and a guard so [method
 ## _process] only drives it once layout has settled.
 var _bg_base: Vector2
 var _parallax_ready: bool = false
+
+## Last hardware state painted onto the status lines, so a per-frame poll only
+## touches a label when something actually moved.
+var _shown_bpm: int = BPM_UNSET
+var _shown_camera: CameraState = CameraState.UNSET
 
 func _ready() -> void:
 	# Boot gate, in order:
@@ -272,28 +289,52 @@ func _update_parallax() -> void:
 
 
 func _process(_delta: float) -> void:
+	# The parallax genuinely is per-frame: it eases toward the mouse every tick.
+	# Everything else on this screen only redraws when it actually changes.
 	_update_parallax()
+	_refresh_hardware_status()
+
+
+## Repaints the camera and heart-rate lines, but only when their state has moved.
+## Both used to be rewritten every frame, which meant a string allocation and a
+## theme-colour override per label per tick on a screen that sits idle for
+## minutes — an override is not a cheap assignment, it invalidates the control's
+## style cache. The values change a handful of times per session, so we compare
+## first and write on the edge.
+func _refresh_hardware_status() -> void:
 	if _cam_status == null:
 		return
+
 	# Heart-rate strap: live bpm when a wearable streams (calories then use the
 	# more accurate HR model — see CONTEXT.md §9); hidden otherwise.
 	var connected: bool = MotionManager.is_hr_connected()
-	_hr_status.visible = connected
-	if connected:
-		_hr_status.text = "♥  %d bpm  —  heart-rate connected" % \
-			roundi(MotionManager.get_heart_rate())
+	var bpm: int = roundi(MotionManager.get_heart_rate()) if connected else BPM_NONE
+	if bpm != _shown_bpm:
+		_shown_bpm = bpm
+		_hr_status.visible = connected
+		if connected:
+			_hr_status.text = "♥  %d bpm  —  heart-rate connected" % bpm
+
+	var state: CameraState = CameraState.READY
 	if not MotionManager.is_receiving():
-		# The shipped launcher starts the pose service automatically, so in a
-		# release build "off" just means it's still coming up. The run.bat hint is
-		# only meaningful in the editor, where a scene can be run without it.
-		if OS.has_feature("editor"):
-			_cam_status.text = "●  Camera service off  —  run.bat starts it (keyboard still works)"
-		else:
-			_cam_status.text = "●  Camera service starting…  —  keyboard works in the meantime"
-		_cam_status.add_theme_color_override("font_color", Color(0.82, 0.85, 0.9, 0.72))
+		state = CameraState.OFF
 	elif MotionManager.is_camera_error():
-		_cam_status.text = "●  Camera access blocked  —  Windows Settings ▸ Privacy ▸ Camera"
-		_cam_status.add_theme_color_override("font_color", Color(1, 0.72, 0.3, 1))
-	else:
-		_cam_status.text = "●  Camera ready  —  turns on in-game"
-		_cam_status.add_theme_color_override("font_color", Color(0.45, 0.9, 0.5, 0.85))
+		state = CameraState.BLOCKED
+	if state == _shown_camera:
+		return
+	_shown_camera = state
+	match state:
+		CameraState.OFF:
+			# The shipped launcher starts the pose service automatically, so in a
+			# release build "off" just means it's still coming up. The run.bat hint
+			# is only meaningful in the editor, where a scene can be run without it.
+			_cam_status.text = "●  Camera service off  —  run.bat starts it (keyboard still works)" \
+				if OS.has_feature("editor") \
+				else "●  Camera service starting…  —  keyboard works in the meantime"
+			_cam_status.add_theme_color_override("font_color", Color(0.82, 0.85, 0.9, 0.72))
+		CameraState.BLOCKED:
+			_cam_status.text = "●  Camera access blocked  —  Windows Settings ▸ Privacy ▸ Camera"
+			_cam_status.add_theme_color_override("font_color", Color(1, 0.72, 0.3, 1))
+		_:
+			_cam_status.text = "●  Camera ready  —  turns on in-game"
+			_cam_status.add_theme_color_override("font_color", Color(0.45, 0.9, 0.5, 0.85))

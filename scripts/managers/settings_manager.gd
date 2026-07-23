@@ -19,6 +19,14 @@ const DEFAULTS: Dictionary = {
 	"sfx_volume": 0.9,
 }
 
+## The smallest window the UI is designed to survive. The project stretches
+## canvas_items with aspect "expand", so a smaller window doesn't crop — it
+## scales everything down uniformly, and below roughly this size the HUD values
+## and captions stop being readable at arm's length, which is the distance this
+## whole app is played from. Not a preference: there is no reason to let a player
+## choose an unreadable window.
+const MIN_WINDOW: Vector2i = Vector2i(1280, 720)
+
 var _settings: Dictionary = {}
 
 func _ready() -> void:
@@ -28,6 +36,7 @@ func _ready() -> void:
 		if not _settings.has(key):
 			_settings[key] = DEFAULTS[key]
 	apply_all()
+	DisplayServer.window_set_min_size(MIN_WINDOW)
 
 
 ## Applies every current setting to the engine (audio buses).

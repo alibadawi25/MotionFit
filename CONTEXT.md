@@ -393,6 +393,22 @@ scene restructuring rarely breaks code.
 
 - `SaveManager` is the **only** file-I/O system. Format is JSON.
 - Runtime saves live in `user://saves/` (writable in exported builds).
+- **Writes are atomic.** The JSON goes to a `<name>.tmp` scratch file which is
+  renamed over the real save only once it is closed. Opening the save directly
+  with `FileAccess.WRITE` truncates it first, so a crash mid-write would take
+  every profile with it.
+- **Every save is stamped** with `SaveManager.SCHEMA_VERSION` under a
+  `_schema_version` key. `load_data()` strips the stamp before returning (several
+  managers iterate what they load, and a bookkeeping key would read as a phantom
+  profile or setting); `get_saved_version(file)` reads it without loading —
+  **0** = written before stamping existed, **-1** = no file at all, which
+  migration code has to be able to tell apart. Bump the version only when an
+  existing key's *meaning* changes; a new optional key needs no bump, since every
+  manager already backfills from its own defaults.
+- **Numbers load back as floats.** JSON has one number type, so `7` returns
+  `7.0`. Cast on read (`int(data["level"])`) — never assign a loaded value
+  straight into a typed `int`. `scenes/tests/save_probe.tscn` pins all of the
+  above.
 - `data/saves/` in the project tree is for **bundled defaults/templates** only.
 - Current save files:
   - `profile.json`  — owned by ProfileManager.
@@ -575,8 +591,8 @@ by design — with no service running the texture is null and the UI falls back 
 	which is the part a later read can't recover.
   - `consume_pose_event(key) -> Dictionary` — the latched payload, cleared.
   - `get_pose_bool/float/string(key, default)` — continuously-streamed fields.
-    Absent fields return the default, so an older pose build degrades to "not
-    doing that" instead of breaking.
+	Absent fields return the default, so an older pose build degrades to "not
+	doing that" instead of breaking.
   - `pose_event(key, payload)` signal for event-driven listeners.
 
   `scenes/boxing/boxing_input.gd` (`BoxingInput`) is the reference adapter: it
@@ -1149,8 +1165,18 @@ same controller works with the camera today or another input source later.
 
 ## 14. Completed
 
-- ✅ Project configured for Forward+, 1920×1080, windowed, Keep aspect,
+- ✅ Project configured for Forward+, 1920×1080 base, fullscreen,
 	  canvas-items/fractional scaling, VSync on, 60 physics FPS, title "MotionFit".
+	  Stretch aspect is **`expand`**, not `keep`: at `keep`, a player on a 16:10
+	  laptop or an ultrawide got black bars, because the frame was forced back to
+	  16:9. With `expand` the viewport takes the window's real aspect and the UI
+	  reflows into it — verified at 5:4, 16:10 and 21:9, all reflowing with nothing
+	  clipped. This works because every menu root is a full-rect Control and no
+	  scene hardcodes 1920/1080; keep it that way. `SettingsManager.MIN_WINDOW`
+	  (1280×720) floors the window so the UI can't be shrunk past readable.
+	  > The app boots fullscreen, and **fullscreen ignores `--resolution`**, so
+	  > `RES=` in `tools/shot.sh` only bites if you temporarily set
+	  > `window/size/mode=0` in project.godot. That is how the above was checked.
 - ✅ Full folder structure created (§3).
 - ✅ Six manager autoloads implemented and registered in dependency order (§5).
 - ✅ `SceneManager` owns all scene paths; no paths hardcoded elsewhere.
