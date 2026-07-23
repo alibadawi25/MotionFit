@@ -129,7 +129,7 @@ func _fill_challenge_card() -> void:
 		_challenge_card.visible = false
 		return
 	var done: bool = WorkoutManager.is_today_complete()
-	var game_title: String = String(GameManager.get_game(String(plan["game_id"])).get("title", ""))
+	var game_title: String = GameManager.get_game_title(String(plan["game_id"]))
 	var minutes: int = int(round(float(plan["total_sec"]) / 60.0))
 
 	# A finished challenge turns green — the card's edge on every button state.

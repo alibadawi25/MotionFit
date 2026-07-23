@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GameDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/game_def.gd" id="1_game_def"]
+
+[resource]
+script = ExtResource("1_game_def")
+id = "boxing"
+title = "Boxing"
+description = "Three punches — straight, wide and uppercut — and two ways to defend: hands up, or lean. No boxing experience needed. Upper-body burn."
+scene = "res://scenes/boxing/boxing.tscn"
+available = true
+uses_difficulty = true
+sort_order = 40

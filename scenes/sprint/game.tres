@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GameDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/game_def.gd" id="1_game_def"]
+
+[resource]
+script = ExtResource("1_game_def")
+id = "sprint"
+title = "Hurdle Dash"
+description = "Race three rivals to the line — sprint on the spot and leap the hurdles. Short, breathless, all-out."
+scene = "res://scenes/sprint/sprint.tscn"
+available = true
+uses_difficulty = true
+sort_order = 30

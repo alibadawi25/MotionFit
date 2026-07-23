@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GameDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/game_def.gd" id="1_game_def"]
+
+[resource]
+script = ExtResource("1_game_def")
+id = "football"
+title = "Football"
+description = "Kick, dodge and score. Full-body movement."
+scene = "res://scenes/football/football.tscn"
+available = false
+uses_difficulty = true
+sort_order = 50

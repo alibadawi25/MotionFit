@@ -2,9 +2,12 @@ extends Node
 ## GameManager
 ##
 ## Coordinates the play session and owns the registry of available mini-games.
-## The registry is DATA: adding a game to the platform is one entry here plus a
-## scene that follows the MiniGame contract — no menu code changes. This is the
-## key decision that lets the platform scale to 20+ games (see CONTEXT.md).
+## The registry is DATA and it is DISCOVERED, not listed: at boot this scans
+## `scenes/*/game.tres` and registers every [GameDef] it finds. Adding a game to
+## the platform is therefore a folder containing a scene that follows the
+## MiniGame contract plus its `game.tres` — no edit to this file, to SceneManager,
+## or to any menu. This is the key decision that lets the platform scale to 20+
+## games (see CONTEXT.md §2).
 ##
 ## It also carries session state across the Game Select -> Difficulty ->
 ## Countdown -> Game -> Results flow (which game, which difficulty, last result)
@@ -16,16 +19,24 @@ extends Node
 ## Emitted when the selected game changes.
 signal game_selected(game_id: String)
 ## Emitted when a game reports its result, before navigating to results.
-signal game_finished(result: Dictionary)
+signal game_finished(result: GameResult)
 
 ## Difficulty levels shared by every game. Games interpret these consistently
 ## (e.g. speed/spawn-rate multipliers) so the platform feels uniform.
 enum Difficulty { EASY, NORMAL, HARD }
 
-var _games: Array[Dictionary] = []
+## Folder scanned for games. Every direct subfolder may contribute one game by
+## containing a [constant DEF_FILE]; folders without one (menus, ui, tests) are
+## simply skipped, so shared scenes can live here too.
+const GAMES_ROOT: String = "res://scenes/"
+## The per-game definition file, kept beside the game's scene so the folder is a
+## self-contained unit. See [GameDef].
+const DEF_FILE: String = "game.tres"
+
+var _games: Array[GameDef] = []
 var _current_game_id: String = ""
 var _difficulty: Difficulty = Difficulty.NORMAL
-var _last_result: Dictionary = {}
+var _last_result: GameResult = null
 # Set when a game is launched through the platform, so the game's MiniGame base
 # knows to run the setup/countdown intro before play. A game scene opened
 # directly (e.g. from the editor) sees this false and just begins. See
@@ -41,23 +52,38 @@ func _ready() -> void:
 	_build_registry()
 
 
-## Returns the full list of registered games. Each entry is a Dictionary:
-## { id, title, description, scene, available, uses_difficulty }.
-func get_games() -> Array[Dictionary]:
+## Returns every registered game, in launcher order. See [GameDef].
+func get_games() -> Array[GameDef]:
 	return _games
 
 
-## Returns the registry entry for [param game_id], or an empty Dictionary.
-func get_game(game_id: String) -> Dictionary:
+## Returns the [GameDef] for [param game_id], or null if no game claims that id.
+## Callers that only want a field should prefer the helpers below, which already
+## handle the null.
+func get_game(game_id: String) -> GameDef:
 	for game in _games:
-		if game["id"] == game_id:
+		if game.id == game_id:
 			return game
-	return {}
+	return null
+
+
+## The display title for [param game_id], or "" for an unknown id. Kept as a
+## helper because titles are shown in several places (results, daily challenge,
+## difficulty picker) that would otherwise each need their own null check.
+func get_game_title(game_id: String) -> String:
+	var game: GameDef = get_game(game_id)
+	return game.title if game != null else ""
+
+
+## Whether [param game_id] is registered AND has a playable scene.
+func is_available(game_id: String) -> bool:
+	var game: GameDef = get_game(game_id)
+	return game != null and game.available
 
 
 ## Marks [param game_id] as the active selection. No-op for unknown ids.
 func select_game(game_id: String) -> void:
-	if get_game(game_id).is_empty():
+	if get_game(game_id) == null:
 		push_warning("GameManager: unknown game id '%s'" % game_id)
 		return
 	_current_game_id = game_id
@@ -80,8 +106,8 @@ func get_difficulty() -> Difficulty:
 ## Free-roam games with no fail state (Open World) skip it; defaults to true so
 ## a new registry entry gets the full flow unless it opts out.
 func uses_difficulty(game_id: String) -> bool:
-	var game: Dictionary = get_game(game_id)
-	return bool(game.get("uses_difficulty", true))
+	var game: GameDef = get_game(game_id)
+	return game.uses_difficulty if game != null else true
 
 
 ## Begins the currently selected game by loading its scene directly. The game's
@@ -89,12 +115,12 @@ func uses_difficulty(game_id: String) -> bool:
 ## top of the loaded world (so the countdown can show the game's own first frame)
 ## before gameplay begins. Does nothing if no available game is selected.
 func start_selected_game() -> void:
-	var game: Dictionary = get_game(_current_game_id)
-	if game.is_empty() or not bool(game["available"]):
+	var game: GameDef = get_game(_current_game_id)
+	if game == null or not game.available:
 		push_warning("GameManager: cannot start unavailable game '%s'" % _current_game_id)
 		return
 	_intro_pending = true
-	SceneManager.load_scene(String(game["scene"]))
+	SceneManager.load_scene(game.scene)
 
 
 ## Returns whether the just-loaded game should play the setup/countdown intro,
@@ -127,17 +153,6 @@ func take_pending_workout() -> Dictionary:
 	return plan
 
 
-## DEPRECATED. The setup/countdown is now an in-game overlay (GameIntro) shown by
-## the MiniGame base, so games load directly (see [method start_selected_game]).
-## Retained only so the now-unused standalone countdown_screen scene still
-## resolves; safe to delete once that scene is removed.
-func launch_current_game_scene() -> void:
-	var game: Dictionary = get_game(_current_game_id)
-	if game.is_empty():
-		return
-	SceneManager.load_scene(String(game["scene"]))
-
-
 ## Called by a running game (via the MiniGame contract) when it ends. Records
 ## progression (calories/XP/steps toward the profile, daily activity and
 ## achievements via [signal game_finished]) and stores the result for the results
@@ -145,21 +160,23 @@ func launch_current_game_scene() -> void:
 ## summary (the default, for a completed game or "End & Save"), or straight back
 ## to Game Select (for a "quit but keep my progress" exit). Either way the session
 ## is banked — leaving a game never discards the effort already measured.
-func finish_game(result: Dictionary, show_results: bool = true) -> void:
-	if not result.has("game_id"):
-		result["game_id"] = _current_game_id
+func finish_game(result: GameResult, show_results: bool = true) -> void:
+	if result == null:
+		push_error("GameManager: finish_game called with no result")
+		return
+	if result.game_id.is_empty():
+		result.game_id = _current_game_id
 	# Snapshot progression BEFORE recording, so the results screen can show what
 	# this game changed: whether the score beat the old best, and any level-up.
-	var game_id: String = String(result["game_id"])
-	var prev_best: int = ProfileManager.get_best_score(game_id)
+	var prev_best: int = ProfileManager.get_best_score(result.game_id)
 	var prev_level: int = ProfileManager.get_level()
-	result["new_best"] = int(result.get("score", 0)) > prev_best
-	result["prev_best"] = prev_best
-	result["level_before"] = prev_level
+	result.new_best = result.score > prev_best
+	result.prev_best = prev_best
+	result.level_before = prev_level
 	ProfileManager.record_game_result(result)
-	result["level_after"] = ProfileManager.get_level()
-	result["leveled_up"] = ProfileManager.get_level() > prev_level
-	result["total_xp"] = ProfileManager.get_xp()
+	result.level_after = ProfileManager.get_level()
+	result.leveled_up = result.level_after > prev_level
+	result.total_xp = ProfileManager.get_xp()
 	_last_result = result
 	game_finished.emit(result)
 	if show_results:
@@ -168,62 +185,64 @@ func finish_game(result: Dictionary, show_results: bool = true) -> void:
 		SceneManager.load_game_select()
 
 
-## Returns the most recent game result (for the results screen).
-func get_last_result() -> Dictionary:
+## Returns the most recent game result (for the results screen), or null if no
+## game has finished this launch.
+func get_last_result() -> GameResult:
 	return _last_result
 
 
+## Discovers every game by scanning [constant GAMES_ROOT] for the `game.tres`
+## each game keeps beside its scene, then sorts them into launcher order. This
+## is the mechanism behind "adding a game is adding data": no shared file lists
+## the roster, so a new folder appears in the launcher and a deleted folder
+## disappears from it, with no edit here.
 func _build_registry() -> void:
-	# No game has a playable scene yet; each renders as "Coming Soon" until its
-	# scene exists. When you build a game at its SceneManager path, flip
-	# "available" to true and it becomes launchable — no other code changes.
-	_games = [
-		{
-			"id": "open_world",
-			"title": "Open World",
-			"description": "Free-roam and vibe. Move your body to explore — it counts your steps and calories the whole time.",
-			"scene": SceneManager.OPEN_WORLD,
-			"available": true,
-			# Free-roam with no fail state — difficulty would change nothing, so
-			# the flow skips straight from Game Select to the intro.
-			"uses_difficulty": false,
-		},
-		{
-			"id": "runner",
-			"title": "Zombie Run",
-			"description": "A zombie is chasing you — march hard to escape, jump, slide and dodge. Pure cardio panic.",
-			"scene": SceneManager.RUNNER,
-			"available": true,
-			"uses_difficulty": true,
-		},
-		{
-			"id": "sprint",
-			"title": "Hurdle Dash",
-			"description": "Race three rivals to the line — sprint on the spot and leap the hurdles. Short, breathless, all-out.",
-			"scene": SceneManager.SPRINT,
-			"available": true,
-			"uses_difficulty": true,
-		},
-		{
-			"id": "boxing",
-			"title": "Boxing",
-			"description": "Three punches — straight, wide and uppercut — and two ways to defend: hands up, or lean. No boxing experience needed. Upper-body burn.",
-			"scene": SceneManager.BOXING,
-			"available": true,
-			"uses_difficulty": true,
-		},
-		{
-			"id": "football",
-			"title": "Football",
-			"description": "Kick, dodge and score. Full-body movement.",
-			"scene": SceneManager.FOOTBALL,
-			"available": false,
-		},
-		{
-			"id": "tennis",
-			"title": "Tennis",
-			"description": "Rally against the AI. Reflex and reach.",
-			"scene": SceneManager.TENNIS,
-			"available": false,
-		},
-	]
+	_games = []
+	for path in _find_game_defs():
+		var res: Resource = load(path)
+		var game: GameDef = res as GameDef
+		if game == null:
+			push_error("GameManager: '%s' is not a GameDef resource" % path)
+			continue
+		if not game.is_valid():
+			push_error("GameManager: '%s' is missing id/title/scene; skipped" % path)
+			continue
+		var clash: GameDef = get_game(game.id)
+		if clash != null:
+			push_error("GameManager: duplicate game id '%s' in '%s'" % [game.id, path])
+			continue
+		_games.append(game)
+	# Curated order (gentlest on-ramp first), with id as a stable tiebreak so the
+	# roster never depends on filesystem enumeration order.
+	_games.sort_custom(func(a: GameDef, b: GameDef) -> bool:
+		if a.sort_order != b.sort_order:
+			return a.sort_order < b.sort_order
+		return a.id < b.id)
+	if _games.is_empty():
+		push_error("GameManager: no game definitions found under '%s'" % GAMES_ROOT)
+
+
+## Returns the res:// path of every `game.tres` one level under
+## [constant GAMES_ROOT].
+##
+## [b]Exported builds need the .remap dance.[/b] With "convert text resources to
+## binary" on (the export default), `game.tres` is packed as `game.tres.remap`
+## pointing at a binary copy. Listing the directory in an exported build
+## therefore yields the .remap name, and loading it works only after trimming
+## that suffix — so a scan written against the editor alone finds an empty
+## roster in the shipped game. Pinned by scenes/tests/registry_test.gd.
+func _find_game_defs() -> Array[String]:
+	var found: Array[String] = []
+	var root: DirAccess = DirAccess.open(GAMES_ROOT)
+	if root == null:
+		push_error("GameManager: cannot open '%s' (error %d)"
+			% [GAMES_ROOT, DirAccess.get_open_error()])
+		return found
+	for folder in root.get_directories():
+		for candidate in [DEF_FILE, DEF_FILE + ".remap"]:
+			var path: String = "%s%s/%s" % [GAMES_ROOT, folder, candidate]
+			if not ResourceLoader.exists(path) and not FileAccess.file_exists(path):
+				continue
+			found.append(path.trim_suffix(".remap"))
+			break
+	return found

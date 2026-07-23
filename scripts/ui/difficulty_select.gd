@@ -35,10 +35,10 @@ func _unhandled_input(event: InputEvent) -> void:
 ## game's launch ("ZOMBIE RUN — how hard?"), not a detached settings page. Falls
 ## back to the scene's generic title when opened directly (e.g. from the editor).
 func _fill_header() -> void:
-	var game: Dictionary = GameManager.get_game(GameManager.get_current_game_id())
-	if game.is_empty():
+	var game: GameDef = GameManager.get_game(GameManager.get_current_game_id())
+	if game == null:
 		return
-	_title.text = "%s — HOW HARD?" % String(game["title"]).to_upper()
+	_title.text = "%s — HOW HARD?" % game.title.to_upper()
 	_subtitle.text = "Pick your intensity   ·   you can change it every run"
 
 

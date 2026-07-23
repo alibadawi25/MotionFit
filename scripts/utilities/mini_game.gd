@@ -16,7 +16,7 @@ class_name MiniGame
 ## Emitted the moment gameplay actually begins (after any countdown).
 signal started
 ## Emitted when the game has ended and produced a [param result] Dictionary.
-signal finished_with_result(result: Dictionary)
+signal finished_with_result(result: GameResult)
 
 ## XP granted per point of score. Tune per project; kept here so every game is
 ## rewarded on the same scale.
@@ -144,7 +144,7 @@ func finish(calories: float = -1.0) -> void:
 	if not _running:
 		return
 	_running = false
-	var result: Dictionary = _compile_result(calories)
+	var result: GameResult = _compile_result(calories)
 	finished_with_result.emit(result)
 	GameManager.finish_game(result)
 
@@ -159,7 +159,7 @@ func bank_and_exit() -> void:
 		SceneManager.load_game_select()
 		return
 	_running = false
-	var result: Dictionary = _compile_result(-1.0)
+	var result: GameResult = _compile_result(-1.0)
 	finished_with_result.emit(result)
 	GameManager.finish_game(result, false)
 
@@ -168,28 +168,28 @@ func bank_and_exit() -> void:
 ## profile/results systems consume. [param calories] defaults (< 0) to the value
 ## the motion pipeline measured for this session; pass a non-negative override to
 ## set it explicitly. Shared by [method finish] and [method bank_and_exit].
-func _compile_result(calories: float) -> Dictionary:
+func _compile_result(calories: float) -> GameResult:
 	if calories < 0.0:
 		calories = MotionManager.get_session_calories()
 	# Everything here is measured for free by the motion pipeline, so games get a
 	# full workout summary without bespoke tracking.
-	var result: Dictionary = {
-		"game_id": get_game_id(),
-		"score": _score,
-		"duration_sec": _elapsed_sec,
-		"calories": calories,
-		"xp_earned": int(round(_score * XP_PER_SCORE)),
-		"steps": MotionManager.get_session_steps(),
-		"avg_cadence": MotionManager.get_session_avg_cadence(),
-		"avg_met": MotionManager.get_session_avg_met(),
-		"avg_heart_rate": MotionManager.get_session_avg_heart_rate(),
-		"peak_heart_rate": MotionManager.get_session_peak_heart_rate(),
-	}
+	var result: GameResult = GameResult.new()
+	result.game_id = get_game_id()
+	result.score = _score
+	result.duration_sec = _elapsed_sec
+	result.calories = calories
+	result.xp_earned = int(round(_score * XP_PER_SCORE))
+	result.steps = MotionManager.get_session_steps()
+	result.avg_cadence = MotionManager.get_session_avg_cadence()
+	result.avg_met = MotionManager.get_session_avg_met()
+	result.avg_heart_rate = MotionManager.get_session_avg_heart_rate()
+	result.peak_heart_rate = MotionManager.get_session_peak_heart_rate()
 	# When this was a Daily Challenge, flag whether its timeline ran to completion
 	# so the results screen can celebrate a finished workout vs. an abandoned one.
 	if not _workout_plan.is_empty():
-		result["workout_title"] = String(_workout_plan.get("title", ""))
-		result["workout_completed"] = _workout_completed
+		result.is_workout = true
+		result.workout_title = String(_workout_plan.get("title", ""))
+		result.workout_completed = _workout_completed
 	return result
 
 

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GameDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/game_def.gd" id="1_game_def"]
+
+[resource]
+script = ExtResource("1_game_def")
+id = "runner"
+title = "Zombie Run"
+description = "A zombie is chasing you — march hard to escape, jump, slide and dodge. Pure cardio panic."
+scene = "res://scenes/runner/runner.tscn"
+available = true
+uses_difficulty = true
+sort_order = 20

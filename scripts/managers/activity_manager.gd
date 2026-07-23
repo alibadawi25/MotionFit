@@ -80,7 +80,7 @@ func _save_file() -> String:
 	return "activity_%s.json" % ProfileManager.get_active_id()
 
 
-func _on_game_finished(result: Dictionary) -> void:
+func _on_game_finished(result: GameResult) -> void:
 	record_result(result)
 
 
@@ -88,14 +88,14 @@ func _on_game_finished(result: Dictionary) -> void:
 ## persists. Normally invoked via the game_finished signal; safe to call directly
 ## (e.g. from tests). Steps are read from an optional "steps" field so games that
 ## count them can contribute without changing the core GameResult contract.
-func record_result(result: Dictionary) -> void:
+func record_result(result: GameResult) -> void:
 	var key: String = today_key()
 	var days: Dictionary = _data["days"]
 	var day: Dictionary = days.get(key, _empty_day())
-	day["calories"] = float(day["calories"]) + maxf(float(result.get("calories", 0.0)), 0.0)
-	day["active_sec"] = float(day["active_sec"]) + maxf(float(result.get("duration_sec", 0.0)), 0.0)
-	day["steps"] = int(day["steps"]) + maxi(int(result.get("steps", 0)), 0)
-	day["xp"] = int(day["xp"]) + maxi(int(result.get("xp_earned", 0)), 0)
+	day["calories"] = float(day["calories"]) + maxf(result.calories, 0.0)
+	day["active_sec"] = float(day["active_sec"]) + maxf(result.duration_sec, 0.0)
+	day["steps"] = int(day["steps"]) + maxi(result.steps, 0)
+	day["xp"] = int(day["xp"]) + maxi(result.xp_earned, 0)
 	day["sessions"] = int(day["sessions"]) + 1
 	days[key] = day
 	_data["days"] = days

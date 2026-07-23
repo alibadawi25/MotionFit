@@ -74,8 +74,7 @@ func _ready() -> void:
 	_calibrate_style = (_calibrate_button.get_theme_stylebox("normal") as StyleBoxFlat).duplicate()
 	_calibrate_button.add_theme_stylebox_override("normal", _calibrate_style)
 
-	var game: Dictionary = GameManager.get_game(GameManager.get_current_game_id())
-	_title.text = String(game.get("title", "")).to_upper()
+	_title.text = GameManager.get_game_title(GameManager.get_current_game_id()).to_upper()
 	_title.visible = not _title.text.is_empty()
 
 

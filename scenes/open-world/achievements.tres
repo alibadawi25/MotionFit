@@ -1,0 +1,64 @@
+[gd_resource type="Resource" script_class="AchievementSet" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/achievement_def.gd" id="1_igfh3"]
+[ext_resource type="Script" path="res://scripts/data/achievement_set.gd" id="2_7g64n"]
+
+[sub_resource type="Resource" id="Resource_0f4ll"]
+script = ExtResource("1_igfh3")
+id = "secret_grotto"
+title = "THE CRYSTAL GROTTO"
+icon = "✦"
+description = "Something glitters inside the mountain's eastern flank."
+stat = "secret"
+category = "discovery"
+
+[sub_resource type="Resource" id="Resource_6x4j7"]
+script = ExtResource("1_igfh3")
+id = "secret_cairn"
+title = "THE SUMMIT CAIRN"
+icon = "✦"
+description = "Someone stacked stones where the air runs thin."
+stat = "secret"
+category = "discovery"
+
+[sub_resource type="Resource" id="Resource_qx6ls"]
+script = ExtResource("1_igfh3")
+id = "secret_stones"
+title = "THE STANDING STONES"
+icon = "✦"
+description = "Old giants stand in a circle on the western plateau."
+stat = "secret"
+category = "discovery"
+
+[sub_resource type="Resource" id="Resource_61fah"]
+script = ExtResource("1_igfh3")
+id = "secret_camp"
+title = "THE CASTAWAY CAMP"
+icon = "✦"
+description = "Driftwood and embers in a lonely beach cove."
+stat = "secret"
+category = "discovery"
+
+[sub_resource type="Resource" id="Resource_eudv5"]
+script = ExtResource("1_igfh3")
+id = "secret_hollow"
+title = "THE GLOWING HOLLOW"
+icon = "✦"
+description = "A violet glow deep in the far-corner woods."
+stat = "secret"
+category = "discovery"
+
+[sub_resource type="Resource" id="Resource_isnuf"]
+script = ExtResource("1_igfh3")
+id = "all_secrets"
+title = "CARTOGRAPHER"
+icon = "✦"
+description = "Discover every hidden landmark in the Open World."
+stat = "secrets"
+target = 5.0
+unit = "found"
+
+[resource]
+script = ExtResource("2_7g64n")
+set_name = "Open World"
+achievements = Array[ExtResource("1_igfh3")]([SubResource("Resource_0f4ll"), SubResource("Resource_6x4j7"), SubResource("Resource_qx6ls"), SubResource("Resource_61fah"), SubResource("Resource_eudv5"), SubResource("Resource_isnuf")])

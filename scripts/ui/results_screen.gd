@@ -57,8 +57,8 @@ func _ready() -> void:
 	_game_select_button.pressed.connect(SceneManager.load_game_select)
 	_main_menu_button.pressed.connect(SceneManager.load_main_menu)
 
-	var result: Dictionary = GameManager.get_last_result()
-	if result.is_empty():
+	var result: GameResult = GameManager.get_last_result()
+	if result == null:
 		_show_empty_state()
 		_choose_game_button.grab_focus()
 		return
@@ -84,21 +84,20 @@ func _show_empty_state() -> void:
 	_choose_game_button.visible = true
 
 
-func _fill_header(result: Dictionary) -> void:
+func _fill_header(result: GameResult) -> void:
 	# A completed Daily Challenge gets its own gold kicker; every other session is
 	# the standard "workout complete".
-	var challenge_done: bool = bool(result.get("workout_completed", false))
+	var challenge_done: bool = result.completed_challenge()
 	_kicker.text = "★  DAILY CHALLENGE COMPLETE" if challenge_done else "WORKOUT COMPLETE"
 	_kicker.add_theme_color_override("font_color", GOLD if challenge_done else ACCENT)
 
-	var game_id: String = String(result.get("game_id", GameManager.get_current_game_id()))
-	var game: Dictionary = GameManager.get_game(game_id)
-	_game_title.text = String(game.get("title", "Results")).to_upper()
+	var game_id: String = result.game_id if not result.game_id.is_empty() 			else GameManager.get_current_game_id()
+	var title: String = GameManager.get_game_title(game_id)
+	_game_title.text = (title if not title.is_empty() else "Results").to_upper()
 
 	# A celebratory "NEW BEST" badge only when this run beat the stored record
 	# (and it's not just the first-ever play with a zero baseline).
-	_new_best_badge.visible = bool(result.get("new_best", false)) \
-			and int(result.get("score", 0)) > 0 and int(result.get("prev_best", 0)) > 0
+	_new_best_badge.visible = result.new_best and result.score > 0 and result.prev_best > 0
 
 	_encouragement_label.text = _encouragement(result)
 
@@ -107,13 +106,13 @@ func _fill_header(result: Dictionary) -> void:
 ## challenge, a level up, a record, the daily goal, the streak — falling back to
 ## honest praise for simply moving. Addressed to the player by name so Results
 ## reads as personal. Every workout ends on encouragement, never on a bare number.
-func _encouragement(result: Dictionary) -> String:
+func _encouragement(result: GameResult) -> String:
 	var who: String = _first_name()
-	if bool(result.get("workout_completed", false)):
+	if result.completed_challenge():
 		return "That's today's challenge done, %s. Same time tomorrow?" % who
-	if bool(result.get("leveled_up", false)):
+	if result.leveled_up:
 		return "You're getting stronger, %s — that session pushed you up a level." % who
-	if bool(result.get("new_best", false)) and int(result.get("prev_best", 0)) > 0:
+	if result.new_best and result.prev_best > 0:
 		return "Your best ever, %s. That version of you didn't exist last week." % who
 	var goal: float = ActivityManager.get_daily_calorie_goal()
 	if ActivityManager.get_today_calories() >= goal:
@@ -139,28 +138,28 @@ func _first_name() -> String:
 	return name.split(" ")[0]
 
 
-func _fill_stat_grid(result: Dictionary) -> void:
-	var score: int = int(result.get("score", 0))
-	var prev_best: int = int(result.get("prev_best", 0))
+func _fill_stat_grid(result: GameResult) -> void:
+	var score: int = result.score
+	var prev_best: int = result.prev_best
 	_score_value.text = str(score)
-	if bool(result.get("new_best", false)) and prev_best > 0:
+	if result.new_best and prev_best > 0:
 		_score_sub.text = "Prev best  %d" % prev_best
 	elif prev_best > 0:
 		_score_sub.text = "Best  %d" % prev_best
 	_score_sub.visible = _score_sub.text != ""
 
-	_time_value.text = _format_duration(float(result.get("duration_sec", 0.0)))
-	_calories_value.text = "%.0f" % float(result.get("calories", 0.0))
-	_steps_value.text = str(int(result.get("steps", 0)))
-	_pace_value.text = "%.0f" % float(result.get("avg_cadence", 0.0))
-	_xp_value.text = "+%d" % int(result.get("xp_earned", 0))
+	_time_value.text = _format_duration(result.duration_sec)
+	_calories_value.text = "%.0f" % result.calories
+	_steps_value.text = str(result.steps)
+	_pace_value.text = "%.0f" % result.avg_cadence
+	_xp_value.text = "+%d" % result.xp_earned
 
 	# Heart-rate cards only when a wearable actually streamed a rate this session.
-	var peak: float = float(result.get("peak_heart_rate", 0.0))
+	var peak: float = result.peak_heart_rate
 	_avg_hr_card.visible = peak > 0.0
 	_peak_hr_card.visible = peak > 0.0
 	if peak > 0.0:
-		_avg_hr_value.text = "%.0f" % float(result.get("avg_heart_rate", 0.0))
+		_avg_hr_value.text = "%.0f" % result.avg_heart_rate
 		_peak_hr_value.text = "%.0f" % peak
 
 
@@ -168,14 +167,14 @@ func _fill_stat_grid(result: Dictionary) -> void:
 ## unlocks, plus any find from a session that never reached Results). Capped so
 ## a big day doesn't push the buttons off-screen.
 func _fill_unlocks() -> void:
-	var unlocks: Array[Dictionary] = AchievementManager.take_recent_unlocks()
+	var unlocks: Array[AchievementDef] = AchievementManager.take_recent_unlocks()
 	if unlocks.is_empty():
 		return
 	_unlocks_row.visible = true
 	var shown: int = mini(unlocks.size(), 3)
 	for i in shown:
-		_unlocks_row.add_child(_pill_badge("%s  %s" % [String(unlocks[i]["icon"]),
-				String(unlocks[i]["title"])]))
+		_unlocks_row.add_child(_pill_badge("%s  %s" % [unlocks[i].icon,
+				unlocks[i].title]))
 	if unlocks.size() > shown:
 		var more := Label.new()
 		more.text = "+%d more" % (unlocks.size() - shown)
@@ -198,14 +197,14 @@ func _pill_badge(text: String) -> Control:
 
 ## The slim progression line under the cards: total XP and the current level, with
 ## a level-up call-out when this game pushed the player over the threshold.
-func _fill_progression(result: Dictionary) -> void:
-	var level_after: int = int(result.get("level_after", ProfileManager.get_level()))
-	var leveled_up: bool = bool(result.get("leveled_up", false))
+func _fill_progression(result: GameResult) -> void:
+	var level_after: int = result.level_after
+	var leveled_up: bool = result.leveled_up
 	_level_up_badge.visible = leveled_up
 	_level_label.visible = not leveled_up
 	_level_up_label.text = "▲  LEVEL UP — LEVEL %d" % level_after
 	_level_label.text = "LEVEL %d" % level_after
-	_total_xp_label.text = "%d XP total" % int(result.get("total_xp", ProfileManager.get_xp()))
+	_total_xp_label.text = "%d XP total" % result.total_xp
 
 
 ## A quiet "here's what to chase next" line — the nearest locked career
@@ -215,9 +214,9 @@ func _fill_next_goal() -> void:
 	var goal: Dictionary = AchievementManager.get_next_goal()
 	if goal.is_empty():
 		return
-	var defn: Dictionary = goal["defn"]
-	_next_goal_label.text = "NEXT GOAL — %s · %d / %d %s" % [String(defn["title"]),
-			int(goal["value"]), int(goal["target"]), String(defn["unit"])]
+	var defn: AchievementDef = goal["defn"]
+	_next_goal_label.text = "NEXT GOAL — %s · %d / %d %s" % [defn.title,
+			int(goal["value"]), int(goal["target"]), defn.unit]
 	_next_goal_label.visible = true
 
 

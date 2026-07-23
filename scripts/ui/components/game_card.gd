@@ -51,15 +51,15 @@ func _ready() -> void:
 		connect(signal_name, _animate.bind(1.0))
 
 
-## Fills the card from one GameManager registry entry. Call right after
-## instancing, before the card is shown.
-func bind(game: Dictionary) -> void:
-	_available = bool(game["available"])
-	_title.text = String(game["title"])
+## Fills the card from one game's [GameDef]. Call right after instancing,
+## before the card is shown.
+func bind(game: GameDef) -> void:
+	_available = game.available
+	_title.text = game.title
 	_title.add_theme_color_override("font_color", TITLE_ON if _available else TITLE_OFF)
-	_description.text = String(game["description"]) if _available else "Coming soon"
+	_description.text = game.description if _available else "Coming soon"
 	_description.add_theme_color_override("font_color", DESC_ON if _available else DESC_OFF)
-	_apply_preview(String(game["id"]))
+	_apply_preview(game.id)
 	if not _available:
 		disabled = true
 		focus_mode = Control.FOCUS_NONE

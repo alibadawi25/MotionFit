@@ -49,8 +49,8 @@ func _fill_discovery_shelf() -> void:
 		_discovery_shelf.add_child(_discovery_card(defn))
 
 
-func _discovery_card(defn: Dictionary) -> Control:
-	var found: bool = AchievementManager.is_unlocked(String(defn["id"]))
+func _discovery_card(defn: AchievementDef) -> Control:
+	var found: bool = AchievementManager.is_unlocked(defn.id)
 	var panel := _card_panel(found)
 	panel.custom_minimum_size = Vector2(200, 150)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -61,14 +61,14 @@ func _discovery_card(defn: Dictionary) -> Control:
 	panel.add_child(vbox)
 
 	var icon := Label.new()
-	icon.text = String(defn["icon"]) if found else "?"
+	icon.text = defn.icon if found else "?"
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon.add_theme_font_size_override("font_size", 30)
 	icon.add_theme_color_override("font_color", GOLD if found else LOCKED_TEXT)
 	vbox.add_child(icon)
 
 	var name_label := Label.new()
-	name_label.text = String(defn["title"]) if found else "???"
+	name_label.text = defn.title if found else "???"
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name_label.add_theme_font_size_override("font_size", 15)
@@ -77,7 +77,7 @@ func _discovery_card(defn: Dictionary) -> Control:
 	vbox.add_child(name_label)
 
 	var hint := Label.new()
-	hint.text = String(defn["desc"])
+	hint.text = defn.description
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 12)
@@ -89,13 +89,13 @@ func _discovery_card(defn: Dictionary) -> Control:
 ## The main catalog in two columns, discoveries excluded (they have the shelf).
 func _fill_achievement_grid() -> void:
 	for defn in AchievementManager.get_definitions():
-		if String(defn.get("category", "")) == "discovery":
+		if defn.is_discovery():
 			continue
 		_achievement_grid.add_child(_achievement_card(defn))
 
 
-func _achievement_card(defn: Dictionary) -> Control:
-	var done: bool = AchievementManager.is_unlocked(String(defn["id"]))
+func _achievement_card(defn: AchievementDef) -> Control:
+	var done: bool = AchievementManager.is_unlocked(defn.id)
 	var panel := _card_panel(done)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
@@ -104,7 +104,7 @@ func _achievement_card(defn: Dictionary) -> Control:
 	panel.add_child(row)
 
 	var icon := Label.new()
-	icon.text = String(defn["icon"])
+	icon.text = defn.icon
 	icon.custom_minimum_size = Vector2(40, 0)
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -119,13 +119,13 @@ func _achievement_card(defn: Dictionary) -> Control:
 	row.add_child(text_box)
 
 	var title := Label.new()
-	title.text = String(defn["title"])
+	title.text = defn.title
 	title.add_theme_font_size_override("font_size", 18)
 	title.add_theme_color_override("font_color", TITLE_COLOR if done else LOCKED_TEXT)
 	text_box.add_child(title)
 
 	var desc := Label.new()
-	desc.text = String(defn["desc"])
+	desc.text = defn.description
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.add_theme_font_size_override("font_size", 13)
 	desc.add_theme_color_override("font_color", CAPTION_COLOR)
@@ -146,11 +146,11 @@ func _achievement_card(defn: Dictionary) -> Control:
 
 ## "82 / 100 kcal"-style live progress for a locked career achievement; session
 ## achievements return "" (there is no session to measure against here).
-func _progress_text(defn: Dictionary) -> String:
-	if not String(defn["stat"]) in AchievementManager.CAREER_STATS:
+func _progress_text(defn: AchievementDef) -> String:
+	if not defn.stat in AchievementManager.CAREER_STATS:
 		return ""
 	var p: Dictionary = AchievementManager.get_progress(defn)
-	return "%d / %d %s" % [int(p["value"]), int(p["target"]), String(defn["unit"])]
+	return "%d / %d %s" % [int(p["value"]), int(p["target"]), defn.unit]
 
 
 ## Shared card chrome: dark rounded panel, warmed with a gold edge when earned.

@@ -10,16 +10,24 @@ extends Node
 
 func _ready() -> void:
 	GameManager.select_game("open_world")
-	GameManager._last_result = {
-		"game_id": "open_world", "score": 412, "duration_sec": 14.0 * 60.0 + 22.0,
-		"calories": 118.0, "xp_earned": 412, "steps": 1650, "avg_cadence": 116.0,
-		"avg_heart_rate": 0.0, "peak_heart_rate": 0.0,
-		"new_best": true, "prev_best": 305, "leveled_up": false,
-		"level_before": 6, "level_after": 6, "total_xp": 2360,
-	}
-	var pills: Array[Dictionary] = []
+	var result: GameResult = GameResult.new()
+	result.game_id = "open_world"
+	result.score = 412
+	result.duration_sec = 14.0 * 60.0 + 22.0
+	result.calories = 118.0
+	result.xp_earned = 412
+	result.steps = 1650
+	result.avg_cadence = 116.0
+	result.new_best = true
+	result.prev_best = 305
+	result.level_before = 6
+	result.level_after = 6
+	result.total_xp = 2360
+	GameManager._last_result = result
+
+	var pills: Array[AchievementDef] = []
 	for defn in AchievementManager.get_definitions():
-		if String(defn["id"]) in ["session_20min", "secret_grotto"]:
+		if defn.id in ["session_20min", "secret_grotto"]:
 			pills.append(defn)
 	AchievementManager._recent_unlocks = pills
 	SceneManager.load_results()

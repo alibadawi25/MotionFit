@@ -351,19 +351,19 @@ func get_play_count(game_id: String) -> int:
 
 ## Records a finished game [param result] (see the GameResult schema in
 ## CONTEXT.md): updates play counts, best score, calories and XP for the game.
-func record_game_result(result: Dictionary) -> void:
+func record_game_result(result: GameResult) -> void:
 	if not has_active():
 		return
-	var game_id: String = String(result.get("game_id", "unknown"))
+	var game_id: String = result.game_id if not result.game_id.is_empty() else "unknown"
 	var stats: Dictionary = _active()["game_stats"]
 	var entry: Dictionary = stats.get(game_id, {"plays": 0, "best_score": 0})
 	entry["plays"] = int(entry.get("plays", 0)) + 1
-	entry["best_score"] = maxi(int(entry.get("best_score", 0)), int(result.get("score", 0)))
+	entry["best_score"] = maxi(int(entry.get("best_score", 0)), result.score)
 	stats[game_id] = entry
 	_active()["game_stats"] = stats
 	_save()
-	add_calories(float(result.get("calories", 0.0)))
-	add_xp(int(result.get("xp_earned", 0)))
+	add_calories(result.calories)
+	add_xp(result.xp_earned)
 
 
 ## Returns the XP-based level for an arbitrary [param xp] total. Static so UI

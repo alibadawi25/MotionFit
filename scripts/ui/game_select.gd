@@ -49,16 +49,16 @@ func _process(_delta: float) -> void:
 
 func _populate_cards() -> void:
 	for game in GameManager.get_games():
-		if bool(game["available"]):
+		if game.available:
 			var card: GameCard = GAME_CARD.instantiate()
 			_card_container.add_child(card)
 			card.bind(game)
-			card.pressed.connect(_on_game_pressed.bind(String(game["id"])))
+			card.pressed.connect(_on_game_pressed.bind(game.id))
 			_playable_cards.append(card)
 		else:
 			var tile: PanelContainer = SOON_TILE.instantiate()
 			_soon_strip.add_child(tile)
-			(tile.get_node("%TitleLabel") as Label).text = String(game["title"])
+			(tile.get_node("%TitleLabel") as Label).text = game.title
 	_soon_section.visible = _soon_strip.get_child_count() > 0
 
 

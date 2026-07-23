@@ -117,7 +117,7 @@ func today_game_title() -> String:
 	var plan: Dictionary = get_today_plan()
 	if plan.is_empty():
 		return ""
-	return String(GameManager.get_game(String(plan["game_id"])).get("title", ""))
+	return GameManager.get_game_title(String(plan["game_id"]))
 
 
 # --- Completion state (per-profile, persisted) -----------------------------
@@ -237,7 +237,7 @@ func _totals(blocks: Array) -> Vector2i:
 func _available_eligible() -> Array[String]:
 	var out: Array[String] = []
 	for id in ELIGIBLE_GAMES:
-		if bool(GameManager.get_game(id).get("available", false)):
+		if GameManager.is_available(id):
 			out.append(id)
 	return out
 
