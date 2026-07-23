@@ -3,8 +3,15 @@ extends MiniGame
 ##
 ## A stand-up sparring bout shot over the player's shoulder. Every session opens
 ## with [BoxingCinematic] (a letterboxed orbit of the arena) and settles into the
-## behind-the-boxer frame; a live rig then rides that home — dollying in as you
-## press forward and trailing you as you slip side to side ([method _update_camera]).
+## behind-the-boxer frame; [BoxingCameraRig] then rides that home — dollying in as
+## you press forward and trailing you as you slip side to side.
+##
+## This script owns the FIGHT: the exchange state machine, the calls, damage,
+## scoring and the bell. What it deliberately does not own is how any of that
+## looks — the frame belongs to [BoxingCameraRig] and the landed-punch feedback
+## (glove flash, hit-stop, knockout slow motion) to [BoxingImpact]. Body reading
+## is [BoxingInput]'s job. Keeping presentation out means the exchange timing can
+## be tuned without touching the camera, and vice versa.
 ##
 ## [b]The whole game is three punches and two ways to defend[/b], deliberately so:
 ## this is a fitness game for people who have never boxed, not a fight sim.
@@ -34,27 +41,14 @@ extends MiniGame
 ## guard hold and slip work) and are on screen the whole round.
 class_name BoxingGame
 
-## The home frame the cinematic settles into: an over-the-shoulder shot tucked in
-## behind and above the player's boxer, looking across at the opponent. It's not a
-## static tripod — the live rig ([method _update_camera]) rides this home, dollying
-## in as you press forward and sliding with your slip, so the fight breathes.
-## Sitting above the top rope and looking down into the ring matters: from lower
-## down the ropes cut straight across both fighters' faces and the fight is
-## watched through a fence.
-const CAM_POS: Vector3 = Vector3(-1.18, 3.42, 5.35)
-const CAM_LOOK: Vector3 = Vector3(0.42, 1.42, 0.85)
-const BASE_FOV: float = 58.0
-
 ## The HUD is scene-authored, so it is instanced rather than constructed.
 const HUD_SCENE: PackedScene = preload("res://scenes/boxing/boxing_hud.tscn")
 
-## How the player drives the frame. Marching in place presses the camera in
-## ([member ADVANCE_DOLLY]) and steps the boxer toward the opponent; leaning at
-## the waist slips the boxer ([member SLIP_MAX]) and the camera trails it
-## ([member SLIP_FOLLOW]). CAM_SMOOTH eases the whole rig so it never snaps.
+## How the player drives the boxer. Marching in place steps him toward the
+## opponent; leaning at the waist slips him ([constant SLIP_MAX]). CAM_SMOOTH
+## eases the footwork so it never snaps. How the CAMERA answers all this lives in
+## [BoxingCameraRig].
 const SLIP_MAX: float = 0.85
-const SLIP_FOLLOW: float = 0.55
-const ADVANCE_DOLLY: float = 1.7
 const CAM_SMOOTH: float = 6.0
 ## Lean magnitude (0..1) that reads as a committed slip to that side.
 const DODGE_LEAN: float = 0.40
@@ -65,26 +59,6 @@ const DODGE_LEAN: float = 0.40
 ## itself, and the drift fades out as soon as the player leans for real.
 const AUTO_SWAY: float = 0.16        # how far the autonomous drift carries him
 const AUTO_SWAY_HZ: float = 0.42     # how slowly it wanders
-
-## What gives the rig its third-person-boxing weight (Fight-Night/UFC feel): the
-## camera lags toward its target instead of snapping (CAM_LAG), banks into a slip
-## (BANK_MAX), breathes a handheld idle sway when you're not pressing in, and
-## snaps the FOV inward on impact before recovering (FOV_KICK / FOV_RECOVER).
-const CAM_LAG: float = 9.0
-const BANK_MAX: float = 0.05          # radians of roll at a full slip (~2.9°)
-const FOV_KICK_HIT: float = 6.0       # FOV punch-in when you land a shot
-const FOV_KICK_TAG: float = 9.0       # bigger jolt when you wear one
-const FOV_RECOVER: float = 22.0       # deg/sec the kick eases back out
-const BREATHE_SWAY: float = 0.05      # handheld idle drift, calms as you advance
-
-## Impact hit-stop: the world freezes for a beat on a clean landing, which is
-## what makes a punch feel like it connected with something solid. Short enough
-## that it never reads as a stutter, and always restored (see [method _hit_stop]).
-const HITSTOP_SCALE: float = 0.22
-const HITSTOP_SEC: float = 0.08
-## The knockout is worth slowing right down for.
-const KO_SLOWMO_SCALE: float = 0.35
-const KO_SLOWMO_SEC: float = 1.3
 
 ## Where the two fighters stand on the canvas (y = the ring's canvas height). The
 ## player's boxer is the over-the-shoulder foreground; the opponent faces us.
@@ -178,19 +152,12 @@ var _assist_recharge: float = 0.09   # assist charge per second
 var _you_health: float = 1.0
 var _opp_health: float = 1.0
 var _combo: int = 0
-var _shake: float = 0.0
 ## AUTO-GUARD charge, 0..1. Full = the next unanswered shot is covered for free.
 var _assist: float = 1.0
 ## Counts down while an AUTO-GUARD save holds the boxer's cover up.
 var _assist_block_left: float = 0.0
 ## Every punch thrown this bout, landed or not — it all counts as work done.
 var _punches_thrown: int = 0
-## Live rig state: the lagged camera position, the eased slip-bank roll, the
-## decaying impact FOV kick, and the ever-running clock for the idle sway.
-var _cam_pos: Vector3 = CAM_POS
-var _cam_bank: float = 0.0
-var _fov_kick: float = 0.0
-var _breathe: float = 0.0
 ## Live footwork, eased toward the player's motion each frame: lateral slip (world
 ## x, ±SLIP_MAX) and forward press (0..1). Drive both the boxer and the camera rig.
 var _slip: float = 0.0
@@ -210,11 +177,11 @@ var _pause_menu: Control
 ## Built in [method _prepare_world] rather than at declaration, so it registers
 ## its interest once this game is actually being set up.
 var _input: BoxingInput
-var _impact: Node3D               # pooled impact flash (a light + a glowing burst)
-var _impact_light: OmniLight3D
-var _impact_mat: StandardMaterial3D
-## The one tween allowed to drive Engine.time_scale (see [method _slow_time]).
-var _time_tween: Tween
+## Landed-punch feedback: the glove flash plus the hit-stop / KO slow motion.
+var _impact: BoxingImpact
+## The over-the-shoulder camera rig. Owns the frame; this script only tells it
+## what the player's body is doing.
+var _rig: BoxingCameraRig
 
 @onready var _camera: Camera3D = $Camera3D
 
@@ -248,12 +215,14 @@ func _prepare_world() -> void:
 	_opp.setup(_opponent_body(), _opponent_appearance(), "boxer_rival", "red", 0.0)
 
 	_build_targets()
-	_build_impact()
 
-	if _camera != null:
-		_camera.global_position = CAM_POS
-		_camera.look_at(CAM_LOOK, Vector3.UP)
-		_camera.fov = BASE_FOV
+	_impact = BoxingImpact.new()
+	add_child(_impact)
+
+	_rig = BoxingCameraRig.new()
+	_rig.name = "CameraRig"
+	add_child(_rig)
+	_rig.setup(_camera)
 
 
 ## Open the session with the arena tour, then hand back to the ringside frame and
@@ -262,7 +231,8 @@ func _start_game() -> void:
 	var cinematic := BoxingCinematic.new()
 	cinematic.name = "Cinematic"
 	add_child(cinematic)
-	cinematic.setup(_camera, _arena, CAM_POS, CAM_LOOK, BASE_FOV)
+	cinematic.setup(_camera, _arena, BoxingCameraRig.CAM_POS,
+			BoxingCameraRig.CAM_LOOK, BoxingCameraRig.BASE_FOV)
 	cinematic.finished.connect(_on_cinematic_finished)
 
 
@@ -282,13 +252,6 @@ func _on_cinematic_finished() -> void:
 	_phase_left = BRIEFING_SEC
 
 
-## Time scale is a global the bout borrows for hit-stop and the knockout slow-mo,
-## so it is always handed back — a game that exits mid-effect must not leave the
-## whole app running slow.
-func _exit_tree() -> void:
-	Engine.time_scale = 1.0
-
-
 func _process(delta: float) -> void:
 	super._process(delta)  # keeps MiniGame's elapsed clock ticking
 	match _phase:
@@ -299,7 +262,9 @@ func _process(delta: float) -> void:
 		Phase.OVER:
 			_tick_over(delta)
 	_update_movement(delta)
-	_update_camera(delta)
+	# The cinematic owns the camera until the bell, so the rig only drives it once
+	# the fight is live.
+	_rig.update(delta, _slip, _advance, _phase == Phase.BOUT or _phase == Phase.OVER)
 
 
 func _tick_briefing(delta: float) -> void:
@@ -449,11 +414,11 @@ func _land_hit(power: float, grade: String) -> void:
 			BoxingHud.SAFE)
 	_hud.set_score(get_score())
 	_hud.flash(BoxingHud.GOLD_FLASH, 0.22 if grade != "perfect" else 0.32)
-	_cam_impact(0.12 + power * 0.06, FOV_KICK_HIT)
-	_impact_burst(_opp.global_position + Vector3(0.0, 1.5, 0.35),
+	_rig.impact(0.12 + power * 0.06, BoxingCameraRig.FOV_KICK_HIT)
+	_impact.burst(_opp.global_position + Vector3(0.0, 1.5, 0.35),
 			Color(1.0, 0.85, 0.35))
 	if grade == "perfect":
-		_hit_stop()
+		_impact.hit_stop()
 	_arena.cheer_burst(0.4 + power * 0.4)
 	_arena.set_crowd_energy(clampf(0.5 + (1.0 - _opp_health) * 0.4, 0.0, 1.0))
 	if _opp_health <= 0.0:
@@ -555,8 +520,8 @@ func _shot_arrives() -> void:
 		_take_damage(_counter_damage)
 		_hud.flash_toast("TAGGED!", BoxingHud.DANGER)
 		_hud.flash(BoxingHud.DANGER, 0.4)
-		_cam_impact(0.2, FOV_KICK_TAG)
-		_impact_burst(_you.global_position + Vector3(0.0, 1.5, -0.35),
+		_rig.impact(0.2, BoxingCameraRig.FOV_KICK_TAG)
+		_impact.burst(_you.global_position + Vector3(0.0, 1.5, -0.35),
 				Color(1.0, 0.35, 0.3))
 	if _phase == Phase.BOUT:
 		_after_resolve(0.45)
@@ -595,8 +560,8 @@ func _flurry_hit(power: float) -> void:
 	_hud.set_combo(_combo)
 	_hud.set_score(get_score())
 	_hud.flash(BoxingHud.GOLD_FLASH, 0.14)
-	_cam_impact(0.08 + power * 0.04, FOV_KICK_HIT * 0.5)
-	_impact_burst(_opp.global_position + Vector3(0.0, 1.5, 0.35),
+	_rig.impact(0.08 + power * 0.04, BoxingCameraRig.FOV_KICK_HIT * 0.5)
+	_impact.burst(_opp.global_position + Vector3(0.0, 1.5, 0.35),
 			Color(1.0, 0.85, 0.35))
 	_arena.cheer_burst(0.35)
 	if _opp_health <= 0.0:
@@ -635,7 +600,7 @@ func _win_by_ko() -> void:
 	_hud.flash_toast("KNOCKOUT!", BoxingHud.ACCENT)
 	_arena.set_crowd_energy(1.0)
 	_arena.cheer_burst(1.0)
-	_ko_slowmo()
+	_impact.ko_slowmo()
 	_hud.show_result("WINNER", "BY KNOCKOUT · +%d" % KO_BONUS, get_score(),
 			BoxingHud.SAFE, _workout_line())
 	_over(2.0)
@@ -646,7 +611,7 @@ func _lose_by_ko() -> void:
 	_you.knock_out()
 	_hud.set_prompt("")
 	_hud.flash_toast("DOWN!", BoxingHud.DANGER)
-	_ko_slowmo()
+	_impact.ko_slowmo()
 	_hud.show_result("TKO", "YOU WENT DOWN — GOOD WORK REGARDLESS", get_score(),
 			BoxingHud.DANGER, _workout_line())
 	_over(2.0)
@@ -679,81 +644,6 @@ func _over(hold: float) -> void:
 func _workout_line() -> String:
 	return "%d KCAL · %d PUNCHES THROWN" % [
 		int(round(MotionManager.get_session_calories())), _punches_thrown]
-
-
-# --- Impact feel -------------------------------------------------------------
-
-## Freezes the world for a beat so a clean punch lands with weight.
-func _hit_stop() -> void:
-	_slow_time(HITSTOP_SCALE, HITSTOP_SEC, 0.12)
-
-
-## The knockout drops into slow motion and eases back out — the one moment in the
-## bout worth stretching.
-func _ko_slowmo() -> void:
-	_slow_time(KO_SLOWMO_SCALE, KO_SLOWMO_SEC, 0.5)
-
-
-## Drops the time scale to [param scale] for [param hold] seconds, then eases it
-## back to normal over [param recover]. Only ever one of these runs: the KO
-## fires on the same frame as the punch that caused it, and the hit-stop's
-## recovery would otherwise cut the knockout's slow motion short. The tween
-## ignores the time scale it is itself changing, so it always restores.
-func _slow_time(scale: float, hold: float, recover: float) -> void:
-	if _time_tween != null and _time_tween.is_valid():
-		_time_tween.kill()
-	Engine.time_scale = scale
-	_time_tween = create_tween().set_ignore_time_scale(true)
-	_time_tween.tween_interval(hold)
-	_time_tween.tween_property(Engine, "time_scale", 1.0, recover)
-
-
-## A single reused flash rig — an omni light plus a glowing sphere — parked at
-## whichever glove just connected. Pooled rather than spawned so a flurry of
-## punches can't churn nodes mid-round.
-func _build_impact() -> void:
-	_impact = Node3D.new()
-	_impact.name = "Impact"
-	_impact.visible = false
-	add_child(_impact)
-
-	_impact_light = OmniLight3D.new()
-	_impact_light.omni_range = 3.2
-	_impact_light.light_energy = 0.0
-	_impact.add_child(_impact_light)
-
-	var mi := MeshInstance3D.new()
-	var mesh := SphereMesh.new()
-	mesh.radius = 0.26
-	mesh.height = 0.52
-	_impact_mat = StandardMaterial3D.new()
-	_impact_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_impact_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_impact_mat.emission_enabled = true
-	_impact_mat.emission_energy_multiplier = 4.0
-	_impact_mat.albedo_color = Color(1, 1, 1, 0)
-	mesh.material = _impact_mat
-	mi.mesh = mesh
-	_impact.add_child(mi)
-
-
-## Pops the flash at [param at] in [param color] and fades it out.
-func _impact_burst(at: Vector3, color: Color) -> void:
-	if _impact == null:
-		return
-	_impact.global_position = at
-	_impact.visible = true
-	_impact.scale = Vector3.ONE * 0.6
-	_impact_light.light_color = color
-	_impact_light.light_energy = 4.5
-	_impact_mat.emission = color
-	_impact_mat.albedo_color = Color(color, 0.9)
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_impact, "scale", Vector3.ONE * 1.9, 0.22) \
-			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(_impact_light, "light_energy", 0.0, 0.22)
-	tween.tween_property(_impact_mat, "albedo_color", Color(color, 0.0), 0.22)
-	tween.chain().tween_callback(func() -> void: _impact.visible = false)
 
 
 # --- 3D target markers -------------------------------------------------------
@@ -799,7 +689,7 @@ func _light_target(spot: String, on: bool, warning: bool = false) -> void:
 	mat.emission = Color(0.95, 0.16, 0.16) if warning else Color(1.0, 0.85, 0.2)
 
 
-# --- Footwork + camera rig ---------------------------------------------------
+# --- Footwork ---------------------------------------------------------------
 
 ## Ease the boxer's footwork toward the player's live motion: leaning at the
 ## waist slips him side to side, marching presses him forward. When the player
@@ -826,56 +716,6 @@ func _update_movement(delta: float) -> void:
 		# The lean itself is a pose, not just a position: pass it through so the
 		# figure bends at the waist exactly as far as the player did.
 		_you.set_lean(lean)
-
-
-## The live over-the-shoulder rig: rides CAM_POS, dollies in with the forward
-## press, trails the player's slip, banks into it, breathes a handheld idle sway,
-## and lags toward all of it so the frame carries weight. The cinematic owns the
-## camera during INTRO, so this only drives it once the fight is live.
-func _update_camera(delta: float) -> void:
-	if _camera == null or (_phase != Phase.BOUT and _phase != Phase.OVER):
-		return
-	if _shake > 0.001:
-		_shake = maxf(0.0, _shake - delta * 0.9)
-	if _fov_kick > 0.001:
-		_fov_kick = maxf(0.0, _fov_kick - delta * FOV_RECOVER)
-	_breathe += delta
-
-	# Where the rig wants to be: trailing the slip, dollied in on the press.
-	var want: Vector3 = CAM_POS
-	want.x += _slip * SLIP_FOLLOW
-	want.z -= _advance * ADVANCE_DOLLY
-	want.y -= _advance * 0.22
-	# Handheld idle drift — alive when you're squared up, calmed as you press in.
-	var calm: float = 1.0 - _advance * 0.7
-	want.x += sin(_breathe * 1.3) * BREATHE_SWAY * calm
-	want.y += sin(_breathe * 0.9 + 1.7) * BREATHE_SWAY * 0.8 * calm
-
-	# Lag the camera toward that target, then add impact shake on top of the ease.
-	var t: float = clampf(delta * CAM_LAG, 0.0, 1.0)
-	_cam_pos = _cam_pos.lerp(want, t)
-	var pos: Vector3 = _cam_pos
-	if _shake > 0.001:
-		pos += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0) * _shake
-	_camera.global_position = pos
-
-	# Aim at the opponent's head, leading a touch with the slip.
-	var aim: Vector3 = CAM_LOOK
-	aim.x += _slip * 0.18
-	_camera.look_at(aim, Vector3.UP)
-
-	# Bank into the slip (roll) and apply the recovering impact FOV kick. Both go
-	# on after look_at, which otherwise resets the camera's orientation each frame.
-	_cam_bank = lerpf(_cam_bank, -_slip * BANK_MAX, t)
-	_camera.rotation.z += _cam_bank
-	_camera.fov = BASE_FOV - _fov_kick
-
-
-## A hit landed — jolt the rig: shake plus a quick FOV punch-in that eases back.
-## Kept separate so both the shot you throw and the one you wear can call it.
-func _cam_impact(shake: float, fov_kick: float) -> void:
-	_shake = maxf(_shake, shake)
-	_fov_kick = maxf(_fov_kick, fov_kick)
 
 
 # --- Difficulty + fighter specs ----------------------------------------------
