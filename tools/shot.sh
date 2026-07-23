@@ -30,11 +30,13 @@
 #   WAIT    seconds to let the scene boot before requesting the shot (default 6)
 #   RES     window size, WxH (default 1280x720). The project stretches with
 #           aspect "expand", so a non-16:9 value here is how you check that a
-#           screen reflows instead of letterboxing.
-#           CAVEAT: the project ships fullscreen (window/size/mode=3), and
-#           fullscreen ignores --resolution — the window is always the monitor.
-#           To actually use this, temporarily set window/size/mode=0 in
-#           project.godot, take the shots, and set it back.
+#           screen reflows instead of letterboxing. Clamped up to
+#           SettingsManager.MIN_WINDOW (1280x720).
+#           These go after the `--` on purpose: the project ships fullscreen,
+#           which ignores Godot's own --windowed/--resolution, so SettingsManager
+#           applies them itself — and it can only see arguments the engine did
+#           not consume. Passing them as engine flags is what silently did
+#           nothing before.
 # ---------------------------------------------------------------------------
 set -u
 
@@ -71,8 +73,8 @@ QUIT_FRAMES=$(( (WAIT + 20) * 60 ))
 before=$(pids)
 rm -f "$UD/mcp_screenshot_res.png" "$UD/mcp_screenshot_req.json" "$UD/mcp_screenshot_meta.json"
 
-"$GODOT" --path "$PROJ" $SCENE --windowed --resolution "$RES" --position 80,80 \
-  --quit-after "$QUIT_FRAMES" -- --shot-token="$TOKEN" >"$LOG" 2>&1 &
+"$GODOT" --path "$PROJ" $SCENE --quit-after "$QUIT_FRAMES" \
+  -- --shot-token="$TOKEN" --windowed --resolution "$RES" >"$LOG" 2>&1 &
 sleep "$WAIT"
 
 # Drop the request file the in-engine bridge polls for. "target":"game" makes a

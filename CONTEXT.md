@@ -1229,9 +1229,23 @@ same controller works with the camera today or another input source later.
 	  clipped. This works because every menu root is a full-rect Control and no
 	  scene hardcodes 1920/1080; keep it that way. `SettingsManager.MIN_WINDOW`
 	  (1280×720) floors the window so the UI can't be shrunk past readable.
-	  > The app boots fullscreen, and **fullscreen ignores `--resolution`**, so
-	  > `RES=` in `tools/shot.sh` only bites if you temporarily set
-	  > `window/size/mode=0` in project.godot. That is how the above was checked.
+- ✅ **Windowed mode is an escape hatch, not a setting.** F11 / Alt+Enter toggle
+	  fullscreen (`SettingsManager.toggle_fullscreen`); dropping out gives a
+	  centred window at 80% of the usable screen, floored at `MIN_WINDOW`. There is
+	  deliberately **no Settings row**: the app is played from across the room,
+	  where a window is unreadable, so this exists for a game that opened on the
+	  wrong monitor — not as a preference. Not persisted, so a restart returns to
+	  the mode the game is meant to be played in.
+	  > **Two traps here, both of which silently do nothing.**
+	  > 1. The app boots fullscreen, and **fullscreen ignores Godot's own
+	  >    `--windowed` / `--resolution`**. `SettingsManager` applies them itself —
+	  >    but they must be passed **after `--`**, because
+	  >    `OS.get_cmdline_args()` strips every argument the engine consumed, and
+	  >    those two are among them. `tools/shot.sh`'s `RES=` works this way.
+	  > 2. **Do not read `window.mode` back to decide which way to toggle.** A
+	  >    WINDOWED window that exactly fills the screen reports as
+	  >    `EXCLUSIVE_FULLSCREEN` on Windows, so a toggle that trusted the readout
+	  >    would never return to fullscreen. Track the intent in a bool.
 - ✅ Full folder structure created (§3).
 - ✅ Six manager autoloads implemented and registered in dependency order (§5).
 - ✅ `SceneManager` owns all scene paths; no paths hardcoded elsewhere.
