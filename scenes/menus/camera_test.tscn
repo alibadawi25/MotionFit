@@ -1,8 +1,7 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/camera_test.gd" id="1"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
-[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
 [ext_resource type="PackedScene" path="res://scenes/ui/components/camera_mirror.tscn" id="4_mirror"]
 
 [sub_resource type="StyleBoxFlat" id="status_pill"]
@@ -106,14 +105,13 @@ mouse_filter = 2
 color = Color(0.02, 0.03, 0.06, 1)
 
 [node name="TitleLabel" type="Label" parent="."]
+theme_type_variation = &"Display"
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_top = 56.0
 offset_bottom = 130.0
 grow_horizontal = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 62
 text = "CAMERA TEST"
 horizontal_alignment = 1
@@ -153,14 +151,13 @@ theme_override_styles/normal = SubResource("status_pill")
 text = "●  CAMERA OFF"
 
 [node name="BannerLabel" type="Label" parent="."]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 96.0
 offset_top = 936.0
 offset_right = 1036.0
 offset_bottom = 998.0
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 40
 text = "STANDING STILL"
 horizontal_alignment = 1
@@ -215,10 +212,9 @@ theme_override_font_sizes/font_size = 28
 text = "WALK IN PLACE"
 
 [node name="StepsValue" type="Label" parent="ActionCards/StepsCard/CardRow/CardText"]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 46
 text = "0"
 
@@ -258,10 +254,9 @@ theme_override_font_sizes/font_size = 28
 text = "JUMP"
 
 [node name="JumpValue" type="Label" parent="ActionCards/JumpCard/CardRow/CardText"]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 46
 text = "0"
 
@@ -301,10 +296,9 @@ theme_override_font_sizes/font_size = 28
 text = "SQUAT / BOW DOWN"
 
 [node name="CrouchValue" type="Label" parent="ActionCards/CrouchCard/CardRow/CardText"]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 46
 text = "0"
 

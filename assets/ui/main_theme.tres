@@ -2,6 +2,7 @@
 
 [ext_resource type="FontFile" uid="uid://thisrki52hls" path="res://assets/fonts/Rajdhani-SemiBold.ttf" id="1_sb"]
 [ext_resource type="FontFile" uid="uid://8pxknbl868y0" path="res://assets/fonts/Rajdhani-Medium.ttf" id="2_md"]
+[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
 
 [sub_resource type="StyleBoxFlat" id="btn_disabled"]
 content_margin_left = 34.0
@@ -357,3 +358,24 @@ DangerButton/styles/focus = SubResource("danger_hover")
 DangerButton/styles/hover = SubResource("danger_hover")
 DangerButton/styles/normal = SubResource("danger_normal")
 DangerButton/styles/pressed = SubResource("danger_hover")
+Display/base_type = &"Label"
+Display/colors/font_color = Color(0.96, 0.97, 0.99, 1)
+Display/fonts/font = ExtResource("3_anton")
+DisplayAccent/base_type = &"Label"
+DisplayAccent/colors/font_color = Color(1, 0.5, 0.14, 1)
+DisplayAccent/fonts/font = ExtResource("3_anton")
+Body/base_type = &"Label"
+Body/colors/font_color = Color(0.96, 0.97, 0.99, 1)
+Body/font_sizes/font_size = 20
+BodyMuted/base_type = &"Label"
+BodyMuted/colors/font_color = Color(0.72, 0.76, 0.82, 1)
+BodyMuted/font_sizes/font_size = 20
+BodySmall/base_type = &"Label"
+BodySmall/colors/font_color = Color(0.72, 0.76, 0.82, 1)
+BodySmall/font_sizes/font_size = 17
+Caption/base_type = &"Label"
+Caption/colors/font_color = Color(0.72, 0.76, 0.82, 1)
+Caption/font_sizes/font_size = 15
+Micro/base_type = &"Label"
+Micro/colors/font_color = Color(0.72, 0.76, 0.82, 1)
+Micro/font_sizes/font_size = 13

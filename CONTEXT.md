@@ -202,6 +202,40 @@ shared chrome to the base, never to a fourth copy.
 > (`tools/shot.sh`) until the class cache is rebuilt:
 > `godot --headless --path . --import`.
 
+### 4.1b The type scale (`Label` theme variations)
+
+`assets/ui/main_theme.tres` carries the text styles, the same way it already
+carried the button styles. Set `theme_type_variation` on a Label; do not re-type
+a size and a colour on the node.
+
+| Variation | Font | Size | Colour | For |
+|---|---|---|---|---|
+| `Display` | Anton | *per node* | `TEXT` 0.96,0.97,0.99 | Screen titles and hero values. The size genuinely is per-screen (a results tile's number is not a menu title), so it stays on the node — the font and colour do not. |
+| `DisplayAccent` | Anton | *per node* | `ACCENT` 1,0.5,0.14 | The same, in accent. |
+| `Body` | Rajdhani | 20 | `TEXT` | Ordinary copy. |
+| `BodyMuted` | Rajdhani | 20 | `MUTED` 0.72,0.76,0.82 | Secondary copy. |
+| `BodySmall` | Rajdhani | 17 | `MUTED` | Dense supporting rows. |
+| `Caption` | Rajdhani | 15 | `MUTED` | Labels under a value. |
+| `Micro` | Rajdhani | 13 | `MUTED` | Units, footnotes. |
+
+`TEXT`, `MUTED` and `ACCENT` are the same values as `GameHUD`'s constants — one
+palette across menus and HUDs, deliberately.
+
+The theme's `default_font_size` is already 22, so
+`theme_override_font_sizes/font_size = 22` on a default-font Label is a no-op.
+Don't write it.
+
+**This is partly migrated.** 25 Anton labels across 11 screens now use
+`Display`/`DisplayAccent` (verified pixel-identical on all 11). The body-text
+tiers are defined but largely unused, because adopting them means *changing*
+what is on screen: the menus currently carry **8 near-identical greys used 47
+times** (0.62,0.67,0.75 · 0.7,0.74,0.8 · 0.78,0.82,0.88@0.9 · 0.6,0.65,0.72 · …)
+and **6 near-identical oranges used 20 times**. Nobody chose eight greys — they
+were re-typed by hand, screen by screen, and drifted. Snapping them to the scale
+is a small but real visual change and wants a deliberate decision, so it has not
+been done silently. Until it is, **new** screens use the variations; don't add a
+ninth grey.
+
 ### 4.2 The component catalogue (`scenes/ui/components/`)
 
 | Component | What it is | Used by |

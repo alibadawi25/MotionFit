@@ -1,8 +1,7 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/game_intro.gd" id="1"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
-[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
 [ext_resource type="PackedScene" path="res://scenes/ui/components/camera_mirror.tscn" id="4_mirror"]
 [ext_resource type="PackedScene" path="res://scenes/ui/components/meter_bar.tscn" id="5_meter"]
 
@@ -54,6 +53,7 @@ text = "GET READY"
 horizontal_alignment = 1
 
 [node name="GameTitleLabel" type="Label" parent="Root"]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -62,12 +62,11 @@ offset_top = 92.0
 offset_bottom = 162.0
 grow_horizontal = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 58
 horizontal_alignment = 1
 
 [node name="CountLabel" type="Label" parent="Root"]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -77,11 +76,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
 theme_override_constants/shadow_offset_x = 3
 theme_override_constants/shadow_offset_y = 6
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 230
 horizontal_alignment = 1
 vertical_alignment = 1

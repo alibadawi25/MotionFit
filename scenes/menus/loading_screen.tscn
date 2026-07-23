@@ -1,8 +1,7 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/loading_screen.gd" id="1"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
-[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
 
 [sub_resource type="Gradient" id="grad_bg"]
 offsets = PackedFloat32Array(0, 1)
@@ -68,9 +67,8 @@ size_flags_horizontal = 0
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="Label" type="Label" parent="Center/VBox"]
+theme_type_variation = &"Display"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_fonts/font = ExtResource("3_anton")
 theme_override_font_sizes/font_size = 56
 text = "LOADING"
 

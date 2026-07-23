@@ -1,9 +1,8 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/difficulty_select.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
-[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="4_anton"]
 [ext_resource type="PackedScene" path="res://scenes/ui/components/difficulty_card.tscn" id="5_card"]
 
 [sub_resource type="Gradient" id="grad_left"]
@@ -109,15 +108,14 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="Title" type="Label" parent="Content/Layout/Header"]
+theme_type_variation = &"Display"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
 theme_override_colors/font_outline_color = Color(0.02, 0.03, 0.05, 0.55)
 theme_override_constants/shadow_offset_x = 2
 theme_override_constants/shadow_offset_y = 4
 theme_override_constants/outline_size = 8
-theme_override_fonts/font = ExtResource("4_anton")
 theme_override_font_sizes/font_size = 74
 text = "HOW HARD?"
 
@@ -126,7 +124,6 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
 theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
-theme_override_font_sizes/font_size = 22
 text = "Pick your intensity"
 
 [node name="CardCenter" type="CenterContainer" parent="Content/Layout"]
