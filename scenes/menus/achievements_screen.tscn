@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/achievements_screen.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
 
 [node name="AchievementsScreen" type="Control"]
 layout_mode = 3
@@ -34,3 +35,96 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 color = Color(0.01, 0.02, 0.04, 0.66)
+
+[node name="ScreenCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="ScreenCenter"]
+custom_minimum_size = Vector2(1180, 0)
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_card")
+
+[node name="CardBody" type="VBoxContainer" parent="ScreenCenter/Card"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AccentBar" type="ColorRect" parent="ScreenCenter/Card/CardBody"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 38
+text = "ACHIEVEMENTS"
+
+[node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+text = "Keep moving — the rest are on their way."
+autowrap_mode = 3
+
+[node name="ContentBox" type="VBoxContainer" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Scroll" type="ScrollContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+custom_minimum_size = Vector2(0, 640)
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_scroll_mode = 0
+
+[node name="ScrollBody" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 18
+
+[node name="DiscoveriesCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "WORLD DISCOVERIES — HIDDEN PLACES IN THE OPEN WORLD"
+
+[node name="DiscoveryShelf" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 5
+
+[node name="DividerUnderDiscoveries" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+layout_mode = 2
+
+[node name="AchievementsCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "ACHIEVEMENTS"
+
+[node name="AchievementGrid" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 14
+columns = 2
+
+[node name="BackButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+text = "BACK"

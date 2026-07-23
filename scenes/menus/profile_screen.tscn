@@ -1,8 +1,12 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/profile_screen.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
+[ext_resource type="PackedScene" path="res://scenes/ui/profile_form.tscn" id="5_body_form"]
+[ext_resource type="PackedScene" path="res://scenes/ui/appearance_form.tscn" id="6_look_form"]
+[ext_resource type="PackedScene" path="res://scenes/ui/character_preview.tscn" id="7_preview"]
 
 [node name="ProfileScreen" type="Control"]
 layout_mode = 3
@@ -34,3 +38,241 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 color = Color(0.01, 0.02, 0.04, 0.66)
+
+[node name="ScreenCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="ScreenCenter"]
+custom_minimum_size = Vector2(1060, 0)
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_card")
+
+[node name="CardBody" type="VBoxContainer" parent="ScreenCenter/Card"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AccentBar" type="ColorRect" parent="ScreenCenter/Card/CardBody"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 38
+text = "PROFILE"
+
+[node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+autowrap_mode = 3
+
+[node name="ContentBox" type="VBoxContainer" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="LifetimeStatsRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 40
+
+[node name="CaloriesTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="CaloriesValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 14
+text = "kcal"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/CaloriesTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "CALORIES"
+
+[node name="StepsTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/StepsTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="StepsValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/StepsTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/StepsTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "STEPS"
+
+[node name="ActiveTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ActiveValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 14
+text = "min"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/ActiveTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "ACTIVE"
+
+[node name="WorkoutsTile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/WorkoutsTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="WorkoutsValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/WorkoutsTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/LifetimeStatsRow/WorkoutsTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "WORKOUTS"
+
+[node name="DividerUnderStats" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+
+[node name="NameRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "Name"
+vertical_alignment = 1
+
+[node name="NameEdit" type="LineEdit" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+max_length = 20
+
+[node name="EditorColumns" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 40
+
+[node name="FormsColumn" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/EditorColumns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="BodyForm" parent="ScreenCenter/Card/CardBody/ContentBox/EditorColumns/FormsColumn" instance=ExtResource("5_body_form")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="DividerBetweenForms" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox/EditorColumns/FormsColumn"]
+layout_mode = 2
+
+[node name="AppearanceForm" parent="ScreenCenter/Card/CardBody/ContentBox/EditorColumns/FormsColumn" instance=ExtResource("6_look_form")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CharacterPreview" parent="ScreenCenter/Card/CardBody/ContentBox/EditorColumns" instance=ExtResource("7_preview")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CalibrationRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="CalibrationStatusLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/CalibrationRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 17
+text = "Body calibration:"
+vertical_alignment = 1
+
+[node name="RecalibrateButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CalibrationRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(190, 46)
+layout_mode = 2
+text = "RECALIBRATE"
+
+[node name="ButtonsRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="BackButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 50)
+layout_mode = 2
+text = "BACK"
+
+[node name="SwitchProfileButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+text = "SWITCH PROFILE"
+
+[node name="RowSpacer" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="SaveButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 50)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "SAVE"

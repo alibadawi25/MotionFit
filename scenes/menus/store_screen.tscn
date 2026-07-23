@@ -1,0 +1,214 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/store_screen.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
+[ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
+
+[sub_resource type="StyleBoxFlat" id="balance_style"]
+content_margin_left = 20.0
+content_margin_top = 14.0
+content_margin_right = 20.0
+content_margin_bottom = 14.0
+bg_color = Color(0.06, 0.08, 0.12, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.32)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[node name="StoreScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_bg")
+stretch_mode = 6
+
+[node name="DimScrim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.01, 0.02, 0.04, 0.66)
+
+[node name="ScreenCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="ScreenCenter"]
+custom_minimum_size = Vector2(1180, 0)
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_card")
+
+[node name="CardBody" type="VBoxContainer" parent="ScreenCenter/Card"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AccentBar" type="ColorRect" parent="ScreenCenter/Card/CardBody"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 38
+text = "STORE"
+
+[node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+text = "Everything here is earned by moving. Nothing changes how hard you work — it just makes it yours."
+autowrap_mode = 3
+
+[node name="ContentBox" type="VBoxContainer" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="BalanceRow" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("balance_style")
+
+[node name="BalanceBody" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="BalanceLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 30
+text = "◆ 0"
+vertical_alignment = 1
+
+[node name="BalanceText" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+alignment = 1
+
+[node name="HowEarnedLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody/BalanceText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 15
+text = "Earned by finishing sessions and hitting your daily goal."
+
+[node name="NoGrindLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody/BalanceText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "Today's goal already pays the most — extra sessions are a bonus, never a target."
+
+[node name="CategoryTabs" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="KitTab" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CategoryTabs"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "KIT"
+metadata/category_id = "kit"
+
+[node name="GlovesTab" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CategoryTabs"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "GLOVES"
+metadata/category_id = "gloves"
+
+[node name="HairTab" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CategoryTabs"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "HAIR"
+metadata/category_id = "hair"
+
+[node name="ColoursTab" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CategoryTabs"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "COLOURS"
+metadata/category_id = "colour"
+
+[node name="VenueTab" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CategoryTabs"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "VENUE"
+metadata/category_id = "venue"
+
+[node name="Scroll" type="ScrollContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+custom_minimum_size = Vector2(0, 560)
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_scroll_mode = 0
+
+[node name="ScrollBody" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 18
+
+[node name="CatalogueGrid" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 14
+columns = 3
+
+[node name="DividerAboveAwards" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+layout_mode = 2
+
+[node name="AwardsCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "AWARDS — EARNED, NEVER SOLD"
+
+[node name="AwardsShelf" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 14
+columns = 3
+
+[node name="BackButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+text = "BACK"

@@ -1,7 +1,124 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/camera_test.gd" id="1"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="2_theme"]
+[ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="3_anton"]
+
+[sub_resource type="StyleBoxFlat" id="mirror_frame"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 1, 1, 0.18)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="status_pill"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+bg_color = Color(0.02, 0.03, 0.05, 0.8)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="back_normal"]
+bg_color = Color(0.06, 0.08, 0.12, 0.82)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.16)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="back_hover"]
+bg_color = Color(0.12, 0.15, 0.22, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="lamp_steps"]
+bg_color = Color(1, 1, 1, 0.18)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="lamp_jump"]
+bg_color = Color(1, 1, 1, 0.18)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="lamp_crouch"]
+bg_color = Color(1, 1, 1, 0.18)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="card_steps"]
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+bg_color = Color(0.06, 0.08, 0.12, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.12)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="card_jump"]
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+bg_color = Color(0.06, 0.08, 0.12, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.12)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="card_crouch"]
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+bg_color = Color(0.06, 0.08, 0.12, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.12)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
 
 [node name="CameraTest" type="Control"]
 layout_mode = 3
@@ -22,3 +139,240 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 color = Color(0.02, 0.03, 0.06, 1)
+
+[node name="TitleLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 56.0
+offset_bottom = 130.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("3_anton")
+theme_override_font_sizes/font_size = 62
+text = "CAMERA TEST"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 134.0
+offset_bottom = 168.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 24
+text = "Move in front of the camera and watch each action turn green"
+horizontal_alignment = 1
+
+[node name="CameraMirror" type="TextureRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 96.0
+offset_top = 220.0
+offset_right = 1036.0
+offset_bottom = 925.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MirrorFrame" type="Panel" parent="CameraMirror"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("mirror_frame")
+
+[node name="CameraStatusPill" type="Label" parent="CameraMirror"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 14.0
+offset_top = 14.0
+offset_right = 14.0
+offset_bottom = 14.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("status_pill")
+text = "●  CAMERA OFF"
+
+[node name="BannerLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 96.0
+offset_top = 936.0
+offset_right = 1036.0
+offset_bottom = 998.0
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("3_anton")
+theme_override_font_sizes/font_size = 40
+text = "STANDING STILL"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HintLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 96.0
+offset_top = 1002.0
+offset_right = 1036.0
+offset_bottom = 1036.0
+theme_override_colors/font_color = Color(0.6, 0.65, 0.72, 1)
+theme_override_font_sizes/font_size = 20
+text = "Walk in place, jump, or squat to test"
+horizontal_alignment = 1
+
+[node name="ActionCards" type="VBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 1092.0
+offset_top = 220.0
+offset_right = 1824.0
+offset_bottom = 925.0
+theme_override_constants/separation = 26
+
+[node name="StepsCard" type="PanelContainer" parent="ActionCards"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+theme_override_styles/panel = SubResource("card_steps")
+
+[node name="CardRow" type="HBoxContainer" parent="ActionCards/StepsCard"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="StepsLamp" type="Panel" parent="ActionCards/StepsCard/CardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("lamp_steps")
+
+[node name="CardText" type="VBoxContainer" parent="ActionCards/StepsCard/CardRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="CardTitle" type="Label" parent="ActionCards/StepsCard/CardRow/CardText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 28
+text = "WALK IN PLACE"
+
+[node name="StepsValue" type="Label" parent="ActionCards/StepsCard/CardRow/CardText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("3_anton")
+theme_override_font_sizes/font_size = 46
+text = "0"
+
+[node name="StepsStatus" type="Label" parent="ActionCards/StepsCard/CardRow/CardText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.65, 0.72, 1)
+theme_override_font_sizes/font_size = 20
+text = "Walk in place to test"
+
+[node name="JumpCard" type="PanelContainer" parent="ActionCards"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+theme_override_styles/panel = SubResource("card_jump")
+
+[node name="CardRow" type="HBoxContainer" parent="ActionCards/JumpCard"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="JumpLamp" type="Panel" parent="ActionCards/JumpCard/CardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("lamp_jump")
+
+[node name="CardText" type="VBoxContainer" parent="ActionCards/JumpCard/CardRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="CardTitle" type="Label" parent="ActionCards/JumpCard/CardRow/CardText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 28
+text = "JUMP"
+
+[node name="JumpValue" type="Label" parent="ActionCards/JumpCard/CardRow/CardText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("3_anton")
+theme_override_font_sizes/font_size = 46
+text = "0"
+
+[node name="JumpStatus" type="Label" parent="ActionCards/JumpCard/CardRow/CardText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.65, 0.72, 1)
+theme_override_font_sizes/font_size = 20
+text = "Jump up to test"
+
+[node name="CrouchCard" type="PanelContainer" parent="ActionCards"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+theme_override_styles/panel = SubResource("card_crouch")
+
+[node name="CardRow" type="HBoxContainer" parent="ActionCards/CrouchCard"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="CrouchLamp" type="Panel" parent="ActionCards/CrouchCard/CardRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("lamp_crouch")
+
+[node name="CardText" type="VBoxContainer" parent="ActionCards/CrouchCard/CardRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="CardTitle" type="Label" parent="ActionCards/CrouchCard/CardRow/CardText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 28
+text = "SQUAT / BOW DOWN"
+
+[node name="CrouchValue" type="Label" parent="ActionCards/CrouchCard/CardRow/CardText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("3_anton")
+theme_override_font_sizes/font_size = 46
+text = "0"
+
+[node name="CrouchStatus" type="Label" parent="ActionCards/CrouchCard/CardRow/CardText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.65, 0.72, 1)
+theme_override_font_sizes/font_size = 20
+text = "Squat or bow down to test"
+
+[node name="BackButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+offset_left = 48.0
+offset_top = 44.0
+offset_right = 214.0
+offset_bottom = 96.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("back_normal")
+theme_override_styles/hover = SubResource("back_hover")
+theme_override_styles/pressed = SubResource("back_hover")
+text = "◄  MENU"

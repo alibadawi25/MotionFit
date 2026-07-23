@@ -1,8 +1,28 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/fitness_screen.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/stat_card.tres" id="5_tile"]
+[ext_resource type="Script" uid="uid://cac18ipm7ue0t" path="res://scripts/ui/bar_chart.gd" id="6_chart"]
+[ext_resource type="Script" uid="uid://byyk164xe5nsf" path="res://scripts/ui/heat_calendar.gd" id="7_calendar"]
+
+[sub_resource type="StyleBoxFlat" id="notice_style"]
+content_margin_left = 22.0
+content_margin_top = 16.0
+content_margin_right = 22.0
+content_margin_bottom = 16.0
+bg_color = Color(1, 0.5, 0.14, 0.12)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.5)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [node name="FitnessScreen" type="Control"]
 layout_mode = 3
@@ -33,4 +53,290 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.01, 0.02, 0.04, 0.74)
+color = Color(0.01, 0.02, 0.04, 0.66)
+
+[node name="ScreenCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="ScreenCenter"]
+custom_minimum_size = Vector2(1180, 0)
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_card")
+
+[node name="CardBody" type="VBoxContainer" parent="ScreenCenter/Card"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AccentBar" type="ColorRect" parent="ScreenCenter/Card/CardBody"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 38
+text = "FITNESS"
+
+[node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+text = "Your movement, at a glance"
+autowrap_mode = 3
+
+[node name="ContentBox" type="VBoxContainer" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="GoalEditorRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="GoalCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/GoalEditorRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "DAILY GOAL"
+vertical_alignment = 1
+
+[node name="RowSpacer" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/GoalEditorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="GoalAutoToggle" type="CheckButton" parent="ScreenCenter/Card/CardBody/ContentBox/GoalEditorRow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Adapt the goal to your recent activity"
+text = "AUTO"
+
+[node name="GoalSpin" type="SpinBox" parent="ScreenCenter/Card/CardBody/ContentBox/GoalEditorRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+min_value = 50.0
+max_value = 5000.0
+step = 50.0
+value = 300.0
+alignment = 1
+suffix = " kcal"
+
+[node name="DividerUnderGoal" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+
+[node name="Stats" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 22
+
+[node name="EmptyNotice" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("notice_style")
+
+[node name="NoticeLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/EmptyNotice"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.7, 0.4, 1)
+theme_override_font_sizes/font_size = 17
+text = "No movement logged yet — play your first game and your calories, streak and consistency start filling in here."
+autowrap_mode = 3
+
+[node name="KpiRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="TodayCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = ExtResource("5_tile")
+
+[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TodayValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0 / 0"
+
+[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 14
+text = "kcal"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/TodayCard/Tile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "TODAY"
+
+[node name="StreakCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = ExtResource("5_tile")
+
+[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="StreakValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 14
+text = "days"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/StreakCard/Tile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "STREAK"
+
+[node name="WeekCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = ExtResource("5_tile")
+
+[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="WeekValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 14
+text = "kcal"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/WeekCard/Tile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "THIS WEEK"
+
+[node name="AverageCard" type="PanelContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = ExtResource("5_tile")
+
+[node name="Tile" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="AverageValue" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 14
+text = "kcal"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/KpiRow/AverageCard/Tile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "DAILY AVG"
+
+[node name="DividerUnderKpis" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox/Stats"]
+layout_mode = 2
+
+[node name="ChartColumns" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 32
+
+[node name="CaloriesColumn" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.15
+theme_override_constants/separation = 10
+
+[node name="ColumnCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/CaloriesColumn"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "CALORIES · LAST 7 DAYS"
+
+[node name="CalorieChart" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/CaloriesColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+script = ExtResource("6_chart")
+
+[node name="ConsistencyColumn" type="VBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="ConsistencyCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/ConsistencyColumn"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "CONSISTENCY · LAST 17 WEEKS"
+
+[node name="ConsistencyCalendar" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/ConsistencyColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 168)
+layout_mode = 2
+size_flags_horizontal = 3
+script = ExtResource("7_calendar")
+
+[node name="BackButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+text = "BACK"

@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/settings_menu.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
 
 [node name="SettingsMenu" type="Control"]
 layout_mode = 3
@@ -34,3 +35,172 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 color = Color(0.01, 0.02, 0.04, 0.66)
+
+[node name="ScreenCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="ScreenCenter"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_card")
+
+[node name="CardBody" type="VBoxContainer" parent="ScreenCenter/Card"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AccentBar" type="ColorRect" parent="ScreenCenter/Card/CardBody"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 38
+text = "SETTINGS"
+
+[node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+text = "Audio preferences."
+autowrap_mode = 3
+
+[node name="ContentBox" type="VBoxContainer" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="MasterVolumeRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/MasterVolumeRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "Master"
+vertical_alignment = 1
+
+[node name="MasterSlider" type="HSlider" parent="ScreenCenter/Card/CardBody/ContentBox/MasterVolumeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+
+[node name="MasterReadout" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/MasterVolumeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 20
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="MusicVolumeRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/MusicVolumeRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "Music"
+vertical_alignment = 1
+
+[node name="MusicSlider" type="HSlider" parent="ScreenCenter/Card/CardBody/ContentBox/MusicVolumeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+
+[node name="MusicReadout" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/MusicVolumeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 20
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="SfxVolumeRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/SfxVolumeRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "SFX"
+vertical_alignment = 1
+
+[node name="SfxSlider" type="HSlider" parent="ScreenCenter/Card/CardBody/ContentBox/SfxVolumeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+
+[node name="SfxReadout" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/SfxVolumeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 20
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="DividerAboveCamera" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+
+[node name="CameraRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/CameraRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "Camera"
+vertical_alignment = 1
+
+[node name="TestCameraButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/CameraRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "TEST CAMERA"
+
+[node name="DividerAboveBack" type="HSeparator" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+text = "BACK"

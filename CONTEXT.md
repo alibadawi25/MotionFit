@@ -110,6 +110,33 @@ is exactly what a 20-game platform needs.
 | Node names (in scenes)    | PascalCase          | `PlayButton`, `CardContainer` |
 | Registry / save keys      | snake_case strings  | `"game_id"`, `"xp"`         |
 
+### 4.1 UI lives in the scene, not the script
+
+Menu and HUD layout is **authored in `.tscn`**, so it can be seen and edited in
+the Godot editor instead of only existing at runtime. A UI script should read as
+"fill in and wire up", not "build".
+
+- Every node that exists for a fixed reason gets a **clear PascalCase name**
+  (`MasterVolumeRow`, `CalorieBar`, `PeakHrCard`) and is authored in the scene —
+  including nodes that are conditionally shown. Prefer `visible = false` in the
+  scene plus a line in `_ready()` over building the node in code.
+- Scripts reach their widgets by **unique name** (`%GoalSpin`), declared with
+  `unique_name_in_owner = true` on the node. Structural nodes (rows, spacers,
+  padding) stay un-unique — they're layout, not API.
+- Colours, fonts, styleboxes and spacing belong on the node as theme overrides or
+  a `StyleBoxFlat` sub-resource, so they're tweakable in the inspector. Shared
+  chrome lives in `assets/ui/styles/*.tres` (`screen_card.tres` is the centred
+  menu card; `stat_card.tres` is the dashboard KPI tile).
+- **Build in code only what is genuinely per-item**: one card per saved profile,
+  per catalogue entry, per achievement, per registered game. Those loops append
+  into a scene-authored container (`%CardsRow`, `%AchievementGrid`, `%StatGrid`).
+- Reusable widget groups are their own scenes under `scenes/ui/`
+  (`profile_form.tscn`, `appearance_form.tscn`, `character_preview.tscn`) —
+  instance them, never `Node.new()` the `class_name`.
+- The centred-card screens share `PanelScreen` (`scripts/ui/panel_screen.gd`),
+  which is now just the palette plus `set_header()`; each screen's `.tscn`
+  supplies `%TitleLabel`, `%SubtitleLabel` and `%ContentBox`.
+
 ---
 
 ## 5. Managers (Autoload Singletons)
@@ -895,9 +922,10 @@ same controller works with the camera today or another input source later.
 	  weight/height/age/sex into `ProfileManager` (data layer already existed). A new
 	  `onboarded` flag (`ProfileManager.is_onboarded()`/`mark_onboarded()`) gates the
 	  one-time setup; the main menu redirects to it on first run and otherwise shows a
-	  PROFILE button. Screens are code-built on a shared `PanelScreen` base
-	  (`scripts/ui/panel_screen.gd`) using a reusable `ProfileForm`
-	  (`scripts/ui/profile_form.gd`); paths/loaders live in `SceneManager`
+	  PROFILE button. Screens are laid out in their own `.tscn` on a shared
+	  `PanelScreen` base (`scripts/ui/panel_screen.gd`, see §4.1) and instance the
+	  reusable `ProfileForm` scene (`scenes/ui/profile_form.tscn` +
+	  `scripts/ui/profile_form.gd`); paths/loaders live in `SceneManager`
 	  (`PROFILE_SETUP`/`PROFILE`). The profile screen's top row shows REAL lifetime
 	  fitness totals derived from `ActivityManager` (calories, steps, active minutes,
 	  workouts) — deliberately NOT XP/Level. XP/Level still accrue in ProfileManager

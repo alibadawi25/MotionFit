@@ -9,40 +9,27 @@ extends PanelScreen
 ##
 ## Pure presentation: AchievementManager owns the catalog and the unlock state;
 ## this screen only reads and lays out.
+##
+## The page chrome — card, scroll region, section captions and the two grids —
+## is authored in scenes/menus/achievements_screen.tscn. Only the cards THEMSELVES
+## are built here, since there is one per catalog entry.
 
 const GOLD: Color = Color(1.0, 0.79, 0.28)
 const LOCKED_TEXT: Color = Color(0.55, 0.59, 0.66)
 const CARD_BG: Color = Color(0.06, 0.08, 0.12, 0.85)
 const CARD_BG_DONE: Color = Color(0.10, 0.09, 0.06, 0.9)
 
+@onready var _discovery_shelf: GridContainer = %DiscoveryShelf
+@onready var _achievement_grid: GridContainer = %AchievementGrid
+@onready var _back_button: Button = %BackButton
+
 func _ready() -> void:
 	var unlocked: int = AchievementManager.get_unlocked_count()
 	var total: int = AchievementManager.get_definitions().size()
-	var subtitle: String = _subtitle(unlocked, total)
-	var box := build_panel("ACHIEVEMENTS", subtitle, 1180.0)
-
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 640)
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	box.add_child(scroll)
-
-	var content := VBoxContainer.new()
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_theme_constant_override("separation", 18)
-	scroll.add_child(content)
-
-	content.add_child(_section_caption("WORLD DISCOVERIES — HIDDEN PLACES IN THE OPEN WORLD"))
-	content.add_child(_build_discovery_shelf())
-	content.add_child(HSeparator.new())
-	content.add_child(_section_caption("ACHIEVEMENTS"))
-	content.add_child(_build_achievement_grid())
-
-	var back_button := Button.new()
-	back_button.text = "BACK"
-	back_button.custom_minimum_size = Vector2(150, 50)
-	back_button.pressed.connect(SceneManager.load_main_menu)
-	box.add_child(back_button)
+	set_header("", _subtitle(unlocked, total))
+	_fill_discovery_shelf()
+	_fill_achievement_grid()
+	_back_button.pressed.connect(SceneManager.load_main_menu)
 
 
 ## An encouraging header line — progress framed as a journey, not a deficit.
@@ -54,26 +41,12 @@ func _subtitle(unlocked: int, total: int) -> String:
 	return "%d of %d earned — keep moving, the rest are on their way." % [unlocked, total]
 
 
-func _section_caption(text: String) -> Label:
-	var caption := Label.new()
-	caption.text = text
-	caption.add_theme_font_size_override("font_size", 15)
-	caption.add_theme_color_override("font_color", CAPTION_COLOR)
-	return caption
-
-
 ## The five landmark cards in a row: a found place shows its name; an unfound
 ## one shows "???" — but its hint is always visible, because the hint IS the
 ## invitation to go walking.
-func _build_discovery_shelf() -> Control:
-	var grid := GridContainer.new()
-	grid.columns = 5
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation", 12)
-	grid.add_theme_constant_override("v_separation", 12)
+func _fill_discovery_shelf() -> void:
 	for defn in AchievementManager.get_discoveries():
-		grid.add_child(_discovery_card(defn))
-	return grid
+		_discovery_shelf.add_child(_discovery_card(defn))
 
 
 func _discovery_card(defn: Dictionary) -> Control:
@@ -114,17 +87,11 @@ func _discovery_card(defn: Dictionary) -> Control:
 
 
 ## The main catalog in two columns, discoveries excluded (they have the shelf).
-func _build_achievement_grid() -> Control:
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation", 14)
-	grid.add_theme_constant_override("v_separation", 14)
+func _fill_achievement_grid() -> void:
 	for defn in AchievementManager.get_definitions():
 		if String(defn.get("category", "")) == "discovery":
 			continue
-		grid.add_child(_achievement_card(defn))
-	return grid
+		_achievement_grid.add_child(_achievement_card(defn))
 
 
 func _achievement_card(defn: Dictionary) -> Control:

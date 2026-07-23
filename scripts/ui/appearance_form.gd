@@ -3,24 +3,18 @@ class_name AppearanceForm
 ## AppearanceForm
 ##
 ## Reusable input group for the character's look — hair/top/bottom styles,
-## their colors, and skin tone. Options and swatch colors come from
-## CharacterFactory's catalogs (mirroring export_glb.py), so a style added to
-## the generator shows up here by updating one place. Body SHAPE has no inputs
-## here on purpose: it is derived from the physical attributes in ProfileForm.
+## their colors, and skin tone. Body SHAPE has no inputs here on purpose: it is
+## derived from the physical attributes in ProfileForm.
 ##
-## Styled to line up with ProfileForm rows, since the two stack on the profile
-## screen.
+## The rows and pickers are authored in scenes/ui/appearance_form.tscn (instance
+## it, don't `new()` it), styled to line up with ProfileForm's rows since the two
+## stack on the profile screen. Only the picker ITEMS are filled in code: they
+## come from CharacterFactory's catalogs (mirroring export_glb.py), so a style
+## added to the generator shows up here without touching the scene.
 
 ## Emitted whenever any picker changes, so the profile screen can refresh its
 ## live character preview.
 signal changed
-
-const LABEL_COLOR := Color(0.86, 0.89, 0.94)
-const ROW_LABEL_WIDTH := 150.0
-## Style and color pickers share a row (Hair: [style][color]) to keep the form
-## short enough that the profile screen fits 1080p with the preview beside it.
-const STYLE_WIDTH := 190.0
-const COLOR_WIDTH := 160.0
 
 ## Catalog names → friendlier labels; anything not listed is shown capitalized.
 const PRETTY_NAMES: Dictionary = {
@@ -30,31 +24,22 @@ const PRETTY_NAMES: Dictionary = {
 	"tank": "Tank top",
 }
 
-var _hair: OptionButton
-var _hair_color: OptionButton
-var _top: OptionButton
-var _top_color: OptionButton
-var _bottom: OptionButton
-var _bottom_color: OptionButton
-var _skin: OptionButton
+@onready var _hair: OptionButton = %HairStyleOption
+@onready var _hair_color: OptionButton = %HairColorOption
+@onready var _top: OptionButton = %TopStyleOption
+@onready var _top_color: OptionButton = %TopColorOption
+@onready var _bottom: OptionButton = %BottomStyleOption
+@onready var _bottom_color: OptionButton = %BottomColorOption
+@onready var _skin: OptionButton = %SkinToneOption
 
 func _ready() -> void:
-	add_theme_constant_override("separation", 16)
-	var hair_row := _make_row("Hair")
-	_hair = _add_options(hair_row, CharacterFactory.HAIR_STYLES, {}, STYLE_WIDTH)
-	_hair_color = _add_options(hair_row,
-			CharacterFactory.HAIR_COLORS.keys(), CharacterFactory.HAIR_COLORS, COLOR_WIDTH)
-	var top_row := _make_row("Top")
-	_top = _add_options(top_row, CharacterFactory.TOP_STYLES, {}, STYLE_WIDTH)
-	_top_color = _add_options(top_row,
-			CharacterFactory.TOP_COLORS.keys(), CharacterFactory.TOP_COLORS, COLOR_WIDTH)
-	var bottom_row := _make_row("Bottom")
-	_bottom = _add_options(bottom_row, CharacterFactory.BOTTOM_STYLES, {}, STYLE_WIDTH)
-	_bottom_color = _add_options(bottom_row,
-			CharacterFactory.BOTTOM_COLORS.keys(), CharacterFactory.BOTTOM_COLORS, COLOR_WIDTH)
-	var skin_row := _make_row("Skin tone")
-	_skin = _add_options(skin_row,
-			CharacterFactory.SKIN_TONES.keys(), CharacterFactory.SKIN_TONES, STYLE_WIDTH)
+	_fill_options(_hair, CharacterFactory.HAIR_STYLES, {})
+	_fill_options(_hair_color, CharacterFactory.HAIR_COLORS.keys(), CharacterFactory.HAIR_COLORS)
+	_fill_options(_top, CharacterFactory.TOP_STYLES, {})
+	_fill_options(_top_color, CharacterFactory.TOP_COLORS.keys(), CharacterFactory.TOP_COLORS)
+	_fill_options(_bottom, CharacterFactory.BOTTOM_STYLES, {})
+	_fill_options(_bottom_color, CharacterFactory.BOTTOM_COLORS.keys(), CharacterFactory.BOTTOM_COLORS)
+	_fill_options(_skin, CharacterFactory.SKIN_TONES.keys(), CharacterFactory.SKIN_TONES)
 	load_from_profile()
 	# Wire change notifications AFTER the initial fill so loading doesn't fire.
 	for opt in [_hair, _hair_color, _top, _top_color, _bottom, _bottom_color, _skin]:
@@ -94,29 +79,12 @@ func get_appearance() -> Dictionary:
 
 # --- Internals ----------------------------------------------------------------
 
-## Builds a labelled row (matching ProfileForm's row styling) that pickers are
-## then appended to via [method _add_options].
-func _make_row(label_text: String) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 18)
-	var label := Label.new()
-	label.text = label_text
-	label.custom_minimum_size = Vector2(ROW_LABEL_WIDTH, 0)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 22)
-	label.add_theme_color_override("font_color", LABEL_COLOR)
-	row.add_child(label)
-	add_child(row)
-	return row
-
-
-## Appends an OptionButton to [param row]. [param names] are the catalog values
-## (stored as item metadata; display text is prettified); when [param swatches]
-## maps a name to a Color, the item gets a swatch icon.
-func _add_options(row: HBoxContainer, names: Array, swatches: Dictionary,
-		width: float) -> OptionButton:
-	var opt := OptionButton.new()
-	opt.custom_minimum_size = Vector2(width, 40)
+## Fills a scene-authored OptionButton from a CharacterFactory catalog. [param
+## names] are the catalog values (stored as item metadata; display text is
+## prettified); when [param swatches] maps a name to a Color, the item gets a
+## swatch icon.
+func _fill_options(opt: OptionButton, names: Array, swatches: Dictionary) -> void:
+	opt.clear()
 	for name in names:
 		var value := String(name)
 		if swatches.has(value):
@@ -124,8 +92,6 @@ func _add_options(row: HBoxContainer, names: Array, swatches: Dictionary,
 		else:
 			opt.add_item(_pretty(value))
 		opt.set_item_metadata(opt.item_count - 1, value)
-	row.add_child(opt)
-	return opt
 
 
 ## The catalog name behind the selected item ("" only if nothing is selected,

@@ -8,8 +8,10 @@ extends Control
 ## pre-focused so Enter re-picks it. "＋ Add" creates a new one, and an Edit
 ## toggle reveals a ✕ on each card that asks for confirmation before deleting.
 ##
-## Built entirely in code (like GameIntro / the results screen) so it needs only a
-## bare themed root scene.
+## The screen's fixed furniture — backdrop, glow, header, the cards row, the Edit
+## and Quit buttons and the delete-confirmation dialog — is authored in
+## scenes/menus/profile_picker.tscn. Only the cards themselves are built here,
+## since there is one per saved profile.
 
 const ACCENT := Color(1, 0.5, 0.14)
 const CARD_SIZE := Vector2(232, 244)
@@ -28,126 +30,35 @@ const BADGE_COLORS: Array[Color] = [
 	Color(0.58, 0.84, 0.4),   # lime
 ]
 
+@onready var _cards_row: HBoxContainer = %CardsRow
+@onready var _edit_button: Button = %EditProfilesButton
+@onready var _subtitle: Label = %SubtitleLabel
+@onready var _header: VBoxContainer = %Header
+@onready var _quit_button: Button = %QuitButton
+@onready var _confirm_layer: ColorRect = %DeleteConfirmLayer
+@onready var _confirm_title: Label = %ConfirmTitleLabel
+@onready var _cancel_button: Button = %CancelButton
+@onready var _remove_button: Button = %RemoveButton
+
 var _edit_mode: bool = false
-var _cards_row: HBoxContainer
-var _edit_button: Button
-var _subtitle: Label
-var _header: VBoxContainer
-## The delete-confirmation overlay while it's open (null otherwise); Escape
-## closes it instead of quitting the app.
-var _confirm_layer: Control = null
+## The profile the open confirmation dialog would delete ("" when it's closed).
+var _pending_delete_id: String = ""
 
 func _ready() -> void:
-	_build()
-	_play_entrance()
-
-
-func _build() -> void:
-	# Dark backdrop with a soft radial glow behind the content so the screen has
-	# depth instead of a flat fill.
-	var bg := ColorRect.new()
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.03, 0.04, 0.07)
-	add_child(bg)
-	add_child(_make_glow())
-
-	var column := VBoxContainer.new()
-	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_theme_constant_override("separation", 40)
-	add_child(column)
-
-	_header = VBoxContainer.new()
-	_header.add_theme_constant_override("separation", 14)
-	column.add_child(_header)
-
-	var accent := ColorRect.new()
-	accent.color = ACCENT
-	accent.custom_minimum_size = Vector2(72, 6)
-	accent.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_header.add_child(accent)
-
-	var title := Label.new()
-	title.text = "WHO'S PLAYING?"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 52)
-	title.add_theme_color_override("font_color", TITLE_COLOR)
-	var anton: Font = load("res://assets/fonts/Anton-Regular.ttf")
-	if anton != null:
-		title.add_theme_font_override("font", anton)
-	_header.add_child(title)
-
-	_subtitle = Label.new()
-	_subtitle.text = "Everyone keeps their own progress, levels and calibration."
-	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_subtitle.add_theme_font_size_override("font_size", 17)
-	_subtitle.add_theme_color_override("font_color", MUTED)
-	_header.add_child(_subtitle)
-
-	_cards_row = HBoxContainer.new()
-	_cards_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_cards_row.add_theme_constant_override("separation", 26)
-	column.add_child(_cards_row)
-	_rebuild_cards()
-
-	# Edit toggle (reveals per-card delete), centred under the cards.
-	_edit_button = Button.new()
-	_edit_button.custom_minimum_size = Vector2(170, 48)
-	_edit_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_edit_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_edit_button.add_theme_font_size_override("font_size", 17)
 	_edit_button.pressed.connect(_on_toggle_edit)
-	_style_edit_button()
-	column.add_child(_edit_button)
-
 	# This is the first screen of the launch and has no "back" — without an
-	# explicit quit the only way out is Alt+F4. A corner button (and Escape)
+	# explicit quit the only way out is Alt+F4. The corner button (and Escape)
 	# closes the app, matching the main menu's QUIT.
-	_build_quit_button()
-
-
-## Soft radial glow centred a little above the middle, where the cards sit.
-func _make_glow() -> TextureRect:
-	var gradient := Gradient.new()
-	gradient.colors = PackedColorArray([Color(0.11, 0.14, 0.21, 1.0), Color(0.03, 0.04, 0.07, 0.0)])
-	gradient.offsets = PackedFloat32Array([0.0, 1.0])
-	var tex := GradientTexture2D.new()
-	tex.gradient = gradient
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.45)
-	tex.fill_to = Vector2(1.0, 0.45)
-	var rect := TextureRect.new()
-	rect.texture = tex
-	rect.stretch_mode = TextureRect.STRETCH_SCALE
-	rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return rect
-
-
-func _build_quit_button() -> void:
-	var quit := Button.new()
-	quit.text = "✕  QUIT"
-	quit.focus_mode = Control.FOCUS_NONE
-	quit.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	quit.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	quit.offset_left = -214.0
-	quit.offset_top = 44.0
-	quit.offset_right = -48.0
-	quit.offset_bottom = 96.0
-	quit.add_theme_font_size_override("font_size", 20)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.08, 0.12, 0.82)
-	sb.set_corner_radius_all(10)
-	sb.set_border_width_all(1)
-	sb.border_color = Color(1, 1, 1, 0.16)
-	var hover := sb.duplicate()
-	hover.bg_color = Color(0.12, 0.15, 0.22, 0.95)
-	hover.border_color = ACCENT
-	quit.add_theme_stylebox_override("normal", sb)
-	quit.add_theme_stylebox_override("hover", hover)
-	quit.add_theme_stylebox_override("pressed", hover)
-	quit.pressed.connect(_on_quit)
-	add_child(quit)
+	_quit_button.pressed.connect(_on_quit)
+	_cancel_button.pressed.connect(_close_confirm)
+	_remove_button.pressed.connect(_on_delete_confirmed)
+	# A click on the dimmed backdrop also dismisses the dialog.
+	_confirm_layer.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed:
+			_close_confirm())
+	_style_edit_button()
+	_rebuild_cards()
+	_play_entrance()
 
 
 func _on_quit() -> void:
@@ -158,7 +69,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Escape is the expected "get me out" key: it closes the confirm dialog if
 	# one is open, otherwise quits (this screen has no back).
 	if event.is_action_pressed("ui_cancel"):
-		if is_instance_valid(_confirm_layer):
+		if _confirm_layer.visible:
 			_close_confirm()
 		else:
 			get_tree().quit()
@@ -412,112 +323,30 @@ func _style_edit_button() -> void:
 
 # --- Delete confirmation -----------------------------------------------------
 
-## In-scene confirmation overlay (styled like the rest of the screen, unlike a
-## stock ConfirmationDialog) so deleting a person's progress takes two clicks.
+## Opens the scene's confirmation overlay (styled like the rest of the screen,
+## unlike a stock ConfirmationDialog) so deleting a person's progress takes two
+## clicks. The card that asked is remembered until the dialog is answered.
 func _confirm_delete(id: String, name: String) -> void:
-	if is_instance_valid(_confirm_layer):
+	if _confirm_layer.visible:
 		return
-	var overlay := ColorRect.new()
-	overlay.color = Color(0, 0, 0, 0.62)
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventMouseButton and event.pressed:
-			_close_confirm())
-	_confirm_layer = overlay
-	add_child(overlay)
-
-	var panel := PanelContainer.new()
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.08, 0.1, 0.15, 0.98)
-	sb.set_corner_radius_all(18)
-	sb.set_border_width_all(1)
-	sb.border_color = Color(1, 1, 1, 0.14)
-	sb.shadow_color = Color(0, 0, 0, 0.5)
-	sb.shadow_size = 24
-	sb.content_margin_left = 36
-	sb.content_margin_right = 36
-	sb.content_margin_top = 30
-	sb.content_margin_bottom = 30
-	panel.add_theme_stylebox_override("panel", sb)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	overlay.add_child(center)
-	center.add_child(panel)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 12)
-	panel.add_child(vb)
-
-	var title := Label.new()
-	title.text = "Remove %s's profile?" % name
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", TITLE_COLOR)
-	vb.add_child(title)
-
-	var body := Label.new()
-	body.text = "Their level, stats and body calibration will be deleted.\nThis can't be undone."
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.add_theme_font_size_override("font_size", 15)
-	body.add_theme_color_override("font_color", MUTED)
-	vb.add_child(body)
-
-	var buttons := HBoxContainer.new()
-	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
-	buttons.add_theme_constant_override("separation", 14)
-	vb.add_child(buttons)
-
-	var cancel := Button.new()
-	cancel.text = "CANCEL"
-	cancel.custom_minimum_size = Vector2(150, 46)
-	cancel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	var cancel_sb := StyleBoxFlat.new()
-	cancel_sb.bg_color = Color(1, 1, 1, 0.06)
-	cancel_sb.set_corner_radius_all(12)
-	cancel_sb.set_border_width_all(1)
-	cancel_sb.border_color = Color(1, 1, 1, 0.18)
-	var cancel_hover := cancel_sb.duplicate()
-	cancel_hover.bg_color = Color(1, 1, 1, 0.12)
-	cancel.add_theme_stylebox_override("normal", cancel_sb)
-	cancel.add_theme_stylebox_override("hover", cancel_hover)
-	cancel.add_theme_stylebox_override("pressed", cancel_hover)
-	cancel.pressed.connect(_close_confirm)
-	buttons.add_child(cancel)
-
-	var remove := Button.new()
-	remove.text = "REMOVE"
-	remove.custom_minimum_size = Vector2(150, 46)
-	remove.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	remove.add_theme_color_override("font_color", Color(1, 1, 1))
-	var remove_sb := StyleBoxFlat.new()
-	remove_sb.bg_color = Color(DANGER.r, DANGER.g, DANGER.b, 0.9)
-	remove_sb.set_corner_radius_all(12)
-	var remove_hover := remove_sb.duplicate()
-	remove_hover.bg_color = DANGER
-	remove_hover.shadow_color = Color(DANGER.r, DANGER.g, DANGER.b, 0.35)
-	remove_hover.shadow_size = 10
-	remove.add_theme_stylebox_override("normal", remove_sb)
-	remove.add_theme_stylebox_override("hover", remove_hover)
-	remove.add_theme_stylebox_override("pressed", remove_hover)
-	remove.pressed.connect(_on_delete_confirmed.bind(id))
-	buttons.add_child(remove)
-
-	# Fade the whole overlay in.
-	overlay.modulate.a = 0.0
-	overlay.create_tween().tween_property(overlay, "modulate:a", 1.0, 0.15)
-	cancel.grab_focus.call_deferred()
+	_pending_delete_id = id
+	_confirm_title.text = "Remove %s's profile?" % name
+	_confirm_layer.visible = true
+	_confirm_layer.modulate.a = 0.0
+	_confirm_layer.create_tween().tween_property(_confirm_layer, "modulate:a", 1.0, 0.15)
+	_cancel_button.grab_focus.call_deferred()
 
 
 func _close_confirm() -> void:
-	if is_instance_valid(_confirm_layer):
-		_confirm_layer.queue_free()
-	_confirm_layer = null
+	_confirm_layer.visible = false
+	_pending_delete_id = ""
 
 
-func _on_delete_confirmed(id: String) -> void:
+func _on_delete_confirmed() -> void:
+	var id := _pending_delete_id
 	_close_confirm()
+	if id == "":
+		return
 	ProfileManager.delete_profile(id)
 	if not ProfileManager.has_profiles():
 		# Deleted the last one — back to first-run onboarding.

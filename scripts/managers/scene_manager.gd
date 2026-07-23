@@ -35,6 +35,7 @@ const CALIBRATION_SETUP: String = "res://scenes/menus/calibration_setup.tscn"
 const PROFILE: String = "res://scenes/menus/profile_screen.tscn"
 const FITNESS: String = "res://scenes/menus/fitness_screen.tscn"
 const ACHIEVEMENTS: String = "res://scenes/menus/achievements_screen.tscn"
+const STORE: String = "res://scenes/menus/store_screen.tscn"
 const CAMERA_TEST: String = "res://scenes/menus/camera_test.tscn"
 
 # --- Mini-game scenes ------------------------------------------------------
@@ -217,6 +218,10 @@ func load_fitness() -> void:
 
 func load_achievements() -> void:
 	change_scene(ACHIEVEMENTS)
+
+
+func load_store() -> void:
+	change_scene(STORE)
 
 
 func load_camera_test() -> void:

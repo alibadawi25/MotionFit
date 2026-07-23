@@ -1,8 +1,10 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/profile_setup.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/sprites/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
+[ext_resource type="StyleBoxFlat" path="res://assets/ui/styles/screen_card.tres" id="4_card"]
+[ext_resource type="PackedScene" path="res://scenes/ui/profile_form.tscn" id="5_form"]
 
 [node name="ProfileSetup" type="Control"]
 layout_mode = 3
@@ -34,3 +36,104 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 color = Color(0.01, 0.02, 0.04, 0.66)
+
+[node name="ScreenCenter" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Card" type="PanelContainer" parent="ScreenCenter"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_card")
+
+[node name="CardBody" type="VBoxContainer" parent="ScreenCenter/Card"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AccentBar" type="ColorRect" parent="ScreenCenter/Card/CardBody"]
+custom_minimum_size = Vector2(64, 5)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+color = Color(1, 0.5, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 38
+text = "CREATE YOUR PROFILE"
+
+[node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 17
+text = "Your name and body data stay on this device and give you accurate calories. You can change them anytime."
+autowrap_mode = 3
+
+[node name="ContentBox" type="VBoxContainer" parent="ScreenCenter/Card/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="NameRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="RowLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.89, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "Name"
+vertical_alignment = 1
+
+[node name="NameEdit" type="LineEdit" parent="ScreenCenter/Card/CardBody/ContentBox/NameRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+placeholder_text = "e.g. Ali"
+max_length = 20
+
+[node name="BodyForm" parent="ScreenCenter/Card/CardBody/ContentBox" instance=ExtResource("5_form")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="ButtonsSpacer" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox"]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ButtonsRow" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="BackButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 54)
+layout_mode = 2
+text = "BACK"
+
+[node name="QuitButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 54)
+layout_mode = 2
+text = "QUIT"
+
+[node name="RowSpacer" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="ContinueButton" type="Button" parent="ScreenCenter/Card/CardBody/ContentBox/ButtonsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 54)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "CONTINUE"

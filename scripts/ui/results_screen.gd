@@ -8,146 +8,99 @@ extends Control
 ## rate) and the progression earned (XP, level-ups), then offers Play Again /
 ## Game Select / Main Menu.
 ##
-## Built entirely in code (like [GameIntro]) so the layout can adapt to what was
-## actually measured — the heart-rate cards only appear when a wearable streamed —
-## and stays consistent with the platform's look without a hand-maintained scene.
+## The whole layout is authored in scenes/menus/results_screen.tscn: every stat
+## card exists up front and this script fills it in and hides what doesn't apply
+## (the heart-rate cards only show when a wearable actually streamed a rate; the
+## empty state replaces the summary when there's no result to report). Only the
+## achievement-unlock pills are built at runtime, since there's one per unlock.
 
-const ACCENT: Color = Color(1.0, 0.5, 0.14)
 const GOLD: Color = Color(1.0, 0.79, 0.28)
-const HEART: Color = Color(1.0, 0.42, 0.42)
-const TEXT: Color = Color(0.96, 0.97, 0.99)
+const ACCENT: Color = Color(1.0, 0.5, 0.14)
 const MUTED: Color = Color(0.62, 0.67, 0.75)
-const CARD_BG: Color = Color(0.08, 0.10, 0.15, 0.92)
-const CARD_BORDER: Color = Color(1, 1, 1, 0.08)
-const BG_TOP: Color = Color(0.05, 0.07, 0.11)
-const BG_BOTTOM: Color = Color(0.02, 0.03, 0.05)
 
-var _anton: Font
-var _theme: Theme
-var _first_button: Button
+@onready var _empty_state: VBoxContainer = %EmptyState
+@onready var _header: VBoxContainer = %Header
+@onready var _kicker: Label = %KickerLabel
+@onready var _game_title: Label = %GameTitleLabel
+@onready var _new_best_badge: PanelContainer = %NewBestBadge
+@onready var _encouragement_label: Label = %EncouragementLabel
+
+@onready var _stat_grid: GridContainer = %StatGrid
+@onready var _score_value: Label = %ScoreValue
+@onready var _score_sub: Label = %ScoreSubLabel
+@onready var _time_value: Label = %TimeValue
+@onready var _calories_value: Label = %CaloriesValue
+@onready var _steps_value: Label = %StepsValue
+@onready var _pace_value: Label = %PaceValue
+@onready var _xp_value: Label = %XpValue
+@onready var _avg_hr_card: PanelContainer = %AvgHrCard
+@onready var _avg_hr_value: Label = %AvgHrValue
+@onready var _peak_hr_card: PanelContainer = %PeakHrCard
+@onready var _peak_hr_value: Label = %PeakHrValue
+
+@onready var _unlocks_row: HBoxContainer = %UnlocksRow
+@onready var _progression_row: HBoxContainer = %ProgressionRow
+@onready var _level_up_badge: PanelContainer = %LevelUpBadge
+@onready var _level_up_label: Label = %LevelUpLabel
+@onready var _level_label: Label = %LevelLabel
+@onready var _total_xp_label: Label = %TotalXpLabel
+@onready var _next_goal_label: Label = %NextGoalLabel
+
+@onready var _play_again_button: Button = %PlayAgainButton
+@onready var _choose_game_button: Button = %ChooseGameButton
+@onready var _game_select_button: Button = %GameSelectButton
+@onready var _main_menu_button: Button = %MainMenuButton
 
 func _ready() -> void:
-	_anton = load("res://assets/fonts/Anton-Regular.ttf")
-	_theme = load("res://assets/ui/main_theme.tres")
-	theme = _theme
-	_build(GameManager.get_last_result())
+	_play_again_button.pressed.connect(GameManager.start_selected_game)
+	_choose_game_button.pressed.connect(SceneManager.load_game_select)
+	_game_select_button.pressed.connect(SceneManager.load_game_select)
+	_main_menu_button.pressed.connect(SceneManager.load_main_menu)
 
-
-func _build(result: Dictionary) -> void:
-	_build_background()
-
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 120)
-	margin.add_theme_constant_override("margin_right", 120)
-	margin.add_theme_constant_override("margin_top", 44)
-	margin.add_theme_constant_override("margin_bottom", 44)
-	add_child(margin)
-
-	var column := VBoxContainer.new()
-	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_theme_constant_override("separation", 26)
-	margin.add_child(column)
-
+	var result: Dictionary = GameManager.get_last_result()
 	if result.is_empty():
-		# Reached without a finished game behind it (e.g. straight from a menu):
-		# show a friendly placeholder instead of a misleading "workout complete".
-		_build_empty_state(column)
-		_build_buttons(column, true)
-	else:
-		_build_header(column, result)
-		_build_stat_grid(column, result)
-		_build_unlocks(column)
-		_build_progression(column, result)
-		_build_next_goal(column)
-		_build_buttons(column, false)
+		_show_empty_state()
+		_choose_game_button.grab_focus()
+		return
 
-	if _first_button != null:
-		_first_button.grab_focus()
+	_fill_header(result)
+	_fill_stat_grid(result)
+	_fill_unlocks()
+	_fill_progression(result)
+	_fill_next_goal()
+	_play_again_button.grab_focus()
 
 
-## Placeholder shown when there's no result to summarise: a large muted glyph, a
-## headline and one line telling the player what will fill this screen — on-brand
-## and pointing at the game library, never a blank or a false celebration.
-func _build_empty_state(parent: VBoxContainer) -> void:
-	var card := VBoxContainer.new()
-	card.alignment = BoxContainer.ALIGNMENT_CENTER
-	card.add_theme_constant_override("separation", 14)
-	parent.add_child(card)
-
-	var glyph := _label("◎", 96, ACCENT)
-	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card.add_child(glyph)
-
-	var title := _label("NO WORKOUT YET", 56, TEXT)
-	title.add_theme_font_override("font", _anton)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card.add_child(title)
-
-	var body := _label(
-		"Play any game and your summary — calories, steps, XP and new records — lands here.",
-		24, MUTED)
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.custom_minimum_size = Vector2(720, 0)
-	card.add_child(body)
+## Reached without a finished game behind it (e.g. straight from a menu): show
+## the friendly placeholder instead of a misleading "workout complete", and swap
+## Play Again for a route into the game library since there's nothing to replay.
+func _show_empty_state() -> void:
+	_empty_state.visible = true
+	_header.visible = false
+	_stat_grid.visible = false
+	_progression_row.visible = false
+	_play_again_button.visible = false
+	_game_select_button.visible = false
+	_choose_game_button.visible = true
 
 
-## A vertical dark gradient so the card stats read cleanly against it.
-func _build_background() -> void:
-	var bg := ColorRect.new()
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = BG_BOTTOM
-	add_child(bg)
-	var grad := Gradient.new()
-	grad.set_color(0, BG_TOP)
-	grad.set_color(1, BG_BOTTOM)
-	var tex := GradientTexture2D.new()
-	tex.gradient = grad
-	tex.fill_from = Vector2(0, 0)
-	tex.fill_to = Vector2(0, 1)
-	var rect := TextureRect.new()
-	rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	rect.texture = tex
-	rect.stretch_mode = TextureRect.STRETCH_SCALE
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(rect)
-
-
-func _build_header(parent: VBoxContainer, result: Dictionary) -> void:
-	var header := VBoxContainer.new()
-	header.alignment = BoxContainer.ALIGNMENT_CENTER
-	header.add_theme_constant_override("separation", 4)
-	parent.add_child(header)
-
+func _fill_header(result: Dictionary) -> void:
 	# A completed Daily Challenge gets its own gold kicker; every other session is
 	# the standard "workout complete".
 	var challenge_done: bool = bool(result.get("workout_completed", false))
-	var kicker_text: String = "★  DAILY CHALLENGE COMPLETE" if challenge_done else "WORKOUT COMPLETE"
-	var kicker := _label(kicker_text, 22, GOLD if challenge_done else ACCENT)
-	kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header.add_child(kicker)
+	_kicker.text = "★  DAILY CHALLENGE COMPLETE" if challenge_done else "WORKOUT COMPLETE"
+	_kicker.add_theme_color_override("font_color", GOLD if challenge_done else ACCENT)
 
 	var game_id: String = String(result.get("game_id", GameManager.get_current_game_id()))
 	var game: Dictionary = GameManager.get_game(game_id)
-	var title_text: String = String(game.get("title", "Results")).to_upper()
-	var title := _label(title_text, 72, TEXT)
-	title.add_theme_font_override("font", _anton)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header.add_child(title)
+	_game_title.text = String(game.get("title", "Results")).to_upper()
 
 	# A celebratory "NEW BEST" badge only when this run beat the stored record
 	# (and it's not just the first-ever play with a zero baseline).
-	if bool(result.get("new_best", false)) and int(result.get("score", 0)) > 0 \
-			and int(result.get("prev_best", 0)) > 0:
-		var badge := _pill_badge("★  NEW PERSONAL BEST", GOLD)
-		badge.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		header.add_child(badge)
+	_new_best_badge.visible = bool(result.get("new_best", false)) \
+			and int(result.get("score", 0)) > 0 and int(result.get("prev_best", 0)) > 0
 
-	if not result.is_empty():
-		var cheer := _label(_encouragement(result), 22, Color(0.85, 0.88, 0.94))
-		cheer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		header.add_child(cheer)
+	_encouragement_label.text = _encouragement(result)
 
 
 ## One warm line under the title, picked from what actually happened — a completed
@@ -186,213 +139,86 @@ func _first_name() -> String:
 	return name.split(" ")[0]
 
 
+func _fill_stat_grid(result: Dictionary) -> void:
+	var score: int = int(result.get("score", 0))
+	var prev_best: int = int(result.get("prev_best", 0))
+	_score_value.text = str(score)
+	if bool(result.get("new_best", false)) and prev_best > 0:
+		_score_sub.text = "Prev best  %d" % prev_best
+	elif prev_best > 0:
+		_score_sub.text = "Best  %d" % prev_best
+	_score_sub.visible = _score_sub.text != ""
+
+	_time_value.text = _format_duration(float(result.get("duration_sec", 0.0)))
+	_calories_value.text = "%.0f" % float(result.get("calories", 0.0))
+	_steps_value.text = str(int(result.get("steps", 0)))
+	_pace_value.text = "%.0f" % float(result.get("avg_cadence", 0.0))
+	_xp_value.text = "+%d" % int(result.get("xp_earned", 0))
+
+	# Heart-rate cards only when a wearable actually streamed a rate this session.
+	var peak: float = float(result.get("peak_heart_rate", 0.0))
+	_avg_hr_card.visible = peak > 0.0
+	_peak_hr_card.visible = peak > 0.0
+	if peak > 0.0:
+		_avg_hr_value.text = "%.0f" % float(result.get("avg_heart_rate", 0.0))
+		_peak_hr_value.text = "%.0f" % peak
+
+
 ## Gold pills for achievements earned since the last summary (this session's
 ## unlocks, plus any find from a session that never reached Results). Capped so
 ## a big day doesn't push the buttons off-screen.
-func _build_unlocks(parent: VBoxContainer) -> void:
+func _fill_unlocks() -> void:
 	var unlocks: Array[Dictionary] = AchievementManager.take_recent_unlocks()
 	if unlocks.is_empty():
 		return
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 14)
-	parent.add_child(row)
+	_unlocks_row.visible = true
 	var shown: int = mini(unlocks.size(), 3)
 	for i in shown:
-		row.add_child(_pill_badge("%s  %s" % [String(unlocks[i]["icon"]),
-				String(unlocks[i]["title"])], GOLD))
+		_unlocks_row.add_child(_pill_badge("%s  %s" % [String(unlocks[i]["icon"]),
+				String(unlocks[i]["title"])]))
 	if unlocks.size() > shown:
-		row.add_child(_label("+%d more" % (unlocks.size() - shown), 20, MUTED))
+		var more := Label.new()
+		more.text = "+%d more" % (unlocks.size() - shown)
+		more.add_theme_font_size_override("font_size", 20)
+		more.add_theme_color_override("font_color", MUTED)
+		_unlocks_row.add_child(more)
+
+
+## A gold pill matching the scene's NewBestBadge, for one unlocked achievement.
+func _pill_badge(text: String) -> Control:
+	var pill := PanelContainer.new()
+	pill.add_theme_stylebox_override("panel", _new_best_badge.get_theme_stylebox("panel"))
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", GOLD)
+	pill.add_child(label)
+	return pill
+
+
+## The slim progression line under the cards: total XP and the current level, with
+## a level-up call-out when this game pushed the player over the threshold.
+func _fill_progression(result: Dictionary) -> void:
+	var level_after: int = int(result.get("level_after", ProfileManager.get_level()))
+	var leveled_up: bool = bool(result.get("leveled_up", false))
+	_level_up_badge.visible = leveled_up
+	_level_label.visible = not leveled_up
+	_level_up_label.text = "▲  LEVEL UP — LEVEL %d" % level_after
+	_level_label.text = "LEVEL %d" % level_after
+	_total_xp_label.text = "%d XP total" % int(result.get("total_xp", ProfileManager.get_xp()))
 
 
 ## A quiet "here's what to chase next" line — the nearest locked career
 ## achievement with live progress, so leaving the screen always hands the
 ## player a next purpose.
-func _build_next_goal(parent: VBoxContainer) -> void:
+func _fill_next_goal() -> void:
 	var goal: Dictionary = AchievementManager.get_next_goal()
 	if goal.is_empty():
 		return
 	var defn: Dictionary = goal["defn"]
-	var text: String = "NEXT GOAL — %s · %d / %d %s" % [String(defn["title"]),
+	_next_goal_label.text = "NEXT GOAL — %s · %d / %d %s" % [String(defn["title"]),
 			int(goal["value"]), int(goal["target"]), String(defn["unit"])]
-	var line := _label(text, 18, MUTED)
-	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	line.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	parent.add_child(line)
-
-
-func _build_stat_grid(parent: VBoxContainer, result: Dictionary) -> void:
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 22)
-	grid.add_theme_constant_override("v_separation", 22)
-	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	parent.add_child(grid)
-
-	var score: int = int(result.get("score", 0))
-	var prev_best: int = int(result.get("prev_best", 0))
-	var best_sub := ""
-	if bool(result.get("new_best", false)) and prev_best > 0:
-		best_sub = "Prev best  %d" % prev_best
-	elif prev_best > 0:
-		best_sub = "Best  %d" % prev_best
-	grid.add_child(_stat_card("SCORE", str(score), ACCENT, best_sub))
-
-	grid.add_child(_stat_card("TIME", _format_duration(float(result.get("duration_sec", 0.0))), TEXT))
-	grid.add_child(_stat_card("CALORIES", "%.0f" % float(result.get("calories", 0.0)), ACCENT, "kcal"))
-
-	grid.add_child(_stat_card("STEPS", str(int(result.get("steps", 0))), TEXT))
-
-	var cadence: float = float(result.get("avg_cadence", 0.0))
-	grid.add_child(_stat_card("AVG PACE", "%.0f" % cadence, TEXT, "steps / min"))
-
-	var xp: int = int(result.get("xp_earned", 0))
-	grid.add_child(_stat_card("XP EARNED", "+%d" % xp, GOLD))
-
-	# Heart-rate cards only when a wearable actually streamed a rate this session.
-	if float(result.get("peak_heart_rate", 0.0)) > 0.0:
-		grid.add_child(_stat_card("AVG HR", "%.0f" % float(result.get("avg_heart_rate", 0.0)), HEART, "bpm"))
-		grid.add_child(_stat_card("PEAK HR", "%.0f" % float(result.get("peak_heart_rate", 0.0)), HEART, "bpm"))
-
-
-## A slim progression line under the cards: total XP and the current level, with a
-## level-up call-out when this game pushed the player over the threshold.
-func _build_progression(parent: VBoxContainer, result: Dictionary) -> void:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 28)
-	parent.add_child(row)
-
-	var level_after: int = int(result.get("level_after", ProfileManager.get_level()))
-	if bool(result.get("leveled_up", false)):
-		var up := _pill_badge("▲  LEVEL UP — LEVEL %d" % level_after, GOLD)
-		row.add_child(up)
-	else:
-		row.add_child(_label("LEVEL %d" % level_after, 20, MUTED))
-
-	row.add_child(_label("•", 20, MUTED))
-	row.add_child(_label("%d XP total" % int(result.get("total_xp", ProfileManager.get_xp())), 20, MUTED))
-
-
-func _build_buttons(parent: VBoxContainer, empty: bool = false) -> void:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 20)
-	parent.add_child(row)
-
-	# With no result there's nothing to replay — send the player to the library.
-	if empty:
-		_first_button = _make_button("CHOOSE A GAME", true, _on_select_pressed)
-		row.add_child(_first_button)
-		row.add_child(_make_button("MAIN MENU", false, _on_menu_pressed))
-		return
-
-	_first_button = _make_button("PLAY AGAIN", true, _on_play_again_pressed)
-	row.add_child(_first_button)
-	row.add_child(_make_button("GAME SELECT", false, _on_select_pressed))
-	row.add_child(_make_button("MAIN MENU", false, _on_menu_pressed))
-
-
-# --- widget builders ---------------------------------------------------------
-
-## One stat card: a big value over a small caps label, with an optional sub-line.
-func _stat_card(label_text: String, value_text: String, value_color: Color, sub: String = "") -> Control:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(300, 150)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = CARD_BG
-	sb.set_corner_radius_all(16)
-	sb.set_border_width_all(1)
-	sb.border_color = CARD_BORDER
-	sb.content_margin_left = 26
-	sb.content_margin_right = 26
-	sb.content_margin_top = 22
-	sb.content_margin_bottom = 22
-	panel.add_theme_stylebox_override("panel", sb)
-
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 2)
-	panel.add_child(vbox)
-
-	var value := _label(value_text, 66, value_color)
-	value.add_theme_font_override("font", _anton)
-	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(value)
-
-	var caption := _label(label_text, 20, MUTED)
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(caption)
-
-	if not sub.is_empty():
-		var sub_label := _label(sub, 15, MUTED)
-		sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(sub_label)
-
-	return panel
-
-
-func _pill_badge(text: String, color: Color) -> Control:
-	var pill := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(color.r, color.g, color.b, 0.16)
-	sb.set_corner_radius_all(999)
-	sb.set_border_width_all(1)
-	sb.border_color = Color(color.r, color.g, color.b, 0.6)
-	sb.content_margin_left = 20
-	sb.content_margin_right = 20
-	sb.content_margin_top = 8
-	sb.content_margin_bottom = 8
-	pill.add_theme_stylebox_override("panel", sb)
-	var lbl := _label(text, 22, color)
-	pill.add_child(lbl)
-	return pill
-
-
-func _make_button(text: String, primary: bool, handler: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size = Vector2(280, 60)
-	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.add_theme_font_size_override("font_size", 22)
-
-	var sb := StyleBoxFlat.new()
-	sb.set_corner_radius_all(12)
-	sb.content_margin_top = 14
-	sb.content_margin_bottom = 14
-	if primary:
-		sb.bg_color = ACCENT
-		button.add_theme_color_override("font_color", Color(0.06, 0.04, 0.02))
-		button.add_theme_color_override("font_focus_color", Color(0.06, 0.04, 0.02))
-		button.add_theme_color_override("font_hover_color", Color(0.06, 0.04, 0.02))
-	else:
-		sb.bg_color = Color(0.12, 0.15, 0.21, 0.9)
-		sb.set_border_width_all(1)
-		sb.border_color = Color(1, 1, 1, 0.14)
-		button.add_theme_color_override("font_color", TEXT)
-
-	var hover := sb.duplicate()
-	if primary:
-		hover.bg_color = ACCENT.lightened(0.12)
-	else:
-		hover.bg_color = Color(0.18, 0.22, 0.30, 0.98)
-		hover.border_color = ACCENT
-	var focus := hover.duplicate()
-
-	button.add_theme_stylebox_override("normal", sb)
-	button.add_theme_stylebox_override("hover", hover)
-	button.add_theme_stylebox_override("pressed", hover)
-	button.add_theme_stylebox_override("focus", focus)
-	button.pressed.connect(handler)
-	return button
-
-
-func _label(text: String, size: int, color: Color) -> Label:
-	var lbl := Label.new()
-	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", size)
-	lbl.add_theme_color_override("font_color", color)
-	return lbl
+	_next_goal_label.visible = true
 
 
 ## Formats seconds as m:ss for a real workout duration, or "12.3s" under a minute.
@@ -401,15 +227,3 @@ func _format_duration(seconds: float) -> String:
 		return "%.1fs" % seconds
 	var total := int(round(seconds))
 	return "%d:%02d" % [total / 60, total % 60]
-
-
-func _on_play_again_pressed() -> void:
-	GameManager.start_selected_game()
-
-
-func _on_select_pressed() -> void:
-	SceneManager.load_game_select()
-
-
-func _on_menu_pressed() -> void:
-	SceneManager.load_main_menu()

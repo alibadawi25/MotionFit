@@ -1,9 +1,17 @@
-[gd_scene format=3 uid="uid://te18r6k0coi1"]
+[gd_scene load_steps=29 format=3 uid="uid://te18r6k0coi1"]
 
 [ext_resource type="Script" uid="uid://c2oikvb35gp4" path="res://scripts/ui/main_menu.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://dsn1gydfgdhbp" path="res://assets/textures/ChatGPT Image Jul 14, 2026, 02_21_04 PM.png" id="2_bg"]
 [ext_resource type="Theme" uid="uid://t4q4een6qh1m" path="res://assets/ui/main_theme.tres" id="3_theme"]
 [ext_resource type="FontFile" uid="uid://bmokwplc18f7s" path="res://assets/fonts/Anton-Regular.ttf" id="4_anton"]
+[ext_resource type="Texture2D" uid="uid://gcynya817j3b" path="res://assets/ui/icons/play.svg" id="5_play"]
+[ext_resource type="Texture2D" uid="uid://50c56ce5w55a" path="res://assets/ui/icons/heart.svg" id="6_heart"]
+[ext_resource type="Texture2D" uid="uid://deb3hi3ta2whu" path="res://assets/ui/icons/trophy.svg" id="7_trophy"]
+[ext_resource type="Texture2D" uid="uid://bjahxsph6juf0" path="res://assets/ui/icons/store.svg" id="8_store"]
+[ext_resource type="Texture2D" uid="uid://db58hh0x2nrxx" path="res://assets/ui/icons/gear.svg" id="9_gear"]
+[ext_resource type="Texture2D" uid="uid://2up8ysi0uoyy" path="res://assets/ui/icons/power.svg" id="10_power"]
+[ext_resource type="Texture2D" uid="uid://etruj1xo2ycr" path="res://assets/ui/icons/swap.svg" id="11_swap"]
+[ext_resource type="Script" uid="uid://cac18ipm7ue0t" path="res://scripts/ui/bar_chart.gd" id="12_chart"]
 
 [sub_resource type="Gradient" id="grad_left"]
 offsets = PackedFloat32Array(0, 0.35, 0.62)
@@ -24,7 +32,171 @@ width = 8
 height = 512
 fill_to = Vector2(0, 1)
 
-[node name="MainMenu" type="Control" unique_id=542371455]
+[sub_resource type="StyleBoxFlat" id="challenge_normal"]
+bg_color = Color(0.1, 0.12, 0.17, 0.7)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.85)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="challenge_hover"]
+bg_color = Color(0.15, 0.18, 0.26, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.85)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(1, 0.5, 0.14, 0.3)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="challenge_focus"]
+bg_color = Color(0.15, 0.18, 0.26, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.85)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(1, 0.5, 0.14, 0.3)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="challenge_pressed"]
+bg_color = Color(0.14, 0.17, 0.24, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.85)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="chip_normal"]
+content_margin_left = 20.0
+content_margin_top = 13.0
+content_margin_right = 22.0
+content_margin_bottom = 13.0
+bg_color = Color(0.1, 0.12, 0.17, 0.62)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.45)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="chip_hover"]
+content_margin_left = 20.0
+content_margin_top = 13.0
+content_margin_right = 22.0
+content_margin_bottom = 13.0
+bg_color = Color(0.15, 0.18, 0.26, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.95)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(1, 0.5, 0.14, 0.35)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="chip_pressed"]
+content_margin_left = 20.0
+content_margin_top = 13.0
+content_margin_right = 22.0
+content_margin_bottom = 13.0
+bg_color = Color(1, 0.5, 0.14, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.62, 0.24, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="chip_focus"]
+content_margin_left = 20.0
+content_margin_top = 13.0
+content_margin_right = 22.0
+content_margin_bottom = 13.0
+bg_color = Color(0.13, 0.16, 0.23, 0.7)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="today_panel"]
+content_margin_left = 34.0
+content_margin_top = 30.0
+content_margin_right = 34.0
+content_margin_bottom = 30.0
+bg_color = Color(0.08, 0.1, 0.15, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.14, 0.35)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="bar_track_cal"]
+bg_color = Color(1, 1, 1, 0.09)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="bar_fill_cal"]
+bg_color = Color(1, 0.5, 0.14, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="bar_track_xp"]
+bg_color = Color(1, 1, 1, 0.09)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="bar_fill_xp"]
+bg_color = Color(1, 0.64, 0.3, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="MainMenu" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -34,7 +206,7 @@ grow_vertical = 2
 theme = ExtResource("3_theme")
 script = ExtResource("1")
 
-[node name="Background" type="TextureRect" parent="." unique_id=896861841]
+[node name="Background" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -49,7 +221,7 @@ mouse_filter = 2
 texture = ExtResource("2_bg")
 stretch_mode = 6
 
-[node name="ScrimLeft" type="TextureRect" parent="." unique_id=866514175]
+[node name="ScrimLeft" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -59,7 +231,7 @@ grow_vertical = 2
 mouse_filter = 2
 texture = SubResource("tex_left")
 
-[node name="ScrimBottom" type="TextureRect" parent="." unique_id=493242367]
+[node name="ScrimBottom" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -69,7 +241,7 @@ grow_vertical = 2
 mouse_filter = 2
 texture = SubResource("tex_bottom")
 
-[node name="Content" type="MarginContainer" parent="." unique_id=1206618676]
+[node name="Content" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -82,26 +254,26 @@ theme_override_constants/margin_top = 80
 theme_override_constants/margin_right = 112
 theme_override_constants/margin_bottom = 80
 
-[node name="Layout" type="VBoxContainer" parent="Content" unique_id=136444225]
+[node name="Layout" type="VBoxContainer" parent="Content"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 alignment = 1
 
-[node name="AccentBar" type="ColorRect" parent="Content/Layout" unique_id=846508813]
+[node name="AccentBar" type="ColorRect" parent="Content/Layout"]
 custom_minimum_size = Vector2(78, 6)
 layout_mode = 2
 size_flags_horizontal = 0
 mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
-[node name="TitleRow" type="HBoxContainer" parent="Content/Layout" unique_id=265454139]
+[node name="TitleRow" type="HBoxContainer" parent="Content/Layout"]
 layout_mode = 2
 size_flags_horizontal = 0
 mouse_filter = 2
 theme_override_constants/separation = 0
 
-[node name="TitleA" type="Label" parent="Content/Layout/TitleRow" unique_id=288836970]
+[node name="TitleA" type="Label" parent="Content/Layout/TitleRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
@@ -113,7 +285,7 @@ theme_override_fonts/font = ExtResource("4_anton")
 theme_override_font_sizes/font_size = 116
 text = "MOTION"
 
-[node name="TitleB" type="Label" parent="Content/Layout/TitleRow" unique_id=474134361]
+[node name="TitleB" type="Label" parent="Content/Layout/TitleRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.5, 0.14, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
@@ -125,46 +297,444 @@ theme_override_fonts/font = ExtResource("4_anton")
 theme_override_font_sizes/font_size = 116
 text = "FIT"
 
-[node name="Tagline" type="Label" parent="Content/Layout" unique_id=1214992382]
+[node name="Tagline" type="Label" parent="Content/Layout"]
 layout_mode = 2
 size_flags_horizontal = 0
 theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 25
 text = "MOVE   ·   PLAY   ·   LEVEL UP"
 
-[node name="Spacer" type="Control" parent="Content/Layout" unique_id=880667193]
+[node name="Spacer" type="Control" parent="Content/Layout"]
 custom_minimum_size = Vector2(0, 34)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Buttons" type="VBoxContainer" parent="Content/Layout" unique_id=536562388]
+[node name="Buttons" type="VBoxContainer" parent="Content/Layout"]
 layout_mode = 2
 size_flags_horizontal = 0
 theme_override_constants/separation = 14
 
-[node name="PlayButton" type="Button" parent="Content/Layout/Buttons" unique_id=1543672554]
+[node name="ChallengeCard" type="Button" parent="Content/Layout/Buttons"]
+unique_name_in_owner = true
+clip_contents = false
+custom_minimum_size = Vector2(360, 96)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_styles/focus = SubResource("challenge_focus")
+theme_override_styles/hover = SubResource("challenge_hover")
+theme_override_styles/normal = SubResource("challenge_normal")
+theme_override_styles/pressed = SubResource("challenge_pressed")
+
+[node name="CardPad" type="MarginContainer" parent="Content/Layout/Buttons/ChallengeCard"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 14
+
+[node name="CardBody" type="VBoxContainer" parent="Content/Layout/Buttons/ChallengeCard/CardPad"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="ChallengeKicker" type="Label" parent="Content/Layout/Buttons/ChallengeCard/CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.5, 0.14, 1)
+theme_override_font_sizes/font_size = 14
+text = "★  TODAY'S CHALLENGE"
+
+[node name="ChallengeTitle" type="Label" parent="Content/Layout/Buttons/ChallengeCard/CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 21
+text = "—"
+
+[node name="ChallengeDetail" type="Label" parent="Content/Layout/Buttons/ChallengeCard/CardPad/CardBody"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
+theme_override_font_sizes/font_size = 14
+text = "—"
+
+[node name="PlayButton" type="Button" parent="Content/Layout/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(360, 62)
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
+theme_override_colors/icon_normal_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_hover_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_focus_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_constants/h_separation = 14
+theme_override_constants/icon_max_width = 30
 text = "PLAY"
+icon = ExtResource("5_play")
 alignment = 0
 
-[node name="SettingsButton" type="Button" parent="Content/Layout/Buttons" unique_id=188187825]
+[node name="FitnessButton" type="Button" parent="Content/Layout/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(360, 60)
 layout_mode = 2
+theme_override_colors/icon_normal_color = Color(0.93, 0.95, 0.98, 1)
+theme_override_colors/icon_pressed_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(1, 1, 1, 1)
+theme_override_constants/h_separation = 14
+theme_override_constants/icon_max_width = 30
+text = "FITNESS"
+icon = ExtResource("6_heart")
+alignment = 0
+
+[node name="AchievementsButton" type="Button" parent="Content/Layout/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 60)
+layout_mode = 2
+theme_override_colors/icon_normal_color = Color(0.93, 0.95, 0.98, 1)
+theme_override_colors/icon_pressed_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(1, 1, 1, 1)
+theme_override_constants/h_separation = 14
+theme_override_constants/icon_max_width = 30
+text = "ACHIEVEMENTS"
+icon = ExtResource("7_trophy")
+alignment = 0
+
+[node name="StoreButton" type="Button" parent="Content/Layout/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 60)
+layout_mode = 2
+theme_override_colors/icon_normal_color = Color(0.93, 0.95, 0.98, 1)
+theme_override_colors/icon_pressed_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(1, 1, 1, 1)
+theme_override_constants/h_separation = 14
+theme_override_constants/icon_max_width = 30
+text = "STORE"
+icon = ExtResource("8_store")
+alignment = 0
+
+[node name="SettingsButton" type="Button" parent="Content/Layout/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(360, 60)
+layout_mode = 2
+theme_override_colors/icon_normal_color = Color(0.93, 0.95, 0.98, 1)
+theme_override_colors/icon_pressed_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(1, 1, 1, 1)
+theme_override_constants/h_separation = 14
+theme_override_constants/icon_max_width = 30
 text = "SETTINGS"
+icon = ExtResource("9_gear")
 alignment = 0
 
-[node name="QuitButton" type="Button" parent="Content/Layout/Buttons" unique_id=952262473]
+[node name="QuitButton" type="Button" parent="Content/Layout/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(360, 60)
 layout_mode = 2
+theme_override_colors/icon_normal_color = Color(0.93, 0.95, 0.98, 1)
+theme_override_colors/icon_pressed_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(1, 1, 1, 1)
+theme_override_constants/h_separation = 14
+theme_override_constants/icon_max_width = 30
 text = "QUIT"
+icon = ExtResource("10_power")
 alignment = 0
 
-[node name="Footer" type="Label" parent="." unique_id=881635270]
+[node name="ProfileCard" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+offset_left = 52.0
+offset_top = 40.0
+offset_right = 52.0
+offset_bottom = 40.0
+theme_override_constants/separation = 8
+
+[node name="GreetingButton" type="Button" parent="ProfileCard"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+tooltip_text = "View your profile"
+theme_override_colors/font_color = Color(0.92, 0.94, 0.98, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.06, 0.02, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/focus = SubResource("chip_focus")
+theme_override_styles/hover = SubResource("chip_hover")
+theme_override_styles/normal = SubResource("chip_normal")
+theme_override_styles/pressed = SubResource("chip_pressed")
+text = "Hi   ·   Level 1      ›"
+alignment = 0
+
+[node name="SwitchProfileLink" type="Button" parent="ProfileCard"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 0.9)
+theme_override_colors/font_hover_color = Color(1, 0.78, 0.45, 1)
+theme_override_colors/icon_normal_color = Color(1, 0.64, 0.3, 0.9)
+theme_override_colors/icon_hover_color = Color(1, 0.78, 0.45, 1)
+theme_override_constants/h_separation = 8
+theme_override_constants/icon_max_width = 18
+theme_override_font_sizes/font_size = 16
+text = "Switch profile"
+flat = true
+icon = ExtResource("11_swap")
+alignment = 0
+
+[node name="TodayPanelHolder" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -640.0
+offset_right = -96.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+alignment = 1
+
+[node name="TodayPanel" type="PanelContainer" parent="TodayPanelHolder"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("today_panel")
+
+[node name="PanelBody" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="KickerLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 18
+text = "TODAY AT A GLANCE"
+
+[node name="CalorieRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CaloriesValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/CalorieRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.5, 0.14, 1)
+theme_override_fonts/font = ExtResource("4_anton")
+theme_override_font_sizes/font_size = 60
+text = "0"
+
+[node name="CalorieGoalLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/CalorieRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 20
+text = "/ 0 kcal"
+vertical_alignment = 2
+
+[node name="CalorieBar" type="ProgressBar" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+theme_override_styles/background = SubResource("bar_track_cal")
+theme_override_styles/fill = SubResource("bar_fill_cal")
+max_value = 1.0
+step = 0.0
+show_percentage = false
+
+[node name="TilesRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="StreakTile" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="StreakValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "days"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/StreakTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "STREAK"
+
+[node name="WeekTile" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="WeekValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0"
+
+[node name="UnitLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile/ValueRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "kcal"
+vertical_alignment = 2
+
+[node name="CaptionLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/WeekTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "THIS WEEK"
+
+[node name="BadgesTile" type="VBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="ValueRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/BadgesTile"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BadgesValue" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/BadgesTile/ValueRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 28
+text = "0 / 0"
+
+[node name="CaptionLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/TilesRow/BadgesTile"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "BADGES"
+
+[node name="RuleAboveLevel" type="ColorRect" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 0.08)
+
+[node name="LevelRow" type="HBoxContainer" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LevelLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/LevelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
+theme_override_font_sizes/font_size = 20
+text = "LEVEL 1"
+
+[node name="XpToNextLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/LevelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 15
+text = "→   0 XP to level 2"
+vertical_alignment = 1
+
+[node name="LevelBar" type="ProgressBar" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+theme_override_styles/background = SubResource("bar_track_xp")
+theme_override_styles/fill = SubResource("bar_fill_xp")
+max_value = 1.0
+step = 0.0
+show_percentage = false
+
+[node name="RuleAboveChart" type="ColorRect" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 0.08)
+
+[node name="ChartCaption" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "CALORIES · LAST 7 DAYS"
+
+[node name="WeekChart" type="Control" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 104)
+layout_mode = 2
+script = ExtResource("12_chart")
+
+[node name="FirstRunNudge" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.64, 0.3, 0.92)
+theme_override_font_sizes/font_size = 15
+text = "Play your first game to light this up."
+autowrap_mode = 3
+
+[node name="HeartRateStatus" type="Label" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -760.0
+offset_top = -104.0
+offset_right = -114.0
+offset_bottom = -74.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.95, 0.45, 0.5, 0.92)
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="CameraStatus" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -760.0
+offset_top = -74.0
+offset_right = -114.0
+offset_bottom = -44.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Footer" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
