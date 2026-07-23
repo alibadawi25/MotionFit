@@ -1,4 +1,4 @@
-extends Node
+extends RefCounted
 ## CharacterFactory
 ##
 ## Builds the personalised in-game character. The model itself is produced by
@@ -14,6 +14,14 @@ extends Node
 ## service already requires (see run.bat). If Python or the generator fails,
 ## everything falls back to the bundled default model, so the game always has
 ## a figure to show.
+##
+## [b]A static class, not an autoload.[/b] Every method here is a pure function of
+## its arguments (plus the active profile it reads through ProfileManager) — the
+## factory holds no state of its own between calls. Registering it as a singleton
+## bought nothing but a global to keep alive and one more entry in the boot order,
+## so it is called as `CharacterFactory.build_stock(...)` directly. Call sites are
+## unchanged by that switch; only project.godot lost a line.
+class_name CharacterFactory
 
 ## The procedural model generator. Also the source of truth for the style and
 ## color catalogs mirrored below — keep them in sync.
@@ -81,7 +89,7 @@ const SKIN_TONES: Dictionary = {
 ## Falls back to the bundled default model when there is no active profile or
 ## generation/loading fails, and to null only if even that is missing — so
 ## callers keep their own last-resort placeholder (player.gd keeps its capsule).
-func get_character() -> Node3D:
+static func get_character() -> Node3D:
 	if ProfileManager.has_active():
 		var out_path: String = "%s/%s.glb" % [OUT_DIR, ProfileManager.get_active_id()]
 		var path: String = _ensure_generated(
@@ -99,7 +107,7 @@ func get_character() -> Node3D:
 ## cached under user://characters/<slot>.glb like profile models (same inputs →
 ## no regeneration). Falls back to the bundled default model when generation or
 ## loading fails, so callers always get a figure unless even that is missing.
-func build_stock(body: Dictionary, appearance: Dictionary, slot: String) -> Node3D:
+static func build_stock(body: Dictionary, appearance: Dictionary, slot: String) -> Node3D:
 	var path: String = _ensure_generated(body, appearance,
 			"%s/%s.glb" % [OUT_DIR, slot])
 	if path != "":
@@ -117,7 +125,7 @@ func build_stock(body: Dictionary, appearance: Dictionary, slot: String) -> Node
 ## Cached under user://characters/<slot>.glb like other stock figures (same inputs
 ## → no regeneration). Falls back to the bundled default model when generation or
 ## loading fails, so a fighter always appears.
-func build_boxer(body: Dictionary, appearance: Dictionary, slot: String,
+static func build_boxer(body: Dictionary, appearance: Dictionary, slot: String,
 		glove_color: String = "red") -> Node3D:
 	var extra := PackedStringArray([
 		"--gear", "boxing", "--glove-color", glove_color, "--clips", "boxing",
@@ -137,7 +145,7 @@ func build_boxer(body: Dictionary, appearance: Dictionary, slot: String,
 ## ProfileManager.DEFAULT_APPEARANCE) — so a customization screen can show the
 ## result live before the player hits Save. Cached like profile models (same
 ## inputs → no regeneration), under a single shared preview slot.
-func build_preview(body: Dictionary, appearance: Dictionary) -> Node3D:
+static func build_preview(body: Dictionary, appearance: Dictionary) -> Node3D:
 	var path: String = _ensure_generated(body, appearance, OUT_DIR + "/preview.glb")
 	return _load_glb(path) if path != "" else null
 
@@ -145,7 +153,7 @@ func build_preview(body: Dictionary, appearance: Dictionary) -> Node3D:
 # --- Internals ----------------------------------------------------------------
 
 ## The active profile's body attributes in the shape _build_args expects.
-func _active_body() -> Dictionary:
+static func _active_body() -> Dictionary:
 	return {
 		"sex": ProfileManager.get_sex(),
 		"age": ProfileManager.get_age(),
@@ -158,7 +166,7 @@ func _active_body() -> Dictionary:
 ## running the Python generator only when they differ from the .args sidecar of
 ## the previous run (~0.15 s when it does run). Returns [param out_path], or ""
 ## when generation failed (missing Python, bad exit, no file written).
-func _ensure_generated(body: Dictionary, appearance: Dictionary,
+static func _ensure_generated(body: Dictionary, appearance: Dictionary,
 		out_path: String, extra_args: PackedStringArray = []) -> String:
 	var args: PackedStringArray = _build_args(body, appearance, out_path, extra_args)
 	var stamp: String = " ".join(args)
@@ -180,7 +188,7 @@ func _ensure_generated(body: Dictionary, appearance: Dictionary,
 ## Translates profile data into the generator's CLI. The generator only accepts
 ## male/female (it shapes the mesh), so "unspecified" renders as the default
 ## male build; "auto" hair is omitted so the generator picks the sex default.
-func _build_args(body: Dictionary, appearance: Dictionary,
+static func _build_args(body: Dictionary, appearance: Dictionary,
 		out_path: String, extra_args: PackedStringArray = []) -> PackedStringArray:
 	var sex: String = String(body.get("sex", "male"))
 	if sex != "male" and sex != "female":
@@ -211,7 +219,7 @@ func _build_args(body: Dictionary, appearance: Dictionary,
 ## Parses a GLB at runtime (works for user:// files, which have no editor
 ## import) and returns its scene — same node layout and animation clips as the
 ## editor-imported bundled model, so player.gd treats both identically.
-func _load_glb(path: String) -> Node3D:
+static func _load_glb(path: String) -> Node3D:
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
 	if doc.append_from_file(path, state) != OK:
@@ -220,12 +228,12 @@ func _load_glb(path: String) -> Node3D:
 	return doc.generate_scene(state) as Node3D
 
 
-func _read_text(path: String) -> String:
+static func _read_text(path: String) -> String:
 	var f := FileAccess.open(path, FileAccess.READ)
 	return f.get_as_text() if f != null else ""
 
 
-func _write_text(path: String, text: String) -> void:
+static func _write_text(path: String, text: String) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f != null:
 		f.store_string(text)
