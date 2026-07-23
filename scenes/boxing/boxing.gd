@@ -10,7 +10,7 @@ extends MiniGame
 ## this is a fitness game for people who have never boxed, not a fight sim.
 ##   - PUNCH — a STRAIGHT (jab/cross), a WIDE hook, or an UPPERCUT, with either
 ##     hand. Python names the shape of whatever you threw (see
-##     [method MotionManager.get_last_punch_kind]) and always names one, so a
+##     [method BoxingInput.get_last_punch_kind]) and always names one, so a
 ##     scrappy swing still lands.
 ##   - DEFEND — BLOCK (both hands up over your face) or LEAN at the waist to
 ##     either side.
@@ -117,7 +117,7 @@ const FLURRY_DAMAGE: float = 0.5
 const FLURRY_SCORE: int = 55
 
 ## The three punch shapes, with the plain-language coaching line each one gets on
-## screen. Keys match [method MotionManager.get_last_punch_kind] exactly.
+## screen. Keys match [method BoxingInput.get_last_punch_kind] exactly.
 const PUNCH_NAMES: Dictionary = {
 	"straight": "STRAIGHT", "hook": "WIDE", "uppercut": "UPPERCUT",
 }
@@ -205,6 +205,11 @@ var _targets: Dictionary = {}     # "left"/"right"/"chin" -> MeshInstance3D mark
 var _target_mat: Dictionary = {}
 var _hud: BoxingHud
 var _pause_menu: Control
+## Boxing's reading of the body — punches, guard and slip. The platform's
+## MotionManager streams the raw pose; this turns it into the game's moves.
+## Built in [method _prepare_world] rather than at declaration, so it registers
+## its interest once this game is actually being set up.
+var _input: BoxingInput
 var _impact: Node3D               # pooled impact flash (a light + a glowing burst)
 var _impact_light: OmniLight3D
 var _impact_mat: StandardMaterial3D
@@ -222,6 +227,7 @@ func get_game_id() -> String:
 ## intro, so the GET-READY countdown and the cinematic reveal a set that already
 ## has two boxers squared up in it.
 func _prepare_world() -> void:
+	_input = BoxingInput.new()
 	_apply_difficulty()
 	_arena = BoxingArena.new()
 	_arena.name = "Arena"
@@ -319,11 +325,11 @@ func _tick_bout(delta: float) -> void:
 	# AUTO-GUARD save holds the cover up for a moment on its own, so the player
 	# can see their corner cover for them.
 	_assist_block_left = maxf(0.0, _assist_block_left - delta)
-	_you.set_blocking(MotionManager.is_guarding() or _assist_block_left > 0.0)
+	_you.set_blocking(_input.is_guarding() or _assist_block_left > 0.0)
 
 	# The player's own glove always answers a punch, called or not.
-	var thrown: String = MotionManager.consume_punch()
-	var kind: String = MotionManager.get_last_punch_kind()
+	var thrown: String = _input.consume_punch()
+	var kind: String = _input.get_last_punch_kind()
 	if thrown != "":
 		_punches_thrown += 1
 		_you.punch(thrown, kind)
@@ -336,7 +342,7 @@ func _tick_bout(delta: float) -> void:
 		Ex.OPENING:
 			_ex_left -= delta
 			if thrown != "":
-				_land_hit(MotionManager.get_last_punch_power(),
+				_land_hit(_input.get_last_punch_power(),
 						_grade(thrown, kind))
 			elif _ex_left <= 0.0:
 				_opening_closed()
@@ -357,7 +363,7 @@ func _tick_bout(delta: float) -> void:
 		Ex.FLURRY:
 			_ex_left -= delta
 			if thrown != "":
-				_flurry_hit(MotionManager.get_last_punch_power())
+				_flurry_hit(_input.get_last_punch_power())
 			elif _ex_left <= 0.0:
 				_flurry_over()
 
@@ -379,7 +385,7 @@ func _tick_over(delta: float) -> void:
 func _tick_assist(delta: float) -> void:
 	if _assist >= 1.0:
 		return
-	var rate: float = _assist_recharge * (1.8 if MotionManager.is_guarding() else 1.0)
+	var rate: float = _assist_recharge * (1.8 if _input.is_guarding() else 1.0)
 	_assist = minf(1.0, _assist + rate * delta)
 	_hud.set_assist(_assist)
 
@@ -491,7 +497,7 @@ func _begin_incoming() -> void:
 ## the face, "left"/"right" for a committed waist lean, "" for neither. Any of
 ## them answers an incoming shot — only matching the call slips it clean.
 func _defence_held() -> String:
-	var lean: float = MotionManager.get_lean()
+	var lean: float = _input.get_lean()
 	var leaning: String = ""
 	if lean <= -DODGE_LEAN:
 		leaning = "left"
@@ -501,7 +507,7 @@ func _defence_held() -> String:
 	# with their hands still up, and that should read as the slip it is.
 	if leaning != "" and leaning == _defence:
 		return leaning
-	if MotionManager.is_guarding():
+	if _input.is_guarding():
 		return "block"
 	return leaning
 
@@ -806,7 +812,7 @@ func _update_movement(delta: float) -> void:
 	var target_adv: float = 0.0
 	var lean: float = 0.0
 	if _phase == Phase.BOUT:
-		lean = clampf(MotionManager.get_lean(), -1.0, 1.0)
+		lean = clampf(_input.get_lean(), -1.0, 1.0)
 		target_adv = clampf(MotionManager.get_forward(), 0.0, 1.0)
 		# The boxer's own idle drift, faded out by however much the player is
 		# actually leaning, so a real slip always wins over the automation.

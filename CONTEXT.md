@@ -434,22 +434,22 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
   or `"right"` on the single frame a punch (fast arm extension to full reach) is
   thrown (edge event, like `jump`), else `""`; `punch_power` is how hard it
   snapped. Read from `detected` (no marching gate — a standing boxer). Exposed as
-  `MotionManager.consume_punch()` / `get_last_punch_power()` + the `punched` signal.
+  `BoxingInput.consume_punch()` / `get_last_punch_power()` (see §5.1).
 - `punch_kind` string — the **shape** of that punch: `"straight"` (jab/cross),
   `"hook"` (the wide swing) or `"uppercut"`, classified from how far the glove
   travelled forward / sideways / upward between its resting guard and full
   extension (torso-normalised, so it needs no calibration). Deliberately lenient
   and biased to `"straight"`: Boxing is for players who have never boxed, so a
   scrappy throw is named, never rejected. Only meaningful on a frame where
-  `punch` is set. `MotionManager.get_last_punch_kind()`.
+  `punch` is set. `BoxingInput.get_last_punch_kind()`.
 - `guard` bool — **Boxing defence**: both gloves up covering the face (each wrist
   above the shoulder line *and* tucked in near the head, so a wide-flung arm or a
   punch at full extension doesn't count). A held state, not an edge.
-  `MotionManager.is_guarding()`.
+  `BoxingInput.is_guarding()`.
 - `lean` -1..1 — **Boxing defence**: the waist slip, from the shoulder centre's
   sideways offset from the hip centre. `-1` = leaning to the player's on-screen
   LEFT (mirrored preview, same convention as `punch` sides). Distinct from
-  `turn`, which is rotating the torso to steer. `MotionManager.get_lean()`.
+  `turn`, which is rotating the torso to steer. `BoxingInput.get_lean()`.
 - `steps` int / `cadence` float — cumulative steps and current pace (steps/min).
 - `met` float    — effort as a metabolic equivalent (body-mass-independent).
   Godot turns this into calories via `ProfileManager` weight × time; MET is used
@@ -545,16 +545,38 @@ by design — with no service running the texture is null and the UI falls back 
 - `scripts/managers/motion_manager.gd` — `MotionManager` autoload. Exposes
   `get_forward()`, `get_turn()`, `is_walking()`, `get_crouch()`,
   `is_crouching()`, `get_duck()`, `is_ducking()`, `consume_jump()`,
-  `consume_punch()` / `get_last_punch_power()` / `get_last_punch_kind()` and the
-  defence pair `is_guarding()` / `get_lean()` (all Boxing), `is_hands_up()`,
-  `is_receiving()`,
+  `is_hands_up()`, `is_receiving()`,
   `is_hr_connected()`, the camera-control API `camera_on()` / `camera_off()` and
   state readouts `get_status()` / `is_camera_ready()` / `is_camera_error()`, and
-  the `motion_updated` / `jumped` / `crouch_changed` / `punched` signals. `get_forward()` /
+  the `motion_updated` / `jumped` / `crouch_changed` signals. `get_forward()` /
   `get_turn()` / `get_crouch()` are time-smoothed (`SMOOTH_TIME`) so ~20-30 Hz
   packets drive 60+ fps games without stair-stepping (`get_forward_raw()` etc.
   give the exact packet values). If the service isn't running, values stay 0 and
   nothing breaks (values also ease to 0 after `TIMEOUT_SEC`).
+
+  **Shared movement only.** Moves belonging to ONE game do not get an accessor
+  here — Boxing's punch/guard/slip used to, which would have made this singleton
+  the union of twenty games' vocabularies by the time the roster filled. A game
+  instead registers the packet fields its moves are made of and reads them back
+  through its own adapter:
+
+  - `watch_pose_event(key, payload_keys)` — latch a one-shot field so a caller
+    polling once a frame can't miss one that landed between frames.
+    `payload_keys` are captured at the same instant (a punch's power and shape),
+    which is the part a later read can't recover.
+  - `consume_pose_event(key) -> Dictionary` — the latched payload, cleared.
+  - `get_pose_bool/float/string(key, default)` — continuously-streamed fields.
+    Absent fields return the default, so an older pose build degrades to "not
+    doing that" instead of breaking.
+  - `pose_event(key, payload)` signal for event-driven listeners.
+
+  `scenes/boxing/boxing_input.gd` (`BoxingInput`) is the reference adapter: it
+  owns the words *punch*, *guard* and *slip*, and `boxing.gd` talks to it, not to
+  MotionManager. A new game with its own moves adds an adapter beside its scene
+  and changes nothing shared. Covered by
+  `scenes/tests/boxing_input_probe.tscn` — a headless PASS/FAIL self-test that
+  feeds synthetic packets through the real handler (this path has no visual
+  surface, so a screenshot proves nothing about it).
 - `scenes/open-world/` — the **Open World game** (registered in GameManager,
   `available:true`): a free-roam "vibing" mode with no fail state. Its root
   (`open_world.gd`) `extends MiniGame`, so it plugs into the normal

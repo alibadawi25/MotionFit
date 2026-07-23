@@ -24,13 +24,12 @@ signal fitness_updated(steps: int, cadence: float)
 signal jumped
 ## Emitted each packet with the current squat depth, 0.0 (upright) .. 1.0.
 signal crouch_changed(crouch: float)
-## Emitted once each time the player throws a punch. [param hand] is "left" or
-## "right", [param power] is 0.0..1.0 (how hard/fast it snapped out) and
-## [param kind] names the shape of the throw — "straight" (jab/cross), "hook"
-## (the wide swing) or "uppercut". Like [signal jumped] this is an edge event —
-## connect for a reaction, or poll with [method consume_punch]. The upper-body
-## counterpart the Boxing game reads.
-signal punched(hand: String, power: float, kind: String)
+## Emitted once each time a watched one-shot gesture arrives in a packet.
+## [param key] is the packet field that fired and [param payload] holds it plus
+## the companion fields registered with [method watch_pose_event]. The platform
+## does not interpret these — a game registers the fields its own moves are made
+## of and reads them through its own input adapter (see BoxingInput).
+signal pose_event(key: StringName, payload: Dictionary)
 ## Emitted once when a body calibration finishes, carrying the captured leg
 ## extensions. MotionManager already saves these to the active profile and pushes
 ## them to the pose service; connect only if a UI wants a "calibrated!" cue.
@@ -112,16 +111,15 @@ var _cadence: float = 0.0
 var _met: float = 0.0       # current effort (metabolic equivalent of task)
 var _heart_rate: float = 0.0  # bpm from a wearable, 0 = no reading
 var _hands_up: bool = false   # "ready" gesture: both hands raised above the head
-# Latched punch edge, like _jump_pending: the hand of the last unconsumed punch
-# ("left"/"right", "" = none) and its 0..1 power. Cleared by [method consume_punch]
-# so a poller in _process picks up a punch landed on any packet since its last frame.
-var _punch_pending: String = ""
-var _punch_power: float = 0.0
-var _punch_kind: String = "straight"
-# Boxing defence, streamed every packet (not edges): both gloves up covering the
-# face, and the waist slip (-1 = leaning to the on-screen left .. +1 right).
-var _guard: bool = false
-var _lean: float = 0.0
+# The most recent packet, verbatim. Games read their own vocabulary out of it
+# through get_pose_bool/float/string rather than this manager growing an
+# accessor per move (see the class docs).
+var _pose: Dictionary = {}
+# One-shot packet fields a game asked to have latched: key -> Array of companion
+# field names to capture alongside it. Registered via watch_pose_event.
+var _watched_events: Dictionary = {}
+# Latched payloads for those events, cleared by consume_pose_event.
+var _pending_events: Dictionary = {}
 # Calibration setup state mirrored from the pose service (see Python's Calibrator):
 # the phase ("idle"/"still"/"squat"/"done"/"failed"), a short on-screen prompt, and
 # a 0..1 progress for the current phase. Drives the calibration setup UI.
@@ -200,15 +198,16 @@ func _process(delta: float) -> void:
 		_met = 0.0
 		_heart_rate = 0.0
 		_hands_up = false
-		_guard = false
-		_lean = 0.0
+		# Drop the last packet so a game polling get_pose_* reads its defaults
+		# (not defending, not leaning) rather than a stale held pose.
+		_pose.clear()
 		_status = ""  # service silent: state unknown until packets resume
 		_ready_hint = ""
 		_calib_state = "idle"
 		_calib_prompt = ""
 		_calib_progress = 0.0
 		_jump_pending = false  # drop any unconsumed jump once the feed goes quiet
-		_punch_pending = ""    # …and any unconsumed punch
+		_pending_events.clear()  # …and any unconsumed game gesture
 	else:
 		var kcal_per_min: float = _current_kcal_per_min()
 		if kcal_per_min > 0.0:
@@ -426,43 +425,66 @@ func consume_jump() -> bool:
 	return false
 
 
-## Returns the hand of the last unconsumed punch ("left" or "right") and clears
-## the latch, or "" if none is pending. Poll this once per frame from a game that
-## reacts to punches; the strength of that punch is then [method get_last_punch_power].
-## For an event-driven listener, connect to [signal punched] instead.
-func consume_punch() -> String:
-	var hand: String = _punch_pending
-	_punch_pending = ""
-	return hand
+# --- Game-specific gestures --------------------------------------------------
+#
+# Movement every game shares (march, turn, crouch, duck, jump) has first-class
+# accessors above. A move that belongs to ONE game does not: Boxing's punch,
+# guard and waist slip used to live here as punched/consume_punch/is_guarding/
+# get_lean, which meant this platform singleton carried one game's vocabulary —
+# and would have carried twenty games' worth by the time the roster filled.
+#
+# Instead a game registers the packet fields its moves are made of and reads
+# them back through its own adapter (scenes/boxing/boxing_input.gd). This
+# manager stays the transport: it knows about "a latched field and its companion
+# values", never about punches.
+
+## Asks for [param key] to be latched whenever it arrives set in a packet, so a
+## game polling once a frame can't miss one that landed between frames.
+## [param payload_keys] are companion fields captured at the same instant (a
+## punch's power and shape), which is the part a later read can't recover — by
+## then the next packet has overwritten them. Idempotent; call it from a game's
+## input adapter as it starts.
+func watch_pose_event(key: StringName, payload_keys: Array[StringName] = []) -> void:
+	_watched_events[key] = payload_keys
 
 
-## The 0.0..1.0 power of the most recent punch (how hard/fast it snapped out),
-## for scoring or a heavier hit reaction. Valid right after [method consume_punch]
-## or a [signal punched] emission.
-func get_last_punch_power() -> float:
-	return _punch_power
+## Returns the latched payload for [param key] and clears it, or an empty
+## Dictionary if nothing is pending. The payload holds [param key] itself plus
+## the companion fields registered with [method watch_pose_event].
+func consume_pose_event(key: StringName) -> Dictionary:
+	if not _pending_events.has(key):
+		return {}
+	var payload: Dictionary = _pending_events[key]
+	_pending_events.erase(key)
+	return payload
 
 
-## The shape of the most recent punch: "straight" (a jab/cross), "hook" (the wide
-## swinging punch) or "uppercut". Valid right after [method consume_punch] or a
-## [signal punched] emission. Python always names one of the three — a scrappy
-## throw falls back to "straight" rather than being rejected — so a game can
-## reward the called punch without ever punishing a messy one.
-func get_last_punch_kind() -> String:
-	return _punch_kind
+## Reads a continuously-streamed field from the latest packet. Absent fields (an
+## older pose build, or the feed gone quiet) return [param default], so a game
+## degrades to "not doing that" instead of breaking.
+func get_pose_bool(key: StringName, default: bool = false) -> bool:
+	return bool(_pose.get(key, default))
 
 
-## True while the player holds a boxing guard: both gloves up covering the face.
-## Streamed live (not an edge), so a game polls it as a held block.
-func is_guarding() -> bool:
-	return _guard
+func get_pose_float(key: StringName, default: float = 0.0) -> float:
+	return float(_pose.get(key, default))
 
 
-## The player's waist slip: -1.0 leaning hard to their on-screen LEFT, +1.0 to
-## the RIGHT, 0.0 upright. This is a lean at the waist (head off the punch line),
-## distinct from [method get_turn], which is rotating the whole torso to steer.
-func get_lean() -> float:
-	return _lean
+func get_pose_string(key: StringName, default: String = "") -> String:
+	return String(_pose.get(key, default))
+
+
+## Whether a packet value counts as "this gesture happened on this frame".
+## Python signals a one-shot either as a non-empty string (the punching hand) or
+## a true flag, and leaves it empty/false otherwise. A null means the field isn't
+## in this packet at all (an older pose build, or a game watching a key this
+## build doesn't send) — that's "didn't happen", not an error.
+func _event_fired(value: Variant) -> bool:
+	if value == null:
+		return false
+	if value is String or value is StringName:
+		return String(value) != ""
+	return bool(value)
 
 
 ## Cumulative steps counted since the pose service started this run.
@@ -515,7 +537,7 @@ func reset_session_stats() -> void:
 	# Drop any gesture/jump left over from the pre-game setup screen so the game
 	# doesn't open with a phantom hop the moment it starts.
 	_jump_pending = false
-	_punch_pending = ""
+	_pending_events.clear()
 	# Capture the player's physical attributes for this session's calorie maths.
 	# Mass, height, age and sex feed the Mifflin-St Jeor resting rate that scales
 	# the motion MET into kcal; age/sex additionally drive the Keytel heart-rate
@@ -583,10 +605,9 @@ func _apply(data: Dictionary) -> void:
 	_met = maxf(float(data.get("met", 0.0)), 0.0)
 	_heart_rate = maxf(float(data.get("hr", 0.0)), 0.0)
 	_hands_up = bool(data.get("hands_up", false))
-	# Boxing defence: the held gloves-up block and the waist slip. Absent on an
-	# older pose build, which reads as "not defending" rather than breaking.
-	_guard = bool(data.get("guard", false))
-	_lean = clampf(float(data.get("lean", 0.0)), -1.0, 1.0)
+	# Keep the packet whole so a game can read its own fields out of it without
+	# this manager growing an accessor per move (see get_pose_bool and friends).
+	_pose = data
 	# Service/camera state; default "ready" so an older pose build (no status
 	# field) still reads as a live camera.
 	_status = String(data.get("status", "ready"))
@@ -615,14 +636,16 @@ func _apply(data: Dictionary) -> void:
 	if bool(data.get("jump", false)):
 		_jump_pending = true
 		jumped.emit()
-	# Punch is likewise a one-frame edge ("left"/"right", "" = none): latch the
-	# hand + power + shape for a poller and fire the signal for listeners.
-	var punch: String = String(data.get("punch", ""))
-	if punch != "":
-		_punch_pending = punch
-		_punch_power = clampf(float(data.get("punch_power", 0.0)), 0.0, 1.0)
-		_punch_kind = String(data.get("punch_kind", "straight"))
-		punched.emit(_punch_pending, _punch_power, _punch_kind)
+	# Any game-registered one-shot gesture (see watch_pose_event) is latched the
+	# same way, without this manager knowing what the move is called.
+	for key: StringName in _watched_events:
+		if not _event_fired(data.get(key)):
+			continue
+		var payload: Dictionary = {key: data.get(key)}
+		for extra: StringName in _watched_events[key]:
+			payload[extra] = data.get(extra)
+		_pending_events[key] = payload
+		pose_event.emit(key, payload)
 
 
 ## The current NET burn rate in kcal/min — exercise energy above resting. Prefers
