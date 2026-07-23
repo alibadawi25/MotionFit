@@ -90,6 +90,33 @@ def clean_output() -> None:
     WORK.mkdir(parents=True)
 
 
+# Autoloads that exist only to drive the editor tooling (godot_mcp's bridges).
+# They are dev scaffolding, not game systems: the screenshot bridge in
+# particular polls for a request file every frame at runtime, which a shipped
+# build should never do. The addon's own files are already kept out of the pack
+# by the export preset's exclude_filter, so leaving these registered would also
+# make the game boot with three autoloads pointing at scripts that aren't there.
+DEV_AUTOLOAD_PREFIXES = ("MCPRuntimeBridge=", "MCPInputBridge=", "MCPScreenshotBridge=")
+
+
+def strip_dev_autoloads(project_godot: Path) -> None:
+    """Removes the editor-tooling autoloads from project.godot for the export.
+
+    Called inside export_pck's try/finally, so the original file is restored
+    afterwards either way — the working copy is never left modified.
+    """
+    text = project_godot.read_text(encoding="utf-8")
+    kept = [
+        line
+        for line in text.splitlines(keepends=True)
+        if not line.startswith(DEV_AUTOLOAD_PREFIXES)
+    ]
+    removed = len(text.splitlines()) - len(kept)
+    if removed:
+        project_godot.write_text("".join(kept), encoding="utf-8")
+        print(f"  stripped {removed} dev-tooling autoload(s) from the export")
+
+
 def export_pck() -> None:
     step("Exporting the game to game/MotionFit.pck")
     if not GODOT.exists():
@@ -99,6 +126,7 @@ def export_pck() -> None:
     project_godot = REPO / "project.godot"
     before = project_godot.read_bytes()
     try:
+        strip_dev_autoloads(project_godot)
         run(
             [
                 GODOT,
