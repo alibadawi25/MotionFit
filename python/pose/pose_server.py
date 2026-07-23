@@ -9,10 +9,10 @@ control + fitness values that it streams to Godot over a local UDP socket:
     crouch  : 0.0 .. 1.0   how deep you are squatting (0 = upright)
     duck    : 0.0 .. 1.0   how far you are bowing/leaning forward (0 = upright)
     hands_up: bool         the "ready" gesture -- both hands raised above the head
-    punch   : ""/l/r       Boxing: the glove that just threw (an edge event),
-                           with punch_kind naming it: straight / hook / uppercut
-    guard   : bool         Boxing: both gloves up covering the face (a block)
-    lean    : -1.0 .. 1.0  Boxing: waist slip, -1 = on-screen left .. +1 right
+    arm_extend : ""/l/r    the arm that just snapped out (an edge event), with
+                           arm_extend_kind naming its path out of the guard
+    hands_front: bool      both hands raised in front of the face
+    lean    : -1.0 .. 1.0  waist lean, -1 = on-screen left .. +1 right
     steps   : int          cumulative steps since the service started
     cadence : float        current pace in steps per minute
 
@@ -1918,14 +1918,19 @@ def _build_packet(forward: float, turn: float, jump: bool, crouch: float,
         "met": round(met, 2),   # body-mass-independent effort; Godot -> calories
         "hr": round(hr, 1),     # heart rate bpm, 0 = no reading (motion fallback)
         "hands_up": hands_up,   # "ready" gesture: both hands above the head
-        "punch": punch,         # Boxing: "left"/"right" on the throw frame, else ""
-        "punch_power": round(punch_power, 3),  # 0..1 strength of that punch
-        # Boxing: the shape of that punch -- "straight" (jab/cross), "hook" (the
-        # wide swing) or "uppercut". Only meaningful on a frame where `punch` is
-        # set; it holds the last throw's value otherwise.
-        "punch_kind": punch_kind,
-        "guard": guard,         # Boxing: both gloves up covering the face (block)
-        "lean": round(lean, 3),  # Boxing: waist slip, -1 = on-screen left .. +1 right
+        # Body motion, not a game move: the packet names what the body did and a
+        # game decides what that means (Boxing reads the three below as its
+        # punches and its guard -- see scenes/boxing/boxing_input.gd).
+        "arm_extend": punch,    # "left"/"right" on the extension frame, else ""
+        "arm_extend_power": round(punch_power, 3),  # 0..1 how hard it snapped out
+        # The path the hand took out of its resting position -- "straight"
+        # (forward), "hook" (a wide sideways arc) or "uppercut" (a rise from
+        # below). The shape vocabulary is the classifier's; a game maps it onto
+        # its own moves. Only meaningful on a frame where `arm_extend` is set; it
+        # holds the last extension's value otherwise.
+        "arm_extend_kind": punch_kind,
+        "hands_front": guard,   # both hands raised in front of the face
+        "lean": round(lean, 3),  # waist lean, -1 = on-screen left .. +1 right
         "status": status,       # service/camera state (see docstring); CONTEXT.md §9
         "ready_hint": ready_hint,  # setup coaching line; "" = framed and ready
         "calib_state": calib_state,      # calibration phase (see docstring)

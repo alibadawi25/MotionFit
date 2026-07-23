@@ -481,8 +481,8 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 **Packet schema (Python → Godot), newline-free JSON per datagram:**
 ```json
 { "forward": 0.0, "turn": 0.0, "jump": false, "crouch": 0.0, "duck": 0.0,
-  "hands_up": false, "punch": "", "punch_power": 0.0,
-  "punch_kind": "straight", "guard": false, "lean": 0.0,
+  "hands_up": false, "arm_extend": "", "arm_extend_power": 0.0,
+  "arm_extend_kind": "straight", "hands_front": false, "lean": 0.0,
   "walking": false, "detected": true, "steps": 0, "cadence": 0.0, "met": 1.2,
   "hr": 0.0, "status": "ready", "ready_hint": "", "ts": 0.0 }
 ```
@@ -499,26 +499,35 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
   The setup screen (§7) times how long it's held to start the countdown; exposed
   as `MotionManager.is_hands_up()`. Checked independently of the marching stance,
   so you can signal ready before getting into position.
-- `punch` string / `punch_power` 0..1 — the **Boxing** upper-body intent: `"left"`
-  or `"right"` on the single frame a punch (fast arm extension to full reach) is
-  thrown (edge event, like `jump`), else `""`; `punch_power` is how hard it
-  snapped. Read from `detected` (no marching gate — a standing boxer). Exposed as
-  `BoxingInput.consume_punch()` / `get_last_punch_power()` (see §5.1).
-- `punch_kind` string — the **shape** of that punch: `"straight"` (jab/cross),
-  `"hook"` (the wide swing) or `"uppercut"`, classified from how far the glove
-  travelled forward / sideways / upward between its resting guard and full
-  extension (torso-normalised, so it needs no calibration). Deliberately lenient
-  and biased to `"straight"`: Boxing is for players who have never boxed, so a
-  scrappy throw is named, never rejected. Only meaningful on a frame where
-  `punch` is set. `BoxingInput.get_last_punch_kind()`.
-- `guard` bool — **Boxing defence**: both gloves up covering the face (each wrist
-  above the shoulder line *and* tucked in near the head, so a wide-flung arm or a
-  punch at full extension doesn't count). A held state, not an edge.
+The three fields below are the ones Boxing is built out of, and they are named
+for **body motion, not for Boxing's moves** — an arm snapping out, hands raised
+in front of the face, a lean at the waist. The packet is a shared surface: a
+second game wanting "which arm just extended" should not have to read a field
+called `punch`. The translation into punches and defences happens in
+`scenes/boxing/boxing_input.gd` (§5.1), the one place that is allowed to know
+Boxing's vocabulary. Renaming the *values* was deliberately not done — they
+travel inside a payload only the owning game reads, so they cost nothing shared.
+
+- `arm_extend` string / `arm_extend_power` 0..1 — `"left"` or `"right"` on the
+  single frame an arm snaps out to full reach (edge event, like `jump`), else
+  `""`; `arm_extend_power` is how hard it snapped. Read from `detected` (no
+  marching gate — a standing player). Exposed as `BoxingInput.consume_punch()` /
+  `get_last_punch_power()` (see §5.1).
+- `arm_extend_kind` string — the **path** the hand took out of its resting
+  position: `"straight"` (forward), `"hook"` (a wide sideways arc) or
+  `"uppercut"` (a rise from below), classified from how far it travelled forward
+  / sideways / upward (torso-normalised, so it needs no calibration).
+  Deliberately lenient and biased to `"straight"`: Boxing is for players who have
+  never boxed, so a scrappy throw is named, never rejected. Only meaningful on a
+  frame where `arm_extend` is set. `BoxingInput.get_last_punch_kind()`.
+- `hands_front` bool — both hands raised in front of the face (each wrist above
+  the shoulder line *and* tucked in near the head, so a wide-flung arm or an arm
+  at full extension doesn't count). A held state, not an edge.
   `BoxingInput.is_guarding()`.
-- `lean` -1..1 — **Boxing defence**: the waist slip, from the shoulder centre's
-  sideways offset from the hip centre. `-1` = leaning to the player's on-screen
-  LEFT (mirrored preview, same convention as `punch` sides). Distinct from
-  `turn`, which is rotating the torso to steer. `BoxingInput.get_lean()`.
+- `lean` -1..1 — waist lean, from the shoulder centre's sideways offset from the
+  hip centre. `-1` = leaning to the player's on-screen LEFT (mirrored preview,
+  same convention as `arm_extend` sides). Distinct from `turn`, which is rotating
+  the torso to steer. `BoxingInput.get_lean()`.
 - `steps` int / `cadence` float — cumulative steps and current pace (steps/min).
 - `met` float    — effort as a metabolic equivalent (body-mass-independent).
   Godot turns this into calories via `ProfileManager` weight × time; MET is used
@@ -641,8 +650,10 @@ by design — with no service running the texture is null and the UI falls back 
 
   `scenes/boxing/boxing_input.gd` (`BoxingInput`) is the reference adapter: it
   owns the words *punch*, *guard* and *slip*, and `boxing.gd` talks to it, not to
-  MotionManager. A new game with its own moves adds an adapter beside its scene
-  and changes nothing shared. Covered by
+  MotionManager. It is also where the packet's body-motion field names
+  (`arm_extend`, `hands_front`, `lean` — §9) become those words. A new game with
+  its own moves adds an adapter beside its scene and changes nothing shared.
+  Covered by
   `scenes/tests/boxing_input_probe.tscn` — a headless PASS/FAIL self-test that
   feeds synthetic packets through the real handler (this path has no visual
   surface, so a screenshot proves nothing about it).

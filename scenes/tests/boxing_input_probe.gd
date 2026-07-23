@@ -21,8 +21,8 @@ func _ready() -> void:
 
 	# A packet with a left hook thrown at 0.8 power, gloves up, slipping left.
 	_packet({
-		"punch": "left", "punch_power": 0.8, "punch_kind": "hook",
-		"guard": true, "lean": -0.6,
+		"arm_extend": "left", "arm_extend_power": 0.8, "arm_extend_kind": "hook",
+		"hands_front": true, "lean": -0.6,
 	})
 	_check("punch hand latched", input.consume_punch(), "left")
 	_check("punch power captured", input.get_last_punch_power(), 0.8)
@@ -35,22 +35,23 @@ func _ready() -> void:
 
 	# Power and shape must survive later packets that carry no punch — they
 	# describe the throw that was consumed, not whatever arrived since.
-	_packet({"guard": false, "lean": 0.0, "punch_power": 0.1,
-			"punch_kind": "straight"})
+	_packet({"hands_front": false, "lean": 0.0, "arm_extend_power": 0.1,
+			"arm_extend_kind": "straight"})
 	_check("no phantom punch", input.consume_punch(), "")
 	_check("power still the thrown one", input.get_last_punch_power(), 0.8)
 	_check("shape still the thrown one", input.get_last_punch_kind(), "hook")
 	_check("guard released", input.is_guarding(), false)
 
 	# A punch landing between polls must not be lost: two packets, one read.
-	_packet({"punch": "right", "punch_power": 0.5, "punch_kind": "uppercut"})
-	_packet({"punch": "", "guard": true})
+	_packet({"arm_extend": "right", "arm_extend_power": 0.5,
+			"arm_extend_kind": "uppercut"})
+	_packet({"arm_extend": "", "hands_front": true})
 	_check("punch survives a later packet", input.consume_punch(), "right")
 	_check("its power survived too", input.get_last_punch_power(), 0.5)
 	_check("its shape survived too", input.get_last_punch_kind(), "uppercut")
 
-	# An older pose build sends no boxing fields at all: read as "not defending"
-	# rather than erroring.
+	# An older pose build sends none of these fields at all: read as "not
+	# defending" rather than erroring.
 	_packet({"forward": 0.3})
 	_check("absent guard defaults false", input.is_guarding(), false)
 	_check("absent lean defaults zero", input.get_lean(), 0.0)
@@ -63,7 +64,8 @@ func _ready() -> void:
 
 	# reset_session_stats drops leftovers so a bout can't open on a phantom hit
 	# thrown at the setup screen.
-	_packet({"punch": "left", "punch_power": 0.9, "punch_kind": "straight"})
+	_packet({"arm_extend": "left", "arm_extend_power": 0.9,
+			"arm_extend_kind": "straight"})
 	MotionManager.reset_session_stats()
 	_check("session reset drops the latch", input.consume_punch(), "")
 
