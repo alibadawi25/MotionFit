@@ -68,6 +68,7 @@ theme_override_font_sizes/font_size = 30
 horizontal_alignment = 1
 
 [node name="SubPromptLabel" type="Label" parent="."]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -75,7 +76,6 @@ anchor_right = 1.0
 offset_top = 814.0
 offset_bottom = 844.0
 grow_horizontal = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 1)
 theme_override_font_sizes/font_size = 18
 horizontal_alignment = 1
 

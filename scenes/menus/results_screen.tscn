@@ -236,18 +236,16 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/ScoreCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "SCORE"
 horizontal_alignment = 1
 
 [node name="ScoreSubLabel" type="Label" parent="Layout/Column/StatGrid/ScoreCard/CardBody"]
+theme_type_variation = &"Caption"
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 15
 horizontal_alignment = 1
 
 [node name="TimeCard" type="PanelContainer" parent="Layout/Column/StatGrid"]
@@ -270,9 +268,8 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/TimeCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "TIME"
 horizontal_alignment = 1
 
@@ -296,16 +293,14 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/CaloriesCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "CALORIES"
 horizontal_alignment = 1
 
 [node name="UnitLabel" type="Label" parent="Layout/Column/StatGrid/CaloriesCard/CardBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 15
 text = "kcal"
 horizontal_alignment = 1
 
@@ -329,9 +324,8 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/StepsCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "STEPS"
 horizontal_alignment = 1
 
@@ -355,16 +349,14 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/PaceCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "AVG PACE"
 horizontal_alignment = 1
 
 [node name="UnitLabel" type="Label" parent="Layout/Column/StatGrid/PaceCard/CardBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 15
 text = "steps / min"
 horizontal_alignment = 1
 
@@ -389,9 +381,8 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/XpCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "XP EARNED"
 horizontal_alignment = 1
 
@@ -417,16 +408,14 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/AvgHrCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "AVG HR"
 horizontal_alignment = 1
 
 [node name="UnitLabel" type="Label" parent="Layout/Column/StatGrid/AvgHrCard/CardBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 15
 text = "bpm"
 horizontal_alignment = 1
 
@@ -452,16 +441,14 @@ text = "0"
 horizontal_alignment = 1
 
 [node name="CaptionLabel" type="Label" parent="Layout/Column/StatGrid/PeakHrCard/CardBody"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "PEAK HR"
 horizontal_alignment = 1
 
 [node name="UnitLabel" type="Label" parent="Layout/Column/StatGrid/PeakHrCard/CardBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 15
 text = "bpm"
 horizontal_alignment = 1
 
@@ -491,31 +478,28 @@ theme_override_colors/font_color = Color(1, 0.79, 0.28, 1)
 text = "▲  LEVEL UP — LEVEL 1"
 
 [node name="LevelLabel" type="Label" parent="Layout/Column/ProgressionRow"]
+theme_type_variation = &"BodyMuted"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "LEVEL 1"
 
 [node name="DotLabel" type="Label" parent="Layout/Column/ProgressionRow"]
+theme_type_variation = &"BodyMuted"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "•"
 
 [node name="TotalXpLabel" type="Label" parent="Layout/Column/ProgressionRow"]
+theme_type_variation = &"BodyMuted"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
-theme_override_font_sizes/font_size = 20
 text = "0 XP total"
 
 [node name="NextGoalLabel" type="Label" parent="Layout/Column"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_colors/font_color = Color(0.62, 0.67, 0.75, 1)
 theme_override_font_sizes/font_size = 18
 horizontal_alignment = 1
 

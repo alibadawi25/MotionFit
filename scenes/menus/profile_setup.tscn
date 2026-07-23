@@ -64,17 +64,15 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"H1"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_font_sizes/font_size = 38
 text = "CREATE YOUR PROFILE"
 
 [node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
-theme_override_font_sizes/font_size = 17
 text = "Your name and body data stay on this device and give you accurate calories. You can change them anytime."
 autowrap_mode = 3
 

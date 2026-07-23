@@ -82,17 +82,15 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"H1"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_font_sizes/font_size = 38
 text = "FITNESS"
 
 [node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
-theme_override_font_sizes/font_size = 17
 text = "Your movement, at a glance"
 autowrap_mode = 3
 
@@ -106,9 +104,8 @@ layout_mode = 2
 theme_override_constants/separation = 16
 
 [node name="GoalCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/GoalEditorRow"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "DAILY GOAL"
 vertical_alignment = 1
 
@@ -148,8 +145,8 @@ layout_mode = 2
 theme_override_styles/panel = SubResource("notice_style")
 
 [node name="NoticeLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/EmptyNotice"]
+theme_type_variation = &"AccentSoft"
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.7, 0.4, 1)
 theme_override_font_sizes/font_size = 17
 text = "No movement logged yet — play your first game and your calories, streak and consistency start filling in here."
 autowrap_mode = 3
@@ -217,9 +214,8 @@ size_flags_stretch_ratio = 1.15
 theme_override_constants/separation = 10
 
 [node name="ColumnCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/CaloriesColumn"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "CALORIES · LAST 7 DAYS"
 
 [node name="CalorieChart" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/CaloriesColumn"]
@@ -235,10 +231,9 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
 [node name="ConsistencyCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/ConsistencyColumn"]
+theme_type_variation = &"Caption"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "CONSISTENCY · LAST 17 WEEKS"
 
 [node name="ConsistencyCalendar" type="Control" parent="ScreenCenter/Card/CardBody/ContentBox/Stats/ChartColumns/ConsistencyColumn"]

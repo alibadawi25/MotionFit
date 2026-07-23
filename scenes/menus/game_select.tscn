@@ -117,17 +117,17 @@ theme_override_font_sizes/font_size = 74
 text = "SELECT A GAME"
 
 [node name="Subtitle" type="Label" parent="Content/Layout/Header"]
+theme_type_variation = &"AccentSoft"
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 text = "Pick a game   ·   move your body to play"
 
 [node name="StatusLabel" type="Label" parent="Content/Layout/Header"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_colors/font_color = Color(1, 0.72, 0.3, 1)
 theme_override_font_sizes/font_size = 18
 text = "◌  Waiting for the camera service…"
 
@@ -175,8 +175,8 @@ mouse_filter = 2
 theme_override_constants/separation = 22
 
 [node name="SoonCaption" type="Label" parent="Content/Layout/CardScroll/CardPad/CardColumn/SoonSection"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 0.85)
 theme_override_font_sizes/font_size = 16
 text = "MORE GAMES COMING"
 

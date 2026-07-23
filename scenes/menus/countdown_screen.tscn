@@ -40,8 +40,8 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="GetReady" type="Label" parent="Header"]
+theme_type_variation = &"AccentSoft"
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 24
 text = "GET READY"
 horizontal_alignment = 1

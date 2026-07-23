@@ -120,10 +120,10 @@ theme_override_font_sizes/font_size = 74
 text = "HOW HARD?"
 
 [node name="Subtitle" type="Label" parent="Content/Layout/Header"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 text = "Pick your intensity"
 
 [node name="CardCenter" type="CenterContainer" parent="Content/Layout"]

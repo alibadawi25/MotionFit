@@ -212,29 +212,39 @@ a size and a colour on the node.
 |---|---|---|---|---|
 | `Display` | Anton | *per node* | `TEXT` 0.96,0.97,0.99 | Screen titles and hero values. The size genuinely is per-screen (a results tile's number is not a menu title), so it stays on the node — the font and colour do not. |
 | `DisplayAccent` | Anton | *per node* | `ACCENT` 1,0.5,0.14 | The same, in accent. |
+| `H1` | Rajdhani | 38 | `TEXT` | The screen title on a settings-style page. |
 | `Body` | Rajdhani | 20 | `TEXT` | Ordinary copy. |
 | `BodyMuted` | Rajdhani | 20 | `MUTED` 0.72,0.76,0.82 | Secondary copy. |
-| `BodySmall` | Rajdhani | 17 | `MUTED` | Dense supporting rows. |
-| `Caption` | Rajdhani | 15 | `MUTED` | Labels under a value. |
-| `Micro` | Rajdhani | 13 | `MUTED` | Units, footnotes. |
+| `BodySmall` | Rajdhani | 17 | `MUTED` | Subtitles, dense supporting rows. |
+| `Caption` | Rajdhani | 15 | `DIM` 0.62,0.67,0.75 | Labels under a value. |
+| `Micro` | Rajdhani | 13 | `DIM` | Units, footnotes. |
+| `AccentSoft` | Rajdhani | *per node* | 1,0.64,0.3 | Kickers, subtitles and live readouts — the warm accent that is *not* the button orange. |
 
 `TEXT`, `MUTED` and `ACCENT` are the same values as `GameHUD`'s constants — one
-palette across menus and HUDs, deliberately.
+palette across menus and HUDs, deliberately. `DIM` is one step below `MUTED`, so
+a unit label still reads as quieter than the subtitle above it; that two-tier
+grey is the hierarchy worth keeping, and it is the only grey distinction there is.
 
 The theme's `default_font_size` is already 22, so
 `theme_override_font_sizes/font_size = 22` on a default-font Label is a no-op.
 Don't write it.
 
-**This is partly migrated.** 25 Anton labels across 11 screens now use
-`Display`/`DisplayAccent` (verified pixel-identical on all 11). The body-text
-tiers are defined but largely unused, because adopting them means *changing*
-what is on screen: the menus currently carry **8 near-identical greys used 47
-times** (0.62,0.67,0.75 · 0.7,0.74,0.8 · 0.78,0.82,0.88@0.9 · 0.6,0.65,0.72 · …)
-and **6 near-identical oranges used 20 times**. Nobody chose eight greys — they
-were re-typed by hand, screen by screen, and drifted. Snapping them to the scale
-is a small but real visual change and wants a deliberate decision, so it has not
-been done silently. Until it is, **new** screens use the variations; don't add a
-ninth grey.
+**91 labels across 17 screens are on a variation.** Before this, the menus
+carried **19 distinct text colours**, including 8 near-identical greys used 47
+times and 6 near-identical oranges used 20 times. Nobody chose eight greys —
+`SubtitleLabel` at size 17 existed on seven screens in *two* different colours,
+and the caption grey under a stat differed between the Fitness screen and the
+Results screen. They were re-typed by hand, screen by screen, and drifted, in
+exactly the way the HUD chip styles had. What is left is 19 overrides in 9
+colours, and those are real one-offs: the danger red, the gold award badge, a
+couple of bespoke tints. If you are adding a tenth, you are probably adding drift.
+
+> **Screenshot gotcha:** the Main Menu is *not* deterministic across sessions —
+> its background parallax eases toward the real mouse pointer, so a shot taken an
+> hour later is offset by a few pixels and diffs at ~95% of the frame. Shoot its
+> before and after back to back, in one batch, without touching the mouse. The
+> Profile screen has the same problem for a different reason (the animated
+> character preview); there, compare against same-code run-to-run noise instead.
 
 ### 4.2 The component catalogue (`scenes/ui/components/`)
 

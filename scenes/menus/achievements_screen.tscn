@@ -62,17 +62,15 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"H1"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_font_sizes/font_size = 38
 text = "ACHIEVEMENTS"
 
 [node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
-theme_override_font_sizes/font_size = 17
 text = "Keep moving — the rest are on their way."
 autowrap_mode = 3
 
@@ -93,9 +91,8 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 18
 
 [node name="DiscoveriesCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "WORLD DISCOVERIES — HIDDEN PLACES IN THE OPEN WORLD"
 
 [node name="DiscoveryShelf" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
@@ -110,9 +107,8 @@ columns = 5
 layout_mode = 2
 
 [node name="AchievementsCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "ACHIEVEMENTS"
 
 [node name="AchievementGrid" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]

@@ -92,11 +92,10 @@ theme_override_font_sizes/font_size = 60
 text = "PAUSED"
 
 [node name="Subtitle" type="Label" parent="Center/Card/VBox"]
+theme_type_variation = &"BodySmall"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.82, 0.86, 0.92, 0.95)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.5)
 theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 17
 text = "Catch your breath — your session is safe."
 
 [node name="Spacer" type="Control" parent="Center/Card/VBox"]

@@ -78,17 +78,15 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"H1"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_font_sizes/font_size = 38
 text = "STORE"
 
 [node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
-theme_override_font_sizes/font_size = 17
 text = "Everything here is earned by moving. Nothing changes how hard you work — it just makes it yours."
 autowrap_mode = 3
 
@@ -106,9 +104,9 @@ layout_mode = 2
 theme_override_constants/separation = 18
 
 [node name="BalanceLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 30
 text = "◆ 0"
 vertical_alignment = 1
@@ -120,15 +118,13 @@ theme_override_constants/separation = 1
 alignment = 1
 
 [node name="HowEarnedLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody/BalanceText"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
-theme_override_font_sizes/font_size = 15
 text = "Earned by finishing sessions and hitting your daily goal."
 
 [node name="NoGrindLabel" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/BalanceRow/BalanceBody/BalanceText"]
+theme_type_variation = &"Micro"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
 text = "Today's goal already pays the most — extra sessions are a bonus, never a target."
 
 [node name="CategoryTabs" type="HBoxContainer" parent="ScreenCenter/Card/CardBody/ContentBox"]
@@ -199,9 +195,8 @@ columns = 3
 layout_mode = 2
 
 [node name="AwardsCaption" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "AWARDS — EARNED, NEVER SOLD"
 
 [node name="AwardsShelf" type="GridContainer" parent="ScreenCenter/Card/CardBody/ContentBox/Scroll/ScrollBody"]

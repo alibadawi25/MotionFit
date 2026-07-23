@@ -296,9 +296,9 @@ theme_override_font_sizes/font_size = 116
 text = "FIT"
 
 [node name="Tagline" type="Label" parent="Content/Layout"]
+theme_type_variation = &"AccentSoft"
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 25
 text = "MOVE   ·   PLAY   ·   LEVEL UP"
 
@@ -358,10 +358,10 @@ theme_override_font_sizes/font_size = 21
 text = "—"
 
 [node name="ChallengeDetail" type="Label" parent="Content/Layout/Buttons/ChallengeCard/CardPad/CardBody"]
+theme_type_variation = &"Micro"
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
 theme_override_font_sizes/font_size = 14
 text = "—"
 
@@ -513,8 +513,8 @@ layout_mode = 2
 theme_override_constants/separation = 16
 
 [node name="KickerLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+theme_type_variation = &"AccentSoft"
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 18
 text = "TODAY AT A GLANCE"
 
@@ -530,10 +530,9 @@ theme_override_font_sizes/font_size = 60
 text = "0"
 
 [node name="CalorieGoalLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/CalorieRow"]
+theme_type_variation = &"BodyMuted"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 20
 text = "/ 0 kcal"
 vertical_alignment = 2
 
@@ -582,17 +581,16 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="LevelLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/LevelRow"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 20
 text = "LEVEL 1"
 
 [node name="XpToNextLabel" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody/LevelRow"]
+theme_type_variation = &"Caption"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 15
 text = "→   0 XP to level 2"
 vertical_alignment = 1
 
@@ -613,9 +611,8 @@ mouse_filter = 2
 color = Color(1, 1, 1, 0.08)
 
 [node name="ChartCaption" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+theme_type_variation = &"Micro"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.74, 0.8, 1)
-theme_override_font_sizes/font_size = 13
 text = "CALORIES · LAST 7 DAYS"
 
 [node name="WeekChart" type="Control" parent="TodayPanelHolder/TodayPanel/PanelBody"]
@@ -625,10 +622,10 @@ layout_mode = 2
 script = ExtResource("12_chart")
 
 [node name="FirstRunNudge" type="Label" parent="TodayPanelHolder/TodayPanel/PanelBody"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 0.92)
 theme_override_font_sizes/font_size = 15
 text = "Play your first game to light this up."
 autowrap_mode = 3

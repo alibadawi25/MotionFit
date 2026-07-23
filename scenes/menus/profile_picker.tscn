@@ -91,10 +91,9 @@ text = "WHO'S PLAYING?"
 horizontal_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="Column/Header"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.65, 0.73, 1)
-theme_override_font_sizes/font_size = 17
 text = "Everyone keeps their own progress, levels and calibration."
 horizontal_alignment = 1
 
@@ -166,9 +165,8 @@ text = "Remove this profile?"
 horizontal_alignment = 1
 
 [node name="ConfirmBodyLabel" type="Label" parent="DeleteConfirmLayer/DialogCenter/Dialog/DialogBody"]
+theme_type_variation = &"Caption"
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.65, 0.73, 1)
-theme_override_font_sizes/font_size = 15
 text = "Their level, stats and body calibration will be deleted.
 This can't be undone."
 horizontal_alignment = 1

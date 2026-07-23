@@ -63,17 +63,15 @@ mouse_filter = 2
 color = Color(1, 0.5, 0.14, 1)
 
 [node name="TitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"H1"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
-theme_override_font_sizes/font_size = 38
 text = "SETTINGS"
 
 [node name="SubtitleLabel" type="Label" parent="ScreenCenter/Card/CardBody"]
+theme_type_variation = &"BodySmall"
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.88, 0.9)
-theme_override_font_sizes/font_size = 17
 text = "Audio preferences."
 autowrap_mode = 3
 
@@ -97,10 +95,10 @@ max_value = 1.0
 step = 0.01
 
 [node name="MasterReadout" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/MasterVolumeRow"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(56, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 20
 text = "100%"
 horizontal_alignment = 2
@@ -121,10 +119,10 @@ max_value = 1.0
 step = 0.01
 
 [node name="MusicReadout" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/MusicVolumeRow"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(56, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 20
 text = "100%"
 horizontal_alignment = 2
@@ -145,10 +143,10 @@ max_value = 1.0
 step = 0.01
 
 [node name="SfxReadout" type="Label" parent="ScreenCenter/Card/CardBody/ContentBox/SfxVolumeRow"]
+theme_type_variation = &"AccentSoft"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(56, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.64, 0.3, 1)
 theme_override_font_sizes/font_size = 20
 text = "100%"
 horizontal_alignment = 2
