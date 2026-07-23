@@ -1,9 +1,8 @@
 extends GameHUD
 ## RunnerHud
 ##
-## The Infinite Runner's on-screen feedback AND its tension overlay, built in code
-## to match the shared app mood (dark chips, Anton values) with a danger layer on
-## top. It owns no game state — runner.gd feeds it live numbers:
+## The Infinite Runner's on-screen feedback AND its tension overlay. It owns no
+## game state — runner.gd feeds it live numbers:
 ##   - [method set_stats]  distance covered (score) + current pace,
 ##   - [method set_danger] the zombie "gap" (0 safe … 1 caught) and a heartbeat
 ##                          pulse value, which drive the closing dark,
@@ -18,47 +17,15 @@ extends GameHUD
 ## rest is your imagination. The less you see, the more you fear. Don't add a
 ## number back.
 ##
-## The vignette is a shader ColorRect added first (so it sits behind the chips);
-## the heartbeat is computed by runner.gd and passed in, so the whole tension
+## The layout is authored in runner_hud.tscn (see CONTEXT.md §4.1) — including
+## the vignette, whose shader lives in runner_vignette.gdshader; this script only
+## drives it. Instance the scene, never [code]new()[/code] the class. What is
+## still built here is the briefing's four control badges, because each one is a
+## different animated icon rasterized at runtime.
+##
+## The heartbeat is computed by runner.gd and passed in, so the whole tension
 ## picture stays in one place there.
 class_name RunnerHud
-
-## The closing dark: the game's ONLY proximity readout. [code]intensity[/code]
-## (0…1, from the gap) drags the vignette's clear centre from a wide cinematic
-## frame down to a narrow tunnel, so danger is felt as the world being taken away
-## rather than read off a scale. Blood only bleeds in on the heartbeat, and the
-## edge crawls with grain + a slow breathing wobble so the dark never sits still
-## and the eye keeps hunting movement in it.
-const VIGNETTE_SHADER: String = """
-shader_type canvas_item;
-uniform float intensity : hint_range(0.0, 1.0) = 0.0;
-uniform float pulse : hint_range(0.0, 1.0) = 0.0;
-
-float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453);
-}
-
-void fragment() {
-	vec2 d = UV - vec2(0.5);
-	d.x *= 1.12;  // squeeze horizontally so a wide screen still tunnels
-	float r = length(d) * 1.5;
-
-	// The hole you can still see through. It clenches with the heartbeat, and
-	// breathes slightly even when you're safe, so the frame is never quite still.
-	float breathe = sin(TIME * 1.7) * 0.012;
-	float inner = mix(0.60, 0.07, intensity) - pulse * 0.06 * intensity + breathe;
-	float outer = mix(1.20, 0.46, intensity);
-	float vig = smoothstep(inner, outer, r);
-
-	// Near-black by default: it reads as the light dying, not as a red filter.
-	// Blood washes in only on the beat, and only once the threat is real.
-	vec3 col = mix(vec3(0.0), vec3(0.34, 0.0, 0.0), pulse * intensity);
-	float a = vig * (0.42 + 0.58 * intensity);
-	// Grain in the murk — gives the dark texture to hide things in.
-	a += (hash(UV * vec2(640.0, 360.0) + fract(TIME) * 97.0) - 0.5) * 0.06 * intensity;
-	COLOR = vec4(col, clamp(a, 0.0, 0.985));
-}
-"""
 
 ## The briefing card's control-row badge, and the icon centred inside it. The gap
 ## between them is the icon's breathing room and the headroom its little
@@ -66,11 +33,17 @@ void fragment() {
 const BADGE_PX: float = 44.0
 const BADGE_ICON_PX: float = 26.0
 
-var _vignette: ColorRect
-var _lightning: ColorRect
-var _distance_value: Label
-var _pace_fill: Panel
-var _prompt: Label
+## How far the pace fill can travel: the track's width less its 2px inset either
+## side. The fill is positioned by hand inside the track (a bar that drains isn't
+## a container job), so the script needs the number the scene was authored with.
+const PACE_TRAVEL: float = 226.0
+
+@onready var _vignette: ColorRect = %Vignette
+@onready var _lightning: ColorRect = %Lightning
+@onready var _distance_value: Label = %DistanceValue
+@onready var _pace_fill: Panel = %PaceFill
+@onready var _prompt: Label = %Prompt
+
 var _prompt_text: String = ""
 var _last_pace: float = 0.0
 # Runtime-rasterized SVG icon textures (keyed body|px).
@@ -79,130 +52,17 @@ var _icon_cache: Dictionary = {}
 
 func _ready() -> void:
 	super()
-	_build_vignette()
-	_build_stats()
-	_build_prompt()
-	_build_toast(40, 0.9)
-	_position_toast()
-
-
-## The vignette goes down first so the chips sit on top of it, then the hit
-## flash (from [GameHUD]) and the lightning sheet over everything.
-func _build_vignette() -> void:
-	var shader := Shader.new()
-	shader.code = VIGNETTE_SHADER
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
-	_vignette = ColorRect.new()
-	_vignette.material = mat
-	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_vignette)
-
-	_build_flash()
-
-	# A cold blue-white sheet for the distant lightning scare (see flash_lightning).
-	_lightning = ColorRect.new()
-	_lightning.color = Color(0.7, 0.8, 1.0, 0.0)
-	_lightning.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_lightning.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_lightning)
-
-
-## Top-left: DISTANCE (the score) as a big Anton value over a small pace bar,
-## sitting on a shared chip so it reads as an instrument, not floating text.
-func _build_stats() -> void:
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	panel.offset_left = 36.0
-	panel.offset_top = 28.0
-	panel.add_theme_stylebox_override("panel", chip(16, 22.0, 14.0, 14.0))
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(box)
-
-	var cap := Label.new()
-	cap.text = "DISTANCE"
-	cap.add_theme_font_size_override("font_size", 14)
-	cap.add_theme_color_override("font_color", MUTED)
-	box.add_child(cap)
-
-	_distance_value = Label.new()
-	_distance_value.text = "0 m"
-	_distance_value.add_theme_font_override("font", _anton)
-	_distance_value.add_theme_font_size_override("font_size", 52)
-	_distance_value.add_theme_color_override("font_color", TEXT)
-	box.add_child(_distance_value)
-
-	box.add_child(_spacer(6))
-
-	# A slim pace bar so the player sees marching harder = running faster.
-	var pace_cap := Label.new()
-	pace_cap.text = "PACE"
-	pace_cap.add_theme_font_size_override("font_size", 12)
-	pace_cap.add_theme_color_override("font_color", MUTED)
-	box.add_child(pace_cap)
-
-	var track := Panel.new()
-	track.custom_minimum_size = Vector2(230, 14)
-	var track_sb := rounded(Color(0.03, 0.04, 0.07, 0.9), 7)
-	track_sb.set_border_width_all(1)
-	track_sb.border_color = PANEL_BORDER
-	track.add_theme_stylebox_override("panel", track_sb)
-	box.add_child(track)
-	_pace_fill = Panel.new()
-	_pace_fill.position = Vector2(2, 2)
-	_pace_fill.size = Vector2(0, 10)
-	_pace_fill.add_theme_stylebox_override("panel", rounded(ACCENT, 5))
-	track.add_child(_pace_fill)
-
-
-## Bottom-centre coaching line over a soft dark gradient band, outlined so it
-## stays readable whatever the road behind it is doing.
-func _build_prompt() -> void:
-	var band := TextureRect.new()
-	band.texture = _hband_texture()
-	band.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	band.offset_bottom = -84.0
-	band.offset_top = -156.0
-	band.stretch_mode = TextureRect.STRETCH_SCALE
-	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(band)
-
-	_prompt = Label.new()
-	_prompt.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	_prompt.offset_bottom = -90.0
-	_prompt.offset_top = -150.0
-	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_prompt.add_theme_font_override("font", _anton)
-	_prompt.add_theme_font_size_override("font_size", 46)
-	_prompt.add_theme_color_override("font_color", TEXT)
-	_prompt.add_theme_constant_override("outline_size", 10)
-	_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_prompt)
-
-
-## The chase's shouts span the top of the screen, under the distance chip.
-func _position_toast() -> void:
-	_toast.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	_toast.offset_top = 168.0
-	_toast.offset_bottom = 240.0
+	# The chase's shouts come fast, so they clear quickly. %Toast and %Flash are
+	# authored in the scene, so the base adopts them rather than building them.
+	_toast_hold = 0.9
 
 
 # --- live updates ------------------------------------------------------------
 
 func set_stats(distance_m: int, pace01: float) -> void:
 	_last_pace = clampf(pace01, 0.0, 1.0)
-	if _distance_value != null:
-		_distance_value.text = "%d m" % distance_m
-	if _pace_fill != null:
-		_pace_fill.size.x = _last_pace * 226.0
+	_distance_value.text = "%d m" % distance_m
+	_pace_fill.size.x = _last_pace * PACE_TRAVEL
 
 
 ## Updates the danger picture from the zombie [param gap] (0 safe … 1 caught) and
@@ -211,8 +71,6 @@ func set_stats(distance_m: int, pace01: float) -> void:
 ## before you could name why, and it never resolves into a readable amount — you
 ## know you're in trouble, not how much, which is the point.
 func set_danger(gap: float, pulse: float) -> void:
-	if _vignette == null:
-		return
 	var g: float = clampf(gap, 0.0, 1.0)
 	var mat: ShaderMaterial = _vignette.material
 	mat.set_shader_parameter("intensity", smoothstep(0.12, 1.0, g))
@@ -220,8 +78,6 @@ func set_danger(gap: float, pulse: float) -> void:
 
 
 func set_prompt(text: String, color: Color = TEXT) -> void:
-	if _prompt == null:
-		return
 	_prompt.add_theme_color_override("font_color", color)
 	if text == _prompt_text:
 		return
@@ -239,8 +95,6 @@ func flash_hit() -> void:
 
 ## A distant lightning strike: a quick cold double-flash over the whole screen.
 func flash_lightning() -> void:
-	if _lightning == null:
-		return
 	var tween := create_tween()
 	tween.tween_property(_lightning, "color:a", 0.5, 0.05)
 	tween.tween_property(_lightning, "color:a", 0.08, 0.08)
@@ -343,13 +197,6 @@ func _brief_row(icon_body: String, anim: String, move_name: String, desc: String
 	return row
 
 
-func _spacer(height: int) -> Control:
-	var s := Control.new()
-	s.custom_minimum_size = Vector2(0, height)
-	s.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return s
-
-
 ## Updates the briefing card's live countdown (and its draining time bar) from
 ## the seconds remaining.
 func set_briefing_countdown(seconds: float) -> void:
@@ -358,24 +205,6 @@ func set_briefing_countdown(seconds: float) -> void:
 	var s: int = maxi(0, int(ceil(seconds)))
 	_briefing.set_countdown("GET READY…" if s <= 0 else "CHASE BEGINS IN %d" % s)
 	_briefing.set_time_remaining(seconds)
-
-
-## A wide soft horizontal gradient band (transparent → dark → transparent), used
-## to ground the coaching line against the busy road.
-func _hband_texture() -> GradientTexture2D:
-	var grad := Gradient.new()
-	grad.offsets = PackedFloat32Array([0.0, 0.28, 0.72, 1.0])
-	grad.colors = PackedColorArray([
-		Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.45),
-		Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.0),
-	])
-	var tex := GradientTexture2D.new()
-	tex.gradient = grad
-	tex.width = 512
-	tex.height = 8
-	tex.fill_from = Vector2(0.0, 0.0)
-	tex.fill_to = Vector2(1.0, 0.0)
-	return tex
 
 
 # --- vector icons --------------------------------------------------------------

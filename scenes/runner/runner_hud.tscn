@@ -1,0 +1,190 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scenes/runner/runner_hud.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://assets/fonts/Anton-Regular.ttf" id="2_anton"]
+[ext_resource type="Shader" path="res://scenes/runner/runner_vignette.gdshader" id="3_vignette"]
+
+[sub_resource type="ShaderMaterial" id="vignette_mat"]
+shader = ExtResource("3_vignette")
+shader_parameter/intensity = 0.0
+shader_parameter/pulse = 0.0
+
+[sub_resource type="StyleBoxFlat" id="chip"]
+content_margin_left = 22.0
+content_margin_top = 14.0
+content_margin_right = 22.0
+content_margin_bottom = 14.0
+bg_color = Color(0.05, 0.07, 0.11, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0, 0, 0, 0.25)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="pace_track"]
+bg_color = Color(0.03, 0.04, 0.07, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="pace_fill"]
+bg_color = Color(1, 0.5, 0.14, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="Gradient" id="band_gradient"]
+offsets = PackedFloat32Array(0, 0.28, 0.72, 1)
+colors = PackedColorArray(0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0.45, 0, 0, 0, 0)
+
+[sub_resource type="GradientTexture2D" id="band_texture"]
+gradient = SubResource("band_gradient")
+width = 512
+height = 8
+fill_to = Vector2(1, 0)
+
+[node name="RunnerHud" type="CanvasLayer"]
+script = ExtResource("1_script")
+
+[node name="Vignette" type="ColorRect" parent="."]
+unique_name_in_owner = true
+material = SubResource("vignette_mat")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Flash" type="ColorRect" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.9, 0.1, 0.1, 0)
+
+[node name="Lightning" type="ColorRect" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.7, 0.8, 1, 0)
+
+[node name="StatsChip" type="PanelContainer" parent="."]
+offset_left = 36.0
+offset_top = 28.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("chip")
+
+[node name="Box" type="VBoxContainer" parent="StatsChip"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="DistanceCaption" type="Label" parent="StatsChip/Box"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 14
+text = "DISTANCE"
+
+[node name="DistanceValue" type="Label" parent="StatsChip/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_fonts/font = ExtResource("2_anton")
+theme_override_font_sizes/font_size = 52
+text = "0 m"
+
+[node name="Gap" type="Control" parent="StatsChip/Box"]
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="PaceCaption" type="Label" parent="StatsChip/Box"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 12
+text = "PACE"
+
+[node name="PaceTrack" type="Panel" parent="StatsChip/Box"]
+custom_minimum_size = Vector2(230, 14)
+layout_mode = 2
+theme_override_styles/panel = SubResource("pace_track")
+
+[node name="PaceFill" type="Panel" parent="StatsChip/Box/PaceTrack"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 2.0
+offset_bottom = 12.0
+theme_override_styles/panel = SubResource("pace_fill")
+
+[node name="PromptBand" type="TextureRect" parent="."]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -156.0
+offset_bottom = -84.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+texture = SubResource("band_texture")
+
+[node name="Prompt" type="Label" parent="."]
+unique_name_in_owner = true
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -150.0
+offset_bottom = -90.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.97, 0.99, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
+theme_override_constants/outline_size = 10
+theme_override_fonts/font = ExtResource("2_anton")
+theme_override_font_sizes/font_size = 46
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Toast" type="Label" parent="."]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 168.0
+offset_bottom = 240.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.78)
+theme_override_constants/outline_size = 8
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 4
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_fonts/font = ExtResource("2_anton")
+theme_override_font_sizes/font_size = 40
+horizontal_alignment = 1
+vertical_alignment = 1

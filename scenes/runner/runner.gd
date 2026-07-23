@@ -66,6 +66,8 @@ const FOV_KICK: float = 7.0
 const CAM_POS: Vector3 = Vector3(0.0, 2.1, 2.8)
 const CAM_LOOK: Vector3 = Vector3(0.0, 1.3, -7.0)
 
+const HUD_SCENE: PackedScene = preload("res://scenes/runner/runner_hud.tscn")
+
 var _track: RunnerTrack
 var _audio: RunnerAudio
 var _hud: RunnerHud
@@ -371,7 +373,7 @@ func _toggle_pause() -> void:
 
 
 func _build_overlay() -> void:
-	_hud = RunnerHud.new()
+	_hud = HUD_SCENE.instantiate()
 	add_child(_hud)
 	var layer := CanvasLayer.new()
 	add_child(layer)
