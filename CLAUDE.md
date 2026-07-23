@@ -18,7 +18,14 @@ Achievements / Audio / Save systems. Built to scale to 20+ games.
     camera_mirror, game_card, …).
 - `scripts/` — `managers/` (autoloads: game_manager, profile_manager, scene_manager,
   motion_manager, character_factory, achievement_manager…), `ui/` (one per screen)
-  and `ui/components/`.
+  and `ui/components/`, `data/` (typed data: `GameDef`, `AchievementDef`/`Set`,
+  `GameResult`), `utilities/` (base classes + static helpers like
+  `CharacterFactory`).
+- **Games are discovered, not listed.** Each game folder holds a `game.tres`
+  (`GameDef`) that GameManager finds by scanning `scenes/*/`, and may hold an
+  `achievements.gd` contributing its own achievements. Adding a game means adding
+  a folder — never editing GameManager, SceneManager, or any menu. See
+  CONTEXT.md §5/§13.
 - **UI is authored in `.tscn`, not built in `_ready()`** — see CONTEXT.md §4.1/§4.2
   for the rule, the component catalogue and the theme variations
   (`CornerButton`, `CardButton`, `TabButton`, …). Build in code only what is
@@ -30,6 +37,10 @@ Achievements / Audio / Save systems. Built to scale to 20+ games.
 ## Dev workflow (prefer skills)
 - **`/check` [scene]** — headless parse/error check of the project (`tools/check.sh`).
   Exit 0 = clean, 1 = errors. Run after editing `.gd`.
+- **`bash tools/test.sh` [suite]** — headless assertion suite for the shared
+  platform layer (save, profile/XP, registry, achievements). Exit 0 = pass.
+  Run after touching anything in `scripts/managers/` or `mini_game.gd`.
+  check.sh proves it *parses*; test.sh proves it *behaves*. See CONTEXT.md §10a.
 - **`/shot <name> [scene]`** — screenshot a scene to `tools/shots/` (`tools/shot.sh`).
 - **`/glb`** — generate a character GLB via `export_glb.py`.
 - **`/build`** — one-command shippable exe via `tools/build_release.py`.

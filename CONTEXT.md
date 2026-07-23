@@ -71,12 +71,18 @@ scenes/
 				   pause, results, loading, countdown).
 	runner/        Infinite Runner game (scene + its own gameplay script).
 	boxing/        Boxing game (ring/arena set, fighters, HUD, cinematic).
+				   Split by concern: boxing.gd owns the FIGHT (exchange state
+				   machine, damage, scoring); boxing_camera.gd owns the frame;
+				   boxing_impact.gd owns landed-punch feel (flash + hit-stop /
+				   KO slow motion); boxing_input.gd owns reading the body.
 	football/      (planned)
 	tennis/        (planned)
-	shared/        Reusable scene fragments used by multiple games (HUD widgets,
-				   overlays, common props).
+	shared/        Reusable pieces used by multiple games — e.g.
+				   `track_treadmill.gd`, the recycling ground ring both Zombie
+				   Run and Hurdle Dash scroll their course on.
 	ui/            Reusable UI component scenes (buttons, cards, meters).
 scripts/
+	data/          Typed data classes: GameDef, AchievementDef/Set, GameResult.
 	managers/      Autoload singletons (see §5). One file per manager.
 	player/        Player representation, avatars, input mapping (future).
 	ui/            Controller scripts for the shared UI scenes in scenes/menus.
@@ -286,7 +292,7 @@ Initialisation order (and dependencies):
 
 | # | Autoload        | Depends on (at init)      | Responsibility |
 |---|-----------------|---------------------------|----------------|
-| — | MCP*Bridge ×3   | —                         | godot_mcp tooling (leave untouched). |
+| — | MCP*Bridge ×3   | —                         | godot_mcp **editor tooling**. Stripped from release builds by `tools/build_release.py` (and the addon excluded by the export preset), so they never run in a shipped game. |
 | 1 | `SaveManager`   | —                         | Only system that touches disk. JSON read/write to `user://saves`. |
 | 2 | `SceneManager`  | —                         | Owns **every** scene path; the only place scene transitions happen. |
 | — | `MotionManager` | —                         | Receives body-movement data from the Python pose service over UDP; exposes `get_forward()`/`get_turn()`. The AI-input boundary (§9). |
@@ -294,16 +300,23 @@ Initialisation order (and dependencies):
 | 3 | `AudioManager`  | —                         | Music/SFX playback and audio bus volumes. `play_sfx(stream, volume_db, pitch, from_position)` hands out one of a **pool** of voices (so effects layer instead of cutting each other) and returns the player; `fade_out_sfx()` retires a long one-shot early. |
 | 4 | `SettingsManager`| SaveManager, AudioManager| User prefs (volumes, fullscreen); loads, applies, persists them. |
 | 5 | `ProfileManager`| SaveManager               | Player profile: XP/level, calories, achievements, per-game stats, character appearance. |
-| — | `CharacterFactory` | ProfileManager (at call time, not init) | Personalised character model: runs the Python generator (`assets/models/generated_human/export_glb.py`) with the active profile's body attributes + appearance, caches the GLB per profile under `user://characters/`, loads it at runtime via `GLTFDocument`. Falls back to the bundled `human.glb`. Body shape is always derived from weight/height/age/sex — never chosen directly. |
 | 6 | `GameManager`   | SceneManager, ProfileManager | Game registry + session state + play flow + awards progression. |
 | 7 | `ActivityManager`| SaveManager, GameManager | Day-by-day fitness history (time series). Listens to `game_finished`, rolls each session into today's bucket; derives weekly totals/averages/streaks on read (never stores them). Feeds the Fitness dashboard. |
-| 8 | `AchievementManager`| GameManager, ProfileManager, ActivityManager | Achievement + discovery system. Definitions are DATA (career/session/streak/discovery entries, ~25); unlocks are evaluated automatically on `game_finished` against stats the other managers already track, so no game contains achievement code. Storage stays in ProfileManager (`get_achievements`/`has_achievement`/`unlock_achievement`). Registered AFTER ActivityManager so evaluated streaks/totals include the session that just ended. Retroactive: re-evaluates at boot and on profile switch, so definitions added in an update unlock from stored stats. Open World finds persist via `report_discovery(id)` (achievement ids `secret_*`, built at _ready from WorldScatter's SECRETS so the page can't drift from the world). `take_recent_unlocks()` is the not-yet-celebrated queue the Results screen drains for its gold pills; `get_next_goal()` returns the closest locked career achievement (the "chase this next" line). |
+| 8 | `AchievementManager`| GameManager, ProfileManager, ActivityManager | Achievement + discovery system. Definitions are DATA — typed `AchievementDef` resources grouped into `AchievementSet` `.tres` files (`data/achievements/career.tres` plus one per game folder); unlocks are evaluated automatically on `game_finished` against stats the other managers already track, so no game contains achievement code. Storage stays in ProfileManager (`get_achievements`/`has_achievement`/`unlock_achievement`). Registered AFTER ActivityManager so evaluated streaks/totals include the session that just ended. Retroactive: re-evaluates at boot and on profile switch, so definitions added in an update unlock from stored stats. Open World finds persist via `report_discovery(id)` (achievement ids `secret_*`, contributed by `scenes/open-world/achievements.tres` — the platform scans game folders for that file rather than naming any game, and `registry_test` pins the ids against the landmarks the world actually builds). `take_recent_unlocks()` is the not-yet-celebrated queue the Results screen drains for its gold pills; `get_next_goal()` returns the closest locked career achievement (the "chase this next" line). |
 
 **Rules**
 - Use managers instead of loose global variables.
 - Managers communicate downward (later → earlier) or via **signals** upward.
   Never create a circular `_ready()` dependency.
 - A game/scene talks to managers, **never** directly to another game.
+- **Not everything shared is a manager.** An autoload is for state or a service
+  that must exist exactly once for the whole app. `CharacterFactory` is a
+  *static class* (`scripts/utilities/character_factory.gd`) because it holds no
+  state between calls — being a singleton bought nothing but a global to keep
+  alive and one more entry in the boot order. `CameraPreview` stays an autoload
+  for the opposite reason: it binds UDP port 9991 exclusively and its consumer
+  (`camera_mirror`) is instanced several times at once, so a second instance
+  would fail to bind and show nothing.
 
 ### SceneManager — the path authority
 - Holds a `const` for every scene path (UI scenes **and** game scenes).
@@ -329,13 +342,42 @@ Initialisation order (and dependencies):
   constants.
 
 ### GameManager — the registry
-- `_games` is an `Array[Dictionary]`; each entry:
-  `{ id, title, description, scene, available }`.
+- `_games` is an `Array[GameDef]` **discovered, not declared**: at boot
+  GameManager scans `scenes/*/` for a `game.tres` and registers every one it
+  finds. No shared file lists the roster.
+- `GameDef` (`scripts/data/game_def.gd`) is a typed `Resource`:
+  `id · title · description · scene · available · uses_difficulty · sort_order`.
+  Being a Resource means the fields are inspector-editable and a mistyped key is
+  a load error, not a silently-empty Dictionary lookup at runtime.
 - `available:false` renders as a disabled "Coming Soon" card and cannot start.
-- **Adding a game = adding one dictionary entry** (see §13).
+- **Adding a game = adding a folder** containing its scene and its `game.tres`
+  (see §13). Deleting that folder removes the game — including its achievements.
+- `sort_order` sets launcher position (ties break on `id`, so the roster never
+  depends on filesystem enumeration order).
+- `get_game()` returns `null` for an unknown id — callers must handle it, or use
+  the `get_game_title()` / `is_available()` helpers that already do.
 - Owns session state: selected game, difficulty (`EASY/NORMAL/HARD`), last result.
 - `finish_game(result)` records progression via ProfileManager, then routes to
   the results screen.
+
+> **Exported builds and `.remap`.** With "convert text resources to binary" on
+> (the export default) a `game.tres` is packed as `game.tres.remap`. Any code
+> that *scans* for resources must strip that suffix or it finds nothing in a
+> shipped build while working perfectly in the editor. `_find_game_defs()`
+> handles it; `registry_test.gd` pins it.
+
+### Games contribute their own achievements
+A game folder may hold an `achievements.gd` declaring `DISCOVERIES`
+(`id · title · hint`). AchievementManager scans the registered games for that
+file and merges the entries into its catalogue. The dependency therefore points
+from the game outward — the platform never names an individual game or preloads
+its gameplay scripts, which is what keeps `scenes/<game>/` a deletable unit.
+
+Open World's landmark ids appear in two places on purpose: `world_scatter.gd`
+`SECRETS` is placement geometry (needed to BUILD the world), `achievements.gd`
+is the catalogue entry (needed to LIST it without loading the world). Nothing at
+runtime reports a mismatch — an unlock just never fires — so `registry_test.gd`
+asserts the two id sets agree.
 
 ---
 
@@ -356,18 +398,27 @@ the shared countdown → play → results → XP pipeline.
 - `finish(calories)` — builds the standard **GameResult** and hands it to
   GameManager.
 
-### GameResult schema (the contract between a game and the platform)
-```gdscript
-{
-	"game_id":      String,   # registry id, e.g. "runner"
-	"score":        int,      # game-defined points
-	"duration_sec": float,    # seconds played
-	"calories":     float,    # from the calorie system (0.0 until Python is wired)
-	"xp_earned":    int,      # computed by MiniGame from score
-}
-```
-Because every game emits this exact shape, the results screen, profile stats, and
-XP maths are written **once** and work for all games.
+### `GameResult` (the contract between a game and the platform)
+`scripts/data/game_result.gd` — a **typed class**, not a Dictionary. `MiniGame`
+fills it in, `GameManager.finish_game()` adds what the session *changed*, and the
+results screen / profile / activity log / achievements all read it. Because every
+game produces this one object, the results screen, profile stats and XP maths are
+written **once** and work for all games.
+
+Reported by the game: `game_id · score · duration_sec · calories · xp_earned ·
+steps · avg_cadence · avg_met · avg_heart_rate · peak_heart_rate`, plus
+`is_workout · workout_title · workout_completed` for a Daily Challenge.
+
+Derived by `finish_game()`: `new_best · prev_best · level_before · level_after ·
+leveled_up · total_xp`. These are snapshotted **before** the result is recorded —
+computing them afterwards would compare the new state with itself and report "no
+change" for every session.
+
+> **Why `RefCounted`, not `Resource`.** A result is never authored in the editor
+> and never written to disk (the profile stores only the derived play count and
+> best score), so it has no use for a `resource_path` or save/load semantics.
+> `GameDef` and `AchievementDef` *are* authored as `.tres`, and so *are*
+> Resources. Pick the base class by whether the data is authored, not by habit.
 
 ---
 
@@ -924,6 +975,52 @@ same controller works with the camera today or another input source later.
 
 ---
 
+## 10a. Testing
+
+Two commands, and they answer different questions:
+
+| Command | Question it answers |
+|---|---|
+| `bash tools/check.sh` | Does the project still **parse**? (every script compiles, every autoload starts) |
+| `bash tools/test.sh` | Does the platform still **behave**? (assertions against the real managers) |
+
+Run both before a release build. `check.sh` after editing any `.gd`.
+
+### How the suite works
+`scenes/tests/cases/*_test.gd` — one file per suite, each extending `TestCase`
+(`scripts/utilities/test_case.gd`) and overriding `_run()`. `test_runner.tscn`
+discovers them all, runs them in **one headless boot against the real
+autoloads**, and turns the aggregate into a process exit code.
+
+There is no mock/double layer on purpose: the thing worth testing IS the wiring
+between the managers, and a suite that stubs them out would pass while the game
+is broken. The cost of that choice is that tests share real state, so:
+
+- **Clean up in `_teardown()`.** The runner calls it even when assertions fail.
+- Use `throwaway_profile()` for anything that records progression — it creates a
+  scratch profile, makes it active, and deletes it afterwards, restoring
+  whichever profile was active before. A developer running the suite on their
+  own install keeps their profiles.
+
+Run one suite while iterating: `bash tools/test.sh registry_test`.
+
+### What belongs in it
+The **shared platform layer** — the code every game depends on, where a break is
+invisible on screen but affects all 20+ games at once: save round-trips and
+schema stamping, the XP curve, the `GameResult` contract, per-game stats, the
+registry scan, achievement unlock/lock conditions.
+
+Not gameplay feel, art, or layout — those stay with `tools/shot.sh` and the
+`scenes/tests/*_view.tscn` inspection scenes, which remain the right tool for
+"does this look right".
+
+Negative assertions earn their place here: `achievement_test` checks that a
+streak achievement does *not* unlock on day one, because an achievement that
+fires too eagerly is worse than one that never fires on a platform where the
+unlock is supposed to mean the player did the work.
+
+---
+
 ## 11. Things To Avoid
 
 - ❌ Hardcoding scene paths anywhere but `SceneManager`.
@@ -1207,14 +1304,18 @@ same controller works with the camera today or another input source later.
    **extends `MiniGame`**; put gameplay code in `scenes/<game>/<game>.gd`.
 2. Override `get_game_id()` (return the registry id) and `_start_game()`.
    Call `add_score(...)` during play and `finish(calories)` when the session ends.
-3. Add a path constant for the scene in **`SceneManager`** (e.g. `const DANCE`).
-4. Add one entry to **`GameManager._build_registry()`** referencing that constant;
-   set `available:true` when it's ready to ship.
-5. **Do not touch** Game Select, Countdown, Results, or Profile code — the
-   data-driven pipeline picks the new game up automatically.
-6. Put game-only assets under `assets/…`; reuse `scenes/shared/` for common HUD.
-7. Add any new shared system as a manager (§5), respecting init order.
-8. Update this document (§12 TODO and anywhere a decision changed).
+3. Add `scenes/<game>/game.tres` — a `GameDef` with the id, title, description,
+   the scene path, `sort_order`, and `available:false` until it ships.
+4. Optionally add `scenes/<game>/achievements.gd` to contribute the game's own
+   discovery achievements.
+5. **Do not touch** GameManager, SceneManager, Game Select, Results, or Profile
+   code — the registry scan picks the new folder up automatically. If you find
+   yourself editing a shared file to add a game, something has regressed.
+6. Run `bash tools/test.sh` — `registry_test` fails if the new definition is
+   incomplete, or if `available:true` points at a scene that doesn't exist.
+7. Put game-only assets under `assets/…`; reuse `scenes/shared/` for common HUD.
+8. Add any new shared system as a manager (§5), respecting init order.
+9. Update this document (§12 TODO and anywhere a decision changed).
 
 ---
 
