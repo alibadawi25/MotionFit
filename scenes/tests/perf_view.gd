@@ -67,8 +67,23 @@ const MEASURED_LAPS: int = 2
 ## penumbra is on screen, so those two need a dedicated run if ever needed.
 ## This list confirms the COMBINATION, which is the only number worth applying:
 ## savings across renderer knobs do not simply add.
+## `half_res` is not a shipping option — it is the CPU/GPU discriminator. It
+## quarters the shaded pixel count while leaving the scene, the scripts and the
+## draw-call count identical, so a big saving means the frame is GPU-bound and a
+## small one means the main thread is the wall and no shader work will help.
+## Run it alone with PERF_ONLY=half_res.
+## The `s80_*` pair asks the shipping question that half_res only diagnosed:
+## rendering 3D at 80% and upscaling is 36% fewer shaded pixels, but the
+## upscaler is not free and FSR2 in particular is a real pass of its own — on a
+## GPU this weak it can cost more than the pixels it saves, so bilinear and FSR2
+## are measured against each other rather than assumed.
 const CONFIGS: Array = [
 	["baseline", {}],
+	["half_res", {"render_scale": 0.5}],
+	["s80_bilinear", {"render_scale": 0.8,
+			"scale_mode": Viewport.SCALING_3D_MODE_BILINEAR}],
+	["s80_fsr2", {"render_scale": 0.8,
+			"scale_mode": Viewport.SCALING_3D_MODE_FSR2}],
 	["t_2048", {"shadow_size": 2048}],
 	["t_2048_noblend", {"shadow_size": 2048, "blend": false}],
 	["t_2048_nb_2split", {"shadow_size": 2048, "blend": false,
@@ -83,11 +98,18 @@ const CONFIGS: Array = [
 ## config "slower" than baseline, monotonically worse the later it ran. It was
 ## measuring the GPU heating up over the run, with baseline always going first
 ## on a cool chip. Pairing cancels any drift slower than one pair.
+## Overridable with PERF_PASSES: a config whose reported spread straddles zero
+## has not been measured, only sampled, and needs more pairs before it means
+## anything.
 const MATRIX_PASSES: int = 2
 
 var _cam: Camera3D
 var _world: Node
 var _leg_sec: float = 3.0
+# Rolling totals for the leg being flown, averaged into the report. See _fly.
+var _cpu_ms: float = 0.0
+var _draw_calls: float = 0.0
+var _cpu_samples: int = 0
 
 
 func _ready() -> void:
@@ -119,6 +141,17 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _cam != null and not _cam.current:
 		_cam.make_current()  # the player's own rig claims the viewport on spawn
+
+
+## Hides the world's HUD/pause CanvasLayers so the benchmark measures the 3D
+## scene alone.
+##
+## This USED to run every frame from _process, which meant a recursive
+## find_children over the entire open world — terrain chunks, scatter, wildlife,
+## every node — plus a fresh result Array, on every sampled frame. The benchmark
+## was charging the scene for its own instrumentation. Overlays only appear when
+## the world builds, so sweeping once per lap is enough.
+func _hide_overlays() -> void:
 	for layer in find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false
 
@@ -141,19 +174,28 @@ func _run() -> void:
 ## Default mode: per-leg breakdown of the current scene as authored.
 func _run_legs() -> void:
 	var per_leg := {}
+	var cpu_leg := {}   # leg -> [summed cpu ms, summed draw calls, sample count]
 	for leg in LEGS:
 		per_leg[leg[0]] = [] as Array[float]
+		cpu_leg[leg[0]] = [0.0, 0.0, 0]
 	for lap in MEASURED_LAPS:
+		_hide_overlays()
 		for leg in LEGS:
 			(per_leg[leg[0]] as Array[float]).append_array(await _fly(leg[1], leg[2]))
+			var acc: Array = cpu_leg[leg[0]]
+			acc[0] += _cpu_ms
+			acc[1] += _draw_calls
+			acc[2] += _cpu_samples
 
 	var all: Array[float] = []
-	print("leg        avg    p1low   worst")
-	print("--------------------------------")
+	print("leg        avg    p1low   worst      cpu     draws")
+	print("---------------------------------------------------")
 	for leg in LEGS:
 		var samples: Array[float] = per_leg[leg[0]]
 		all.append_array(samples)
-		_report(leg[0], samples)
+		var acc: Array = cpu_leg[leg[0]]
+		var n: float = maxf(float(acc[2]), 1.0)
+		_report(leg[0], samples, "%5.2f ms  %6d" % [acc[0] / n, int(acc[1] / n)])
 	_report("ALL", all)
 
 
@@ -164,13 +206,19 @@ func _run_matrix() -> void:
 	# effect off made frames cheaper, i.e. the effect costs that much.
 	var savings := {}
 	var base_samples: Array[float] = []
+	# PERF_ONLY=name[,name] restricts the matrix to some configs, so a single
+	# question can be asked without paying for the whole list.
+	var only: PackedStringArray = OS.get_environment("PERF_ONLY").split(
+			",", false)
 	for cfg in CONFIGS:
-		if cfg[0] != "baseline":
+		if cfg[0] != "baseline" and (only.is_empty() or cfg[0] in only):
 			savings[cfg[0]] = [] as Array[float]
 
-	for pass_i in MATRIX_PASSES:
+	var passes: int = maxi(1, int(OS.get_environment("PERF_PASSES"))) \
+			if OS.get_environment("PERF_PASSES") != "" else MATRIX_PASSES
+	for pass_i in passes:
 		for cfg in CONFIGS:
-			if cfg[0] == "baseline":
+			if not savings.has(cfg[0]):
 				continue
 			var base_ms := await _measure({})
 			var cfg_ms := await _measure(cfg[1])
@@ -188,7 +236,7 @@ func _run_matrix() -> void:
 	print("effect        cost ms/frame   spread   %% of frame")
 	print("--------------------------------------------------")
 	for cfg in CONFIGS:
-		if cfg[0] == "baseline":
+		if not savings.has(cfg[0]):
 			continue
 		var s: Array[float] = savings[cfg[0]]
 		var lo: float = s[0]
@@ -252,9 +300,13 @@ func _apply_config(cfg: Dictionary) -> void:
 	var grass := _world.get_node_or_null("HTerrain/GrassLayer") as Node3D
 	if grass != null:
 		grass.visible = cfg.get("grass", true)
+	get_viewport().scaling_3d_mode = cfg.get("scale_mode",
+			Viewport.SCALING_3D_MODE_BILINEAR)
+	get_viewport().scaling_3d_scale = cfg.get("render_scale", 1.0)
 
 
 func _lap() -> void:
+	_hide_overlays()
 	for leg in LEGS:
 		await _fly(leg[1], leg[2])
 
@@ -265,6 +317,9 @@ func _fly(a: Vector3, b: Vector3) -> Array[float]:
 	var samples: Array[float] = []
 	var t := 0.0
 	var frame := 0
+	_cpu_ms = 0.0
+	_draw_calls = 0.0
+	_cpu_samples = 0
 	_cam.global_position = a
 	_cam.look_at(b + Vector3(0.0, -6.0, 0.0))
 	while t < _leg_sec:
@@ -275,6 +330,15 @@ func _fly(a: Vector3, b: Vector3) -> Array[float]:
 		_cam.global_position = a.lerp(b, clampf(t / _leg_sec, 0.0, 1.0))
 		if frame > WARMUP_FRAMES:
 			samples.append(dt)
+			# Script-side cost of the frame, against the frame's total. A leg whose
+			# cpu figure is a small fraction of its frame time is GPU-bound and no
+			# amount of GDScript tuning will move it — that distinction decides
+			# where optimisation effort is worth spending.
+			_cpu_ms += (Performance.get_monitor(Performance.TIME_PROCESS)
+					+ Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)) * 1000.0
+			_draw_calls += Performance.get_monitor(
+					Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+			_cpu_samples += 1
 	return samples
 
 
