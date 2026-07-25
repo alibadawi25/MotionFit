@@ -58,9 +58,55 @@ const CLIFF_DIST_FADE_PX := 22.0  # gone beyond ~44 m inland
 ## Sea-cliff colour: the colormap multiplies albedo, and the bare stone
 ## texture reads cold blue-purple down at the waterline next to warm sand and
 ## bright grass. Tinting cliff pixels toward warm brown grounds them in the
-## beach palette while the summit keeps its cold rock. color.png is all white
-## elsewhere, so setting lerp(white, tint, cliff) per pixel stays idempotent.
+## beach palette while the summit keeps its cold rock.
+##
+## Keyed off the FINAL stone weight and distance to water, NOT off the cliff
+## factor this painter computes. Tinting only what the painter itself painted
+## left every patch of coastal stone that came from the original hand-painted
+## splat completely untinted — a raw violet-grey scab on the hillside above the
+## beach, which is exactly the "magenta patch" it was supposed to prevent.
 const CLIFF_TINT := Color(1.0, 0.89, 0.76)
+## Coastal stone is fully warmed within this many px of water and untinted
+## beyond — the summit's cold rock is a long way from any shore, so distance
+## alone separates the two without needing an altitude rule.
+const TINT_DIST_FULL_PX := 14.0
+const TINT_DIST_FADE_PX := 34.0
+
+## --- macro colour variation -------------------------------------------------
+## The island was one flat green: a single albedo over the whole 1 km², so every
+## long view read as a smooth green blob no matter how good the lighting was.
+## These broad tints break that up. They are MULTIPLIERS on a white colormap, so
+## every value must be <= 1 — the map can only ever darken or shift hue, never
+## brighten (an 8-bit PNG has no headroom above white).
+## These multiply a strongly GREEN ground texture, and that dictates their shape:
+## the green channel is the one carrying almost all of the texture's signal, so a
+## tint that leaves green near 1.0 and only scales red/blue changes essentially
+## nothing on screen — scaling channels the texture barely has is invisible. Two
+## rounds of "make the numbers bigger" failed for exactly this reason before a
+## striped test map proved the colormap itself was fine. Dry grass therefore has
+## to CUT green (pulling the ground toward khaki), and lush grass darkens red and
+## blue to deepen what green is already there.
+const GRASS_LUSH := Color(0.74, 1.0, 0.72)   # damp, deep green
+const GRASS_DRY := Color(1.0, 0.66, 0.34)    # sun-bleached khaki/gold
+## FastNoiseLite's fractal output only really occupies about ±0.5, so mapping it
+## straight onto 0..1 kept every pixel near the midpoint and the "variation" came
+## out as one flat wash. Gain spreads it back over the full lush..dry range.
+const MACRO_GAIN := 1.7
+## How far the lush/dry swing is allowed to push a fully-grassed pixel.
+const MACRO_STRENGTH := 0.78
+## Forest floor: ground under the tree clumps sits in leaf shade all day.
+const FOREST_FLOOR := Color(0.78, 0.86, 0.76)
+const FOREST_STRENGTH := 0.55
+## Broad patches (~340 m) plus a finer break-up (~80 m) so the variation reads
+## as terrain rather than as two enormous blobs.
+const MACRO_FREQ := 0.010
+const MACRO_DETAIL_FREQ := 0.032
+const MACRO_DETAIL_MIX := 0.34
+## Must match world_scatter.gd's woods mask (SEED / frequency / threshold), so
+## the darker ground lands under the trees that actually exist.
+const CLUMP_SEED := 20260717
+const CLUMP_FREQ := 0.009
+const CLUMP_WOODED := 0.08
 
 const GRASS_SHORE_LO := 10.8      # blades absent below (map h; still beach)
 const GRASS_SHORE_HI := 13.4      # ...full above (world ~20.1)
@@ -107,6 +153,19 @@ func _init() -> void:
 	patch.frequency = 0.02
 	patch.fractal_octaves = 3
 
+	# Macro colour: broad lush/dry regions, a finer break-up, and the woods mask.
+	var macro := FastNoiseLite.new()
+	macro.seed = 613
+	macro.frequency = MACRO_FREQ
+	macro.fractal_octaves = 2
+	var macro_detail := FastNoiseLite.new()
+	macro_detail.seed = 811
+	macro_detail.frequency = MACRO_DETAIL_FREQ
+	macro_detail.fractal_octaves = 2
+	var clumps := FastNoiseLite.new()
+	clumps.seed = CLUMP_SEED
+	clumps.frequency = CLUMP_FREQ
+
 	var detail_img := Image.create(w, h, false, Image.FORMAT_L8)
 	var sand_px := 0
 	var cliff_px := 0
@@ -150,10 +209,6 @@ func _init() -> void:
 						base.b * (1.0 - cliff))
 				if cliff > 0.5:
 					cliff_px += 1
-			color_img.set_pixel(x, y, Color(
-					lerpf(1.0, CLIFF_TINT.r, cliff),
-					lerpf(1.0, CLIFF_TINT.g, cliff),
-					lerpf(1.0, CLIFF_TINT.b, cliff), 1.0))
 
 			# --- sand: a real shore = near water, low and gentle ------------
 			var sand := 1.0 - smoothstep(
@@ -168,6 +223,27 @@ func _init() -> void:
 			splat_img.set_pixel(x, y, out)
 			if sand > 0.5:
 				sand_px += 1
+
+			# --- colormap: macro variation + warm coastal stone --------------
+			# Written here, from the FINAL weights, rather than up in the cliff
+			# block where it used to live — the tint has to follow the stone
+			# that ends up on the hillside, whoever painted it.
+			var wx := (x - w / 2) * XZ_SCALE
+			var wy := (y - h / 2) * XZ_SCALE
+			# Lush <-> dry, broad regions broken up by a finer octave.
+			var dry := clampf(0.5 + MACRO_GAIN * lerpf(macro.get_noise_2d(x, y),
+					macro_detail.get_noise_2d(x, y), MACRO_DETAIL_MIX), 0.0, 1.0)
+			var tint := Color.WHITE.lerp(
+					GRASS_LUSH.lerp(GRASS_DRY, dry), out.r * MACRO_STRENGTH)
+			# Shade the ground inside the woods clumps (same mask as the trees).
+			var wooded := clampf(
+					(clumps.get_noise_2d(wx, wy) - CLUMP_WOODED) / 0.25, 0.0, 1.0)
+			tint = tint * Color.WHITE.lerp(
+					FOREST_FLOOR, wooded * out.r * FOREST_STRENGTH)
+			# Warm any coastal stone, painter-made or hand-painted.
+			var warmth: float = out.g * (1.0 - smoothstep(
+					TINT_DIST_FULL_PX, TINT_DIST_FADE_PX, dist))
+			color_img.set_pixel(x, y, tint.lerp(CLIFF_TINT, warmth))
 
 			# --- grass density ----------------------------------------------
 			var density := out.r  # grass splat weight, post-cliff, post-sand
@@ -186,10 +262,45 @@ func _init() -> void:
 	splat_img.save_png(dir + "/splat.png")
 	detail_img.save_png(dir + "/detail.png")
 	color_img.save_png(dir + "/color.png")
+	_register_detail_map(dir + "/data.hterrain")
 	var total := float(w * h) / 100.0
 	print("painted: sand on %.1f%% of map, cliffs on %.1f%%, grass on %.1f%%" %
 			[sand_px / total, cliff_px / total, grass_px / total])
 	quit(0)
+
+
+## Writing detail.png is only half of publishing a detail map: HTerrainData
+## loads maps from the "maps" manifest in data.hterrain, one array per channel,
+## and ignores any PNG the manifest doesn't list. With CHANNEL_DETAIL (index 4)
+## left empty the grass layer resolves no detailmap texture and renders nothing
+## — the whole island goes bald with no error anywhere. So claim the slot here,
+## next to the save, rather than leaving it to a hand-edit that a later run of
+## this painter could quietly undo.
+func _register_detail_map(meta_path: String) -> void:
+	const CHANNEL_DETAIL := 4
+	var f := FileAccess.open(meta_path, FileAccess.READ)
+	if f == null:
+		push_warning("no data.hterrain at %s; grass map left unregistered" % meta_path)
+		return
+	var meta = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(meta) != TYPE_DICTIONARY or not meta.has("maps"):
+		push_warning("data.hterrain unreadable; grass map left unregistered")
+		return
+	var maps: Array = meta["maps"]
+	if maps.size() <= CHANNEL_DETAIL:
+		push_warning("data.hterrain has no detail channel; grass map left unregistered")
+		return
+	if not (maps[CHANNEL_DETAIL] as Array).is_empty():
+		return  # already claimed — nothing to do
+	maps[CHANNEL_DETAIL] = [{"id": 0}]  # id 0 => the file named plain "detail"
+	var out := FileAccess.open(meta_path, FileAccess.WRITE)
+	if out == null:
+		push_warning("data.hterrain not writable; grass map left unregistered")
+		return
+	out.store_string(JSON.stringify(meta, "\t"))
+	out.close()
+	print("registered the grass detail map in data.hterrain")
 
 
 ## Distance (px) from each pixel to the nearest underwater pixel, via a
