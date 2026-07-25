@@ -38,6 +38,16 @@ const HORIZON_SUN: Color = Color(1.0, 0.62, 0.32)
 const MOON_COLOR: Color = Color(0.68, 0.76, 1.0)
 const MOON_ENERGY: float = 0.3
 
+## Cloud tints through the day (see sky.gdshader). Noon clouds are near-white
+## with cool grey bellies; at dusk the whole deck catches the low sun, which is
+## most of what makes a sunset read as a sunset rather than an orange filter.
+const DAY_CLOUD_LIT: Color = Color(1.0, 0.99, 0.96)
+const DAY_CLOUD_DARK: Color = Color(0.52, 0.58, 0.67)
+const DUSK_CLOUD_LIT: Color = Color(1.0, 0.72, 0.45)
+const DUSK_CLOUD_DARK: Color = Color(0.42, 0.30, 0.38)
+const NIGHT_CLOUD_LIT: Color = Color(0.16, 0.20, 0.30)
+const NIGHT_CLOUD_DARK: Color = Color(0.06, 0.08, 0.14)
+
 ## The scene's Sun (a DirectionalLight3D); its authored energy/colour become the
 ## noon values, and its authored yaw stays the compass heading of the whole arc.
 @export var sun_path: NodePath
@@ -52,7 +62,13 @@ const MOON_ENERGY: float = 0.3
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
 var _env: Environment
-var _sky: ProceduralSkyMaterial
+## The sky, held as whichever material the scene actually uses. Both are
+## supported on purpose: the open world runs the custom sky.gdshader (clouds,
+## sun disc, stars), but the palette below is written the same way for a plain
+## ProceduralSkyMaterial, so a simpler scene can reuse this cycle unchanged.
+## Writes go through [method _set_sky] rather than touching either directly.
+var _sky_shader: ShaderMaterial
+var _sky_proc: ProceduralSkyMaterial
 var _hour: float
 
 # The authored (noon) palette, captured at _ready — see the class docs.
@@ -81,18 +97,19 @@ func _ready() -> void:
 	world_env.environment = world_env.environment.duplicate(true)
 	_env = world_env.environment
 	if _env.sky != null:
-		_sky = _env.sky.sky_material as ProceduralSkyMaterial
+		_sky_shader = _env.sky.sky_material as ShaderMaterial
+		_sky_proc = _env.sky.sky_material as ProceduralSkyMaterial
 
 	_day_sun_energy = _sun.light_energy
 	_day_sun_color = _sun.light_color
 	_day_ambient = _env.ambient_light_energy
 	_day_fog = _env.fog_light_color
 	_sun_yaw = _sun.rotation.y
-	if _sky != null:
-		_day_top = _sky.sky_top_color
-		_day_horizon = _sky.sky_horizon_color
-		_day_ground_horizon = _sky.ground_horizon_color
-		_day_ground_bottom = _sky.ground_bottom_color
+	if _has_sky():
+		_day_top = _get_sky_color("sky_top_color")
+		_day_horizon = _get_sky_color("sky_horizon_color")
+		_day_ground_horizon = _get_sky_color("ground_horizon_color")
+		_day_ground_bottom = _get_sky_color("ground_bottom_color")
 
 	# The moon is the night's sun: opposite point of the same arc, cool and dim.
 	# No shadows — a second shadowed directional light doubles that cost for a
@@ -127,6 +144,30 @@ func get_hour() -> float:
 	return _hour
 
 
+func _has_sky() -> bool:
+	return _sky_shader != null or _sky_proc != null
+
+
+## Reads a palette colour from whichever sky material the scene uses, so the
+## authored noon palette can be captured without caring which one it is.
+func _get_sky_color(param: String) -> Color:
+	if _sky_shader != null:
+		return _sky_shader.get_shader_parameter(param)
+	if _sky_proc != null:
+		return _sky_proc.get(param)
+	return Color.BLACK
+
+
+## Writes a palette colour to whichever sky material the scene uses. The custom
+## shader's uniforms are named to match ProceduralSkyMaterial's properties
+## exactly so this stays a one-liner rather than a translation table.
+func _set_sky(param: String, value: Color) -> void:
+	if _sky_shader != null:
+		_sky_shader.set_shader_parameter(param, value)
+	elif _sky_proc != null:
+		_sky_proc.set(param, value)
+
+
 func _apply() -> void:
 	# The arc: 0 at 06:00 (sunrise), PI/2 at noon, PI at 18:00, then under the
 	# world through the night. Its sine is the elevation everything keys off.
@@ -152,11 +193,27 @@ func _apply() -> void:
 	_env.ambient_light_energy = lerpf(NIGHT_AMBIENT, _day_ambient, daylight)
 	_env.fog_light_color = NIGHT_FOG.lerp(_day_fog, daylight).lerp(DUSK_FOG, dusk * 0.7)
 
-	if _sky == null:
+	if not _has_sky():
 		return
-	_sky.sky_top_color = NIGHT_TOP.lerp(_day_top, daylight).lerp(DUSK_TOP, dusk * 0.3)
-	_sky.sky_horizon_color = NIGHT_HORIZON.lerp(_day_horizon, daylight) \
-			.lerp(DUSK_HORIZON, dusk * 0.85)
-	_sky.ground_horizon_color = NIGHT_GROUND_HORIZON.lerp(_day_ground_horizon, daylight) \
-			.lerp(DUSK_HORIZON, dusk * 0.6)
-	_sky.ground_bottom_color = NIGHT_GROUND_BOTTOM.lerp(_day_ground_bottom, daylight)
+	_set_sky("sky_top_color",
+			NIGHT_TOP.lerp(_day_top, daylight).lerp(DUSK_TOP, dusk * 0.3))
+	_set_sky("sky_horizon_color", NIGHT_HORIZON.lerp(_day_horizon, daylight)
+			.lerp(DUSK_HORIZON, dusk * 0.85))
+	_set_sky("ground_horizon_color",
+			NIGHT_GROUND_HORIZON.lerp(_day_ground_horizon, daylight)
+			.lerp(DUSK_HORIZON, dusk * 0.6))
+	_set_sky("ground_bottom_color",
+			NIGHT_GROUND_BOTTOM.lerp(_day_ground_bottom, daylight))
+
+	# Cloud and star handling only exists on the custom sky shader; a plain
+	# ProceduralSkyMaterial simply has neither, so skip rather than warn.
+	if _sky_shader == null:
+		return
+	_set_sky("cloud_lit_color", NIGHT_CLOUD_LIT.lerp(DAY_CLOUD_LIT, daylight)
+			.lerp(DUSK_CLOUD_LIT, dusk * 0.8))
+	_set_sky("cloud_dark_color", NIGHT_CLOUD_DARK.lerp(DAY_CLOUD_DARK, daylight)
+			.lerp(DUSK_CLOUD_DARK, dusk * 0.7))
+	# Clouds stay visible after dark (moonlit deck) but must not stay bright.
+	_sky_shader.set_shader_parameter("cloud_opacity", lerpf(0.55, 1.0, daylight))
+	# Stars fade in only once the sky itself is dark, and are gone by dawn.
+	_sky_shader.set_shader_parameter("star_opacity", 1.0 - smoothstep(0.0, 0.28, elev))
