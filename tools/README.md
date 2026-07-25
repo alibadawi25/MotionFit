@@ -87,6 +87,22 @@ keep exactly one instance answering:
 The launched instance also gets `--quit-after`, so it self-terminates even if the
 kill step misses it — orphaned shot instances can't pile up.
 
+## Probes
+
+Headless SceneTree scripts (`godot --headless --path . -s res://tools/<name>.gd`)
+that print numbers instead of pixels — usually the faster way to answer "is it
+even there?" than spending a screenshot on it.
+
+- `probe_height.gd` — the open world's heightmap min/max/histogram + low spots.
+- `probe_spot.gd` — `SPOTS="x,z;..."` prints ground height, slope and downhill
+  direction. Use it to aim `ground_view.tscn` cameras; a guessed `GV_POS` puts
+  the camera under the terrain about as often as not.
+- `probe_scatter.gd` — per-MultiMesh instance counts for `WorldScatter`, plus
+  overall plant density. **Do not extend it to print per-instance positions:**
+  under `--headless` there is no MultiMesh buffer to read back, so
+  `get_instance_transform()` returns identity for every instance of every batch
+  — including ones that visibly render. It looks exactly like a placement bug.
+
 ## Gotchas
 
 - **A running editor can clobber external scene edits.** If you hand-edit a

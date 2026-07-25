@@ -39,6 +39,13 @@ const SEED := 20260717
 ## Hard caps — safety rails so a tuning mistake can't melt the frame budget.
 const MAX_TREES := 1100
 const MAX_ROCKS := 420
+## Not a safety rail like the two above — a measured budget, and the count for
+## the HIGH graphics tier only. The understory is the one scatter layer whose
+## cost shows up on the reference laptop (~3 FPS of ~57 on perf_view.tscn), so
+## it is scaled by "shrub_density" from settings_manager.gd's QUALITY_PRESETS
+## like the grass layer is: none on LOW, a little over half on MEDIUM, all of it
+## on a desktop GPU.
+const MAX_SHRUBS := 1700
 
 ## World-space height bands (metres). Sea sits at 15; the cold band of
 ## altitude_effects.gd starts at 55, and the roamable midlands (including the
@@ -51,15 +58,49 @@ const TREELINE_FADE_Y := 54.0
 const CONIFER_Y := 45.0
 const ROCK_MIN_Y := 15.8  # boulders may sit on the upper beach, half in sand
 const ALPINE_Y := 50.0
+## Understory: bushes and scrub. Reaches lower than the trees (scrub holds on
+## right down to the dune line) and gives out a little sooner up top.
+const SHRUB_MIN_Y := 16.4
+const SHRUB_MAX_Y := 62.0
 ## Slope limits (degrees).
 const TREE_MAX_SLOPE := 26.0
 const ROCK_MAX_SLOPE := 52.0
+const SHRUB_MAX_SLOPE := 34.0  # scrub clings to ground that would topple a tree
+## Chance a candidate cell starts a shrub CLUMP, in the woods and in the open,
+## and how big a clump is.
+##
+## Few, full thickets rather than many singles, and that is the whole trick of
+## this layer. The island is a square kilometre; even the full budget works out
+## to one plant per ~560 m², which spread evenly is an invisible dusting. Poured
+## into thickets of half a dozen the same plants read as scrub in the gullies
+## and open meadow between — a place with structure, rather than a lawn someone
+## sprinkled. (Clumping also hides the 12 m candidate lattice, which singles
+## put on open display.)
+const SHRUB_CHANCE_WOOD := 0.2
+const SHRUB_CHANCE_OPEN := 0.13
+const SHRUB_CLUMP := Vector2i(4, 10)  # plants per clump, inclusive range
+const SHRUB_CLUMP_R := 5.0  # metres the clump spreads around its cell
+## The understory casts no shadows. There are thousands of these and their
+## shadows are near-invisible against grass, while the shadow pass is the
+## single most expensive thing this world does (7.6 ms of a 19 ms frame,
+## measured — see settings_manager.gd QUALITY_PRESETS). Distance culling was
+## the obvious alternative and is the wrong tool: Godot's visibility range is
+## per-NODE, so one MultiMesh spanning a 1 km island can only be entirely
+## visible or entirely hidden, and chunking it into per-region nodes buys a
+## smaller saving than simply not drawing it into the shadow map.
+const SHRUB_CASTS_SHADOW := false
 ## Trees stay a stride back from cliff rims: a candidate is rejected when the
 ## ground this many px (2 px = 4 m) away already tilts past RIM_SLOPE.
 const RIM_MARGIN_PX := 2.0
 const RIM_SLOPE := 34.0
-## Nothing spawns this close to the player's start line.
-const SPAWN_CLEAR := Vector3(182.3, 0.0, -6.0)
+## Nothing spawns this close to the player's start line. The point itself is
+## read from the scene's SpawnPoint marker at build time (see
+## [method resolve_spawn_clear]) — this constant is only the fallback for a
+## scene that has no marker. It is deliberately NOT the authority: it used to
+## be, and it silently fell 225 m out of date when the marker was moved, so the
+## clearing was protecting bare hillside while the real start line was clear
+## only by luck.
+const SPAWN_CLEAR := Vector3(407.8, 0.0, -6.0)
 const SPAWN_CLEAR_RADIUS := 9.0
 
 ## The grotto: a hollow knoll of oversized boulders on the mountain's east
@@ -91,9 +132,28 @@ const SECRETS: Array[Dictionary] = [
 ]
 
 @export var terrain_path: NodePath
+## The player's start marker, so the spawn clearing follows it. Shared with
+## wildlife.gd, which keeps animals off the start line the same way.
+@export var spawn_path: NodePath
 
 # Collision shapes added via the PhysicsServer must stay referenced or they free.
 var _shapes: Array[Shape3D] = []
+
+
+## Where the spawn clearing goes: the SpawnPoint marker's ground position, with
+## y flattened (callers compare on the XZ plane). Falls back to
+## [constant SPAWN_CLEAR] when the scene has no marker wired.
+##
+## Read live rather than hardcoded because the marker moves during level design
+## and a stale copy fails silently — nothing errors, the clearing just protects
+## the wrong hillside and trees are free to grow on the player's head.
+static func resolve_spawn_clear(host: Node, path: NodePath) -> Vector3:
+	var marker := host.get_node_or_null(path) as Node3D
+	if marker == null:
+		push_warning("%s: no spawn marker at '%s'; falling back to the hardcoded "
+				% [host.name, path] + "spawn clearing, which may be out of date")
+		return SPAWN_CLEAR
+	return Vector3(marker.global_position.x, 0.0, marker.global_position.z)
 
 
 func _ready() -> void:
@@ -108,14 +168,21 @@ func _ready() -> void:
 	var to_map: Transform3D = terrain.get_internal_transform().affine_inverse()
 	var y_scale: float = terrain.get_internal_transform().basis.y.y
 
+	var spawn_clear := resolve_spawn_clear(self, spawn_path)
+	var shrub_density := _shrub_density()
+
 	var rng := RandomNumberGenerator.new()
 	rng.seed = SEED
 	var clumps := FastNoiseLite.new()  # woods-with-clearings mask
 	clumps.seed = SEED
 	clumps.frequency = 0.009
 
-	var conifers: Array[Transform3D] = []
-	var broadleafs: Array[Transform3D] = []
+	# One bucket per tree/shrub VARIANT: each becomes its own MultiMesh, so the
+	# world gets a mixed forest for a handful of extra draw calls instead of one
+	# shape repeated a thousand times.
+	var conifers := _buckets(ScatterMeshes.conifer_variants())
+	var broadleafs := _buckets(ScatterMeshes.broadleaf_variants())
+	var shrubs := _buckets(ScatterMeshes.shrub_variants())
 	var rocks: Array[Transform3D] = []
 	var steps := int(HALF_EXTENT * 2.0 / CELL)
 	for gz in steps:
@@ -128,16 +195,17 @@ func _ready() -> void:
 			var ground := splat_img.get_pixel(
 					clampi(int(map.x), 0, splat_img.get_width() - 1),
 					clampi(int(map.z), 0, splat_img.get_height() - 1))
-			if Vector3(wx, 0.0, wz).distance_to(SPAWN_CLEAR) < SPAWN_CLEAR_RADIUS:
+			if Vector3(wx, 0.0, wz).distance_to(spawn_clear) < SPAWN_CLEAR_RADIUS:
 				continue
 			if _near_secret(wx, wz):
 				continue
+
+			var wooded := clumps.get_noise_2d(wx, wz) > 0.08
 
 			# --- trees: on grass, gentle ground, gathered into woods --------
 			if ground.r > 0.5 and wy > TREE_MIN_Y and wy < TREE_MAX_Y \
 					and slope < TREE_MAX_SLOPE \
 					and not _near_cliff_rim(height_img, map.x, map.z, y_scale):
-				var wooded := clumps.get_noise_2d(wx, wz) > 0.08
 				var chance := 0.62 if wooded else 0.045
 				# Woods thin out toward the treeline instead of stopping dead.
 				chance *= 1.0 - smoothstep(TREELINE_FADE_Y, TREE_MAX_Y, wy) * 0.85
@@ -145,10 +213,21 @@ func _ready() -> void:
 					var s := rng.randf_range(0.8, 1.4)
 					var t := _stand(Vector3(wx, wy - 0.12 * s, wz), s, rng, 0.045)
 					if wy > CONIFER_Y or rng.randf() < 0.3:
-						conifers.append(t)
+						conifers[_conifer_variant(wy, rng)].append(t)
 					else:
-						broadleafs.append(t)
+						broadleafs[_broadleaf_variant(wy, rng)].append(t)
 					continue
+
+			# --- understory: clumps of bush, scrub and gorse ----------------
+			# Tried after the trees and before the rocks, so a cell that grew a
+			# tree grows nothing else and the two can't interpenetrate.
+			if ground.r > 0.5 and wy > SHRUB_MIN_Y and wy < SHRUB_MAX_Y \
+					and slope < SHRUB_MAX_SLOPE \
+					and rng.randf() < shrub_density * (SHRUB_CHANCE_WOOD if wooded
+							else SHRUB_CHANCE_OPEN):
+				_plant_shrubs(shrubs, Vector2(wx, wz), height_img, to_map,
+						y_scale, rng)
+				continue
 
 			# --- rocks: stony ground, alpine heights, odd meadow boulder ----
 			var rocky := ground.g > 0.4 or ground.b > 0.4 or wy > ALPINE_Y
@@ -162,10 +241,10 @@ func _ready() -> void:
 								rs * rng.randf_range(0.85, 1.25)))
 				rocks.append(Transform3D(basis, Vector3(wx, wy - 0.28 * rs, wz)))
 
-	if conifers.size() + broadleafs.size() > MAX_TREES:
-		var keep := float(MAX_TREES) / float(conifers.size() + broadleafs.size())
-		conifers.resize(int(conifers.size() * keep))
-		broadleafs.resize(int(broadleafs.size() * keep))
+	# Thinning is proportional across the buckets, so hitting a cap changes
+	# how MANY plants there are and never which KINDS survive.
+	_thin(MAX_TREES, conifers + broadleafs)
+	_thin(MAX_SHRUBS, shrubs)
 	if rocks.size() > MAX_ROCKS:
 		rocks.resize(MAX_ROCKS)
 	# Appended after the cap on purpose: these are landmarks, not scatter, and
@@ -177,10 +256,17 @@ func _ready() -> void:
 	rocks.append_array(_camp_stone_ring())
 
 	rng.seed = SEED + 1  # tints independent of how placement consumed the stream
-	_make_multimesh("Conifers", ScatterMeshes.build_conifer(), conifers, rng)
-	_make_multimesh("Broadleafs", ScatterMeshes.build_broadleaf(), broadleafs, rng)
+	for v in conifers.size():
+		_make_multimesh("Conifers%d" % v, ScatterMeshes.build_conifer(v),
+				conifers[v], rng)
+	for v in broadleafs.size():
+		_make_multimesh("Broadleafs%d" % v, ScatterMeshes.build_broadleaf(v),
+				broadleafs[v], rng)
+	for v in shrubs.size():
+		_make_multimesh("Shrubs%d" % v, ScatterMeshes.build_shrub(v),
+				shrubs[v], rng, SHRUB_CASTS_SHADOW)
 	_make_multimesh("Boulders", ScatterMeshes.build_boulder(), rocks, rng)
-	_build_colliders(conifers + broadleafs, rocks)
+	_build_colliders(conifers, broadleafs, rocks)
 	_build_grotto_interior()
 	_build_secret_props()
 
@@ -375,6 +461,134 @@ func _build_secret_props() -> void:
 	add_child(spores)
 
 
+## How much of the understory this machine's graphics tier draws, 0-1.
+##
+## Applied to the placement CHANCE rather than as a cap afterwards. A cap can
+## only remove plants that were already positioned, which biases WHERE the
+## survivors are; scaling the chance thins the whole island evenly and leaves
+## MAX_SHRUBS free to be what it should be, a rail nobody expects to hit.
+##
+## PULLED from SettingsManager here rather than PUSHED by its
+## [method SettingsManager.apply_scene_quality], which is how every other
+## per-scene quality setting travels. The difference is that those all mutate a
+## node that already exists, while this one decides what gets built at all: by
+## the time apply_scene_quality runs on the finished world, the MultiMeshes are
+## already filled. Falls back to the full count if the autoload is missing, so a
+## test scene booting WorldScatter on its own still gets an understory.
+func _shrub_density() -> float:
+	var settings := get_node_or_null(^"/root/SettingsManager")
+	if settings == null:
+		return 1.0
+	var preset: Dictionary = settings.get_quality_preset()
+	return float(preset.get("shrub_density", 1.0))
+
+
+## One empty transform list per variant. Buckets rather than one list with a
+## variant field: each bucket becomes a MultiMesh, and a MultiMesh draws exactly
+## one mesh.
+func _buckets(count: int) -> Array:
+	var out: Array = []
+	for i in count:
+		var bucket: Array[Transform3D] = []
+		out.append(bucket)
+	return out
+
+
+## Thin every bucket by the same factor until their combined size fits
+## [param cap]. Proportional across buckets on purpose: trimming whole buckets
+## (or trimming the last one hardest) would let a cap silently delete an entire
+## SPECIES from the world, which is the exact failure the variants exist to
+## prevent.
+##
+## And thinned by STRIDE, not by truncation. These lists are built by a loop
+## that walks the world row by row, so they are in spatial order — `resize()`
+## does not thin a forest, it deletes everything south of a line. That went
+## unnoticed while MAX_TREES sat above the number of trees actually placed and
+## the cap never bound; the moment the understory made a cap bind for real, a
+## third of the island came back bare.
+func _thin(cap: int, buckets: Array) -> void:
+	var total := 0
+	for bucket in buckets:
+		total += bucket.size()
+	if total <= cap:
+		return
+	var keep := float(cap) / float(total)
+	for bucket in buckets:
+		var kept: Array[Transform3D] = []
+		var acc := 0.0
+		for t in bucket:
+			acc += keep
+			if acc >= 1.0:
+				acc -= 1.0
+				kept.append(t)
+		bucket.assign(kept)
+
+
+## Which conifer shape grows at this altitude — see ScatterMeshes._CONIFERS:
+## 0 spire, 1 broad fir, 2 umbrella pine, 3 snag.
+##
+## Weights that drift with height, not hard altitude bands. A band would draw a
+## visible line across the mountain where one tree stopped and another started;
+## what a real hillside does is CHANGE ITS MIX as you climb — broad firs in the
+## sheltered low woods, spires and weather-killed snags up where the treeline
+## gives out, and every altitude in between holding some of both.
+func _conifer_variant(wy: float, rng: RandomNumberGenerator) -> int:
+	var high := smoothstep(TREE_MIN_Y + 8.0, TREELINE_FADE_Y, wy)
+	return _pick_weighted(PackedFloat32Array([
+		0.20 + 0.42 * high,  # spire — takes over with altitude
+		0.46 - 0.34 * high,  # broad fir — needs shelter
+		0.30 - 0.22 * high,  # umbrella pine — a midland tree
+		0.04 + 0.20 * high,  # snag — dieback at the treeline
+	]), rng)
+
+
+## Which broadleaf shape grows here: 0 round, 1 spreading oak, 2 slim birch.
+## Oaks want the warm low ground; birches take over as the conifers close in.
+func _broadleaf_variant(wy: float, rng: RandomNumberGenerator) -> int:
+	var high := smoothstep(TREE_MIN_Y + 6.0, CONIFER_Y, wy)
+	return _pick_weighted(PackedFloat32Array([
+		0.42, 0.40 - 0.28 * high, 0.18 + 0.30 * high]), rng)
+
+
+## Index into [param weights], chosen in proportion to them. Weights need not
+## sum to 1 — the callers above tune each entry independently and would
+## otherwise have to renormalise by hand every time one changed.
+func _pick_weighted(weights: PackedFloat32Array, rng: RandomNumberGenerator) -> int:
+	var total := 0.0
+	for w in weights:
+		total += maxf(w, 0.0)
+	var roll := rng.randf() * total
+	for i in weights.size():
+		roll -= maxf(weights[i], 0.0)
+		if roll <= 0.0:
+			return i
+	return weights.size() - 1
+
+
+## Drop a handful of shrubs around [param center] (world XZ), each re-sampling
+## the heightmap so it sits on the ground rather than on the cell's height.
+##
+## A clump rather than one plant per cell because the candidate grid is 12 m
+## across: singles land on a visible lattice, whereas a few plants within a
+## couple of metres read as one bush that spread, and the gaps between clumps
+## read as ground the deer keep cropped.
+func _plant_shrubs(shrubs: Array, center: Vector2, height_img: Image,
+		to_map: Transform3D, y_scale: float, rng: RandomNumberGenerator) -> void:
+	var count := rng.randi_range(SHRUB_CLUMP.x, SHRUB_CLUMP.y)
+	for i in count:
+		var az := rng.randf() * TAU
+		var r := sqrt(rng.randf()) * SHRUB_CLUMP_R  # sqrt = even over the disc
+		var wx := center.x + cos(az) * r
+		var wz := center.y + sin(az) * r
+		var map := to_map * Vector3(wx, 0.0, wz)
+		var wy := _height_at(height_img, map.x, map.z) * y_scale
+		var s := rng.randf_range(0.7, 1.45)
+		# Sunk a little further than a tree: a bush with a visible gap under it
+		# is the tell that it was dropped on the terrain rather than grown in it.
+		shrubs[rng.randi() % shrubs.size()].append(
+				_stand(Vector3(wx, wy - 0.1 * s, wz), s, rng, 0.09))
+
+
 ## Upright transform with a whisper of tilt — dead-vertical trees read as pins.
 func _stand(pos: Vector3, s: float, rng: RandomNumberGenerator,
 		tilt: float) -> Transform3D:
@@ -385,8 +599,12 @@ func _stand(pos: Vector3, s: float, rng: RandomNumberGenerator,
 	return Transform3D(basis, pos)
 
 
+## One MultiMesh per node — one draw call for the whole batch — with a
+## per-instance tint. See [constant SHRUB_CASTS_SHADOW] for why the caller
+## would ever pass [param casts_shadow] false.
 func _make_multimesh(node_name: String, mesh: ArrayMesh,
-		transforms: Array[Transform3D], rng: RandomNumberGenerator) -> void:
+		transforms: Array[Transform3D], rng: RandomNumberGenerator,
+		casts_shadow: bool = true) -> void:
 	if transforms.is_empty():
 		return
 	var mm := MultiMesh.new()
@@ -404,24 +622,25 @@ func _make_multimesh(node_name: String, mesh: ArrayMesh,
 	var mmi := MultiMeshInstance3D.new()
 	mmi.name = node_name
 	mmi.multimesh = mm
+	if not casts_shadow:
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mmi)
 
 
 ## One StaticBody3D, all shapes through the PhysicsServer. Trunks are slim
 ## cylinders (you collide with the tree, not its foliage); only boulders big
-## enough to block a shin get a sphere.
-func _build_colliders(trees: Array[Transform3D], rocks: Array[Transform3D]) -> void:
+## enough to block a shin get a sphere. Shrubs get nothing — you walk through
+## a bush.
+func _build_colliders(conifers: Array, broadleafs: Array,
+		rocks: Array[Transform3D]) -> void:
 	var body := StaticBody3D.new()
 	body.name = "ScatterColliders"
 	add_child(body)
-	for t in trees:
-		var s := t.basis.get_scale().y
-		var shape := CylinderShape3D.new()
-		shape.radius = 0.26 * s
-		shape.height = 2.6 * s
-		_shapes.append(shape)
-		PhysicsServer3D.body_add_shape(body.get_rid(), shape.get_rid(),
-				Transform3D(Basis(), t.origin + Vector3(0.0, 1.3 * s, 0.0)))
+	for v in conifers.size():
+		_add_trunks(body, conifers[v], ScatterMeshes.conifer_trunk_radius(v))
+	for v in broadleafs.size():
+		_add_trunks(body, broadleafs[v],
+				ScatterMeshes.broadleaf_trunk_radius(v))
 	for t in rocks:
 		var sc := t.basis.get_scale()
 		if sc.y < 0.75:
@@ -434,6 +653,21 @@ func _build_colliders(trees: Array[Transform3D], rocks: Array[Transform3D]) -> v
 		_shapes.append(ball)
 		PhysicsServer3D.body_add_shape(body.get_rid(), ball.get_rid(),
 				Transform3D(Basis(), t.origin + Vector3(0.0, 0.3 * sc.y, 0.0)))
+
+
+## Trunk cylinders for one tree variant. [param trunk_r] is the mesh's own
+## bottom radius, widened a little: the collider should stop you at the bark,
+## not let you clip a shoulder into it.
+func _add_trunks(body: StaticBody3D, trees: Array[Transform3D],
+		trunk_r: float) -> void:
+	for t in trees:
+		var s := t.basis.get_scale().y
+		var shape := CylinderShape3D.new()
+		shape.radius = (trunk_r + 0.06) * s
+		shape.height = 2.6 * s
+		_shapes.append(shape)
+		PhysicsServer3D.body_add_shape(body.get_rid(), shape.get_rid(),
+				Transform3D(Basis(), t.origin + Vector3(0.0, 1.3 * s, 0.0)))
 
 
 ## True when the ground a few metres away in any cardinal direction is already

@@ -38,23 +38,33 @@ const QUALITY_NAMES: PackedStringArray = ["Low", "Medium", "High"]
 ## a row, and so the options screen can describe a tier without duplicating the
 ## knowledge. Measured costs on the reference GPU, of a ~19 ms frame:
 ## shadows 7.6 ms · grass 2.9 ms · glow 1.9 ms · DOF 1.5 ms · SSAO ~0 (free).
+##
+## "shrub_density" scales the open world's understory (world_scatter.gd), and is
+## measured the same way. It is the most expensive thing per unit of prettiness
+## in that world: at full density it took the forest leg of perf_view.tscn from
+## 51.8 to 44.5 FPS on the reference laptop. MEDIUM therefore gets about a third
+## of it — enough that thickets still break up the ground — and the full layer
+## waits for a GPU that isn't also feeding a pose pipeline.
 const QUALITY_PRESETS: Array[Dictionary] = [
 	{  # LOW — everything optional is off; shadows near the player only.
 		"shadow_size": 1024, "shadow_distance": 90.0, "shadow_splits": 0,
 		"ssao": true, "glow": false, "dof": false,
 		"grass_distance": 55.0, "grass_density": 1.5,
+		"shrub_density": 0.0,
 		"volumetric_fog": false,
 	},
 	{  # MEDIUM — the tuned default; holds 60 on the reference laptop.
 		"shadow_size": 2048, "shadow_distance": 220.0, "shadow_splits": 1,
 		"ssao": true, "glow": true, "dof": true,
 		"grass_distance": 115.0, "grass_density": 3.0,
+		"shrub_density": 0.35,
 		"volumetric_fog": false,
 	},
 	{  # HIGH — desktop GPUs: full shadows plus the atmospherics.
 		"shadow_size": 4096, "shadow_distance": 300.0, "shadow_splits": 2,
 		"ssao": true, "glow": true, "dof": true,
 		"grass_distance": 170.0, "grass_density": 4.5,
+		"shrub_density": 1.0,
 		"volumetric_fog": true,
 	},
 ]

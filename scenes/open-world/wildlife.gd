@@ -35,6 +35,19 @@ const ACTIVE_RADIUS := 160.0
 ## Sentinel for "no walkable ground there" (see _step_y).
 const BLOCKED := -1.0e9
 
+## Herds are dealt one per grid sector rather than rolled anywhere on the island.
+## Uniform random anchors clump: with a handful of them over a 1 km² island whole
+## quadrants came up empty, and the spawn quadrant was one of them — the nearest
+## animal of ANY species was 338 m from the player's start, so a session read as
+## a dead world. Dicing the island into SECTORS² cells and dealing at most one
+## herd per cell (in shuffled order, so it stays deterministic but unpatterned)
+## guarantees the spread instead of hoping for it. See _deal_spots.
+const SECTORS := 8
+## Candidate rolls per sector before giving up on it. A sector that is all sea,
+## all cliff or the wrong biome band for the species simply yields nothing and
+## the deal moves on.
+const SPOT_ATTEMPTS := 96
+
 enum Species { DEER, FOX, RABBIT, SONGBIRD, GULL, BUTTERFLY }
 enum State { IDLE, WANDER, FLEE, FLIGHT }
 
@@ -60,6 +73,10 @@ const FLUTTER_TINTS: Array[Color] = [Color(1.0, 1.0, 1.0),
 
 @export var terrain_path: NodePath
 @export var player_path: NodePath
+## The player's start marker. Animals keep off the start line the same way the
+## scenery does — resolved live, never hardcoded (see
+## WorldScatter.resolve_spawn_clear).
+@export var spawn_path: NodePath
 
 
 ## One animal. Ground species keep pos at their feet; gulls and butterflies
@@ -91,6 +108,7 @@ var _height_img: Image
 var _to_map := Transform3D()
 var _y_scale := 1.0
 var _player: Node3D
+var _spawn_clear := Vector3.ZERO
 var _time := 0.0
 var _rng := RandomNumberGenerator.new()  # behaviour randomness, unseeded
 
@@ -105,6 +123,7 @@ func _ready() -> void:
 	_to_map = terrain.get_internal_transform().affine_inverse()
 	_y_scale = terrain.get_internal_transform().basis.y.y
 	_player = get_node_or_null(player_path) as Node3D
+	_spawn_clear = Scatter.resolve_spawn_clear(self, spawn_path)
 	_spawn_all(splat)
 
 
@@ -142,14 +161,15 @@ func _spawn_all(splat: Image) -> void:
 	clumps.seed = Scatter.SEED
 	clumps.frequency = 0.009
 
-	# species, herds, herd size min..max
-	for plan in [[Species.DEER, 3, 2, 3], [Species.FOX, 3, 1, 1],
-			[Species.RABBIT, 4, 2, 3], [Species.SONGBIRD, 4, 2, 2],
-			[Species.BUTTERFLY, 5, 3, 4]]:
-		for herd in plan[1]:
-			var anchor := _find_spot(plan[0], rng, splat, clumps)
-			if anchor == Vector3.INF:
-				continue
+	# species, herds wanted, herd size min..max. Counts are sized so a roamer
+	# meets something every minute or two rather than every expedition: the herds
+	# are spread one-per-sector, so ~14 of them means an anchor roughly every
+	# 120 m of island. The cost is near nothing — every species is still one
+	# draw call, and ground animals freeze past ACTIVE_RADIUS.
+	for plan in [[Species.DEER, 14, 2, 4], [Species.FOX, 8, 1, 2],
+			[Species.RABBIT, 16, 2, 4], [Species.SONGBIRD, 14, 2, 3],
+			[Species.BUTTERFLY, 18, 3, 5]]:
+		for anchor in _deal_spots(plan[0], plan[1], rng, splat, clumps):
 			for i in rng.randi_range(plan[2], plan[3]):
 				var az := rng.randf_range(0.0, TAU)
 				var p := anchor + Vector3(cos(az), 0.0, sin(az)) \
@@ -158,10 +178,9 @@ func _spawn_all(splat: Image) -> void:
 				p.y = gy if gy != BLOCKED else anchor.y
 				_add_critter(plan[0], p if gy != BLOCKED else anchor, rng)
 
-	for flight in 3:  # gull loops off the shore
-		var beach := _find_spot(Species.GULL, rng, splat, clumps)
-		if beach == Vector3.INF:
-			continue
+	# Gull loops off the shore. Dealt per sector like the rest, which also rings
+	# them right around the coast instead of stacking them on one beach.
+	for beach in _deal_spots(Species.GULL, 8, rng, splat, clumps):
 		var center := beach + Vector3(0.0, rng.randf_range(10.0, 16.0), 0.0)
 		for i in rng.randi_range(2, 3):
 			var c := _add_critter(Species.GULL, center, rng)
@@ -173,14 +192,45 @@ func _spawn_all(splat: Image) -> void:
 	_build_multimeshes()
 
 
-## Rolls candidate points until one satisfies [param species]' biome — the same
-## bands and masks the scenery grew from — or gives up (Vector3.INF).
+## Deals up to [param count] herd anchors for [param species], at most one per
+## grid sector, visiting the sectors in a shuffled order. Sectors whose ground
+## doesn't suit the species (sea, cliff, wrong altitude band) simply yield
+## nothing and the walk continues, so a species that only lives in one biome
+## still fills the sectors where that biome exists. The shuffle draws from the
+## spawn [param rng], so the whole layout stays deterministic per SEED.
+func _deal_spots(species: int, count: int, rng: RandomNumberGenerator,
+		splat: Image, clumps: FastNoiseLite) -> Array[Vector3]:
+	var order: Array[int] = []
+	for i in SECTORS * SECTORS:
+		order.append(i)
+	for i in range(order.size() - 1, 0, -1):  # Fisher-Yates
+		var j := rng.randi_range(0, i)
+		var tmp := order[i]
+		order[i] = order[j]
+		order[j] = tmp
+
+	var span := 2.0 * HALF_EXTENT / float(SECTORS)
+	var out: Array[Vector3] = []
+	for cell in order:
+		if out.size() >= count:
+			break
+		var spot := _find_spot(species, rng, splat, clumps,
+				-HALF_EXTENT + span * float(cell % SECTORS),
+				-HALF_EXTENT + span * float(cell / SECTORS), span)
+		if spot != Vector3.INF:
+			out.append(spot)
+	return out
+
+
+## Rolls candidate points inside the sector at ([param x0], [param z0]) of side
+## [param span] until one satisfies [param species]' biome — the same bands and
+## masks the scenery grew from — or gives up on the sector (Vector3.INF).
 func _find_spot(species: int, rng: RandomNumberGenerator, splat: Image,
-		clumps: FastNoiseLite) -> Vector3:
-	for attempt in 80:
-		var wx := rng.randf_range(-HALF_EXTENT, HALF_EXTENT)
-		var wz := rng.randf_range(-HALF_EXTENT, HALF_EXTENT)
-		if Vector3(wx, 0.0, wz).distance_to(Scatter.SPAWN_CLEAR) < 20.0:
+		clumps: FastNoiseLite, x0: float, z0: float, span: float) -> Vector3:
+	for attempt in SPOT_ATTEMPTS:
+		var wx := rng.randf_range(x0, x0 + span)
+		var wz := rng.randf_range(z0, z0 + span)
+		if Vector3(wx, 0.0, wz).distance_to(_spawn_clear) < 20.0:
 			continue
 		if _near_secret(wx, wz):
 			continue
