@@ -361,9 +361,13 @@ func record_game_result(result: GameResult) -> void:
 	entry["best_score"] = maxi(int(entry.get("best_score", 0)), result.score)
 	stats[game_id] = entry
 	_active()["game_stats"] = stats
+	# One finished game = one write. The signals add_xp emits still fire, and the
+	# in-memory state they hand to listeners is already correct.
+	_batch_begin()
 	_save()
 	add_calories(result.calories)
 	add_xp(result.xp_earned)
+	_batch_end()
 
 
 ## Returns the XP-based level for an arbitrary [param xp] total. Static so UI
@@ -436,7 +440,34 @@ func _ensure_fields() -> void:
 		p["id"] = id
 
 
+## Depth of the current [method _batch_begin] / [method _batch_end] pair, and
+## whether anything asked to save while it was open.
+##
+## Every mutator here saves, which is what makes them individually safe to call.
+## The cost only shows up when one logical event fans out into several of them:
+## finishing a game writes game_stats, then calories, then XP, and each write is
+## a full JSON re-encode of every profile plus a temp-file-and-rename — three
+## disk round-trips at the exact moment the results screen is trying to animate
+## in. Batching collapses them to one without making any single mutator unsafe.
+var _batch_depth: int = 0
+var _batch_dirty: bool = false
+
+
+func _batch_begin() -> void:
+	_batch_depth += 1
+
+
+func _batch_end() -> void:
+	_batch_depth = maxi(0, _batch_depth - 1)
+	if _batch_depth == 0 and _batch_dirty:
+		_batch_dirty = false
+		_save()
+
+
 func _save() -> void:
+	if _batch_depth > 0:
+		_batch_dirty = true
+		return
 	SaveManager.save_data(SAVE_FILE, {"active_id": _active_id, "profiles": _profiles})
 
 

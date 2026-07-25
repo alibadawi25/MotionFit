@@ -101,8 +101,17 @@ func is_live() -> bool:
 
 ## Recolours the viewport border. Only meaningful with [member auto_frame_color]
 ## off; the camera test uses it to match its own green/amber status.
+##
+## Writes only on a real change: assigning border_color emits `changed` on the
+## StyleBox whatever the value was, which queues a redraw of the panel. With
+## auto_frame_color on this is called every frame from _process, so an
+## unconditional write repainted the frame 60 times a second to keep it exactly
+## the colour it already was. Same edge-triggering main_menu.gd uses for its
+## hardware status lines.
 func set_frame_color(color: Color) -> void:
-	_frame_style().border_color = color
+	var style := _frame_style()
+	if style.border_color != color:
+		style.border_color = color
 
 
 func _frame_style() -> StyleBoxFlat:

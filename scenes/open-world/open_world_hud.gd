@@ -29,6 +29,13 @@ var _discovery_name: Label
 var _discovery_tween: Tween
 ## Last secrets-found count, so [method set_secrets] only pulses on a new find.
 var _secrets_shown: int = 0
+## Last value written to each stat chip, so set_stats can skip the ones that have
+## not moved. -1 is "nothing written yet", which no real value takes.
+var _shown_seconds: int = -1
+var _shown_kcal: int = -1
+var _shown_steps: int = -1
+var _shown_orbs: int = -1
+var _shown_bpm: int = -1
 
 
 func _ready() -> void:
@@ -246,13 +253,30 @@ func _process(_delta: float) -> void:
 
 
 ## Refreshes each chip from the values the game measured this frame.
+##
+## Called every frame by open_world.gd, but every value on it is a whole number
+## that changes at most once a second, so each chip is compared before it is
+## formatted — the point is to skip building the string at all, not merely to
+## avoid assigning it. (Label.text already ignores an identical assignment, so
+## checking after formatting would have saved nothing.)
 func set_stats(seconds: int, calories: float, steps: int, orbs: int) -> void:
 	if _values.is_empty():
 		return
-	_values["time"].text = "%d:%02d" % [seconds / 60, seconds % 60]
-	_values["calories"].text = "%.0f" % calories
-	_values["steps"].text = str(steps)
-	_values["orbs"].text = str(orbs)
+	# roundi, not int(): the chip used to be formatted with "%.0f", which rounds.
+	# Truncating instead would have quietly shown every calorie count one low.
+	var kcal: int = roundi(calories)
+	if seconds != _shown_seconds:
+		_shown_seconds = seconds
+		_values["time"].text = "%d:%02d" % [seconds / 60, seconds % 60]
+	if kcal != _shown_kcal:
+		_shown_kcal = kcal
+		_values["calories"].text = str(kcal)
+	if steps != _shown_steps:
+		_shown_steps = steps
+		_values["steps"].text = str(steps)
+	if orbs != _shown_orbs:
+		_shown_orbs = orbs
+		_values["orbs"].text = str(orbs)
 
 
 ## Shows live bpm from a heart-rate strap on its own chip; [param bpm] <= 0
@@ -262,7 +286,10 @@ func set_heart_rate(bpm: float) -> void:
 		return
 	_hr_chip.visible = bpm > 0.0
 	if bpm > 0.0:
-		_values["hr"].text = "%d" % roundi(bpm)
+		var shown: int = roundi(bpm)
+		if shown != _shown_bpm:
+			_shown_bpm = shown
+			_values["hr"].text = str(shown)
 
 
 ## A quick scale pop on the ORBS value when one is banked, so pickups feel felt.
