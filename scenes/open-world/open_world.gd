@@ -86,6 +86,10 @@ func _prepare_world() -> void:
 	var terrain := get_node_or_null("HTerrain")
 	if terrain != null:
 		terrain.add_to_group(KEEP_PROCESSING_GROUP)
+	# Shadow range, grass density, glow/DOF/volumetrics: applied once, here,
+	# before the world is ever drawn, so the very first frame is already at the
+	# player's chosen tier rather than popping a frame or two later.
+	SettingsManager.apply_scene_quality(self)
 	_move_player_to_spawn_marker()
 	if _camera != null and _camera.has_method("snap_to_target"):
 		_camera.snap_to_target()

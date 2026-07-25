@@ -47,3 +47,7 @@ window/stretch/aspect="expand"
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg", "res://addons/zylann.hterrain/plugin.cfg")
+
+[rendering]
+
+lights_and_shadows/directional_shadow/size=2048

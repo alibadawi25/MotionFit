@@ -17,7 +17,47 @@ const DEFAULTS: Dictionary = {
 	"master_volume": 1.0,
 	"music_volume": 0.8,
 	"sfx_volume": 0.9,
+	"graphics_quality": QUALITY_MEDIUM,
 }
+
+## --- graphics quality --------------------------------------------------------
+## This app runs the MediaPipe pose pipeline on the same machine as the game, so
+## the rendering budget is shared and genuinely tight — on the reference laptop
+## (NVIDIA MX550) the open world missed 60 FPS in a sustained session before any
+## of these tiers existed. A dropped frame here is not a cosmetic problem: the
+## whole product is someone moving their body in time with what they see.
+##
+## MEDIUM is the default and the tier the reference laptop is tuned to hold 60
+## on. LOW exists for weaker integrated GPUs; HIGH is for real desktop GPUs and
+## is the only tier that turns on the expensive atmospheric effects.
+enum {QUALITY_LOW, QUALITY_MEDIUM, QUALITY_HIGH}
+
+const QUALITY_NAMES: PackedStringArray = ["Low", "Medium", "High"]
+
+## Per-tier render settings. Kept as data rather than branches so a new tier is
+## a row, and so the options screen can describe a tier without duplicating the
+## knowledge. Measured costs on the reference GPU, of a ~19 ms frame:
+## shadows 7.6 ms · grass 2.9 ms · glow 1.9 ms · DOF 1.5 ms · SSAO ~0 (free).
+const QUALITY_PRESETS: Array[Dictionary] = [
+	{  # LOW — everything optional is off; shadows near the player only.
+		"shadow_size": 1024, "shadow_distance": 90.0, "shadow_splits": 0,
+		"ssao": true, "glow": false, "dof": false,
+		"grass_distance": 55.0, "grass_density": 1.5,
+		"volumetric_fog": false,
+	},
+	{  # MEDIUM — the tuned default; holds 60 on the reference laptop.
+		"shadow_size": 2048, "shadow_distance": 220.0, "shadow_splits": 1,
+		"ssao": true, "glow": true, "dof": true,
+		"grass_distance": 115.0, "grass_density": 3.0,
+		"volumetric_fog": false,
+	},
+	{  # HIGH — desktop GPUs: full shadows plus the atmospherics.
+		"shadow_size": 4096, "shadow_distance": 300.0, "shadow_splits": 2,
+		"ssao": true, "glow": true, "dof": true,
+		"grass_distance": 170.0, "grass_density": 4.5,
+		"volumetric_fog": true,
+	},
+]
 
 ## The smallest window the UI is designed to survive. The project stretches
 ## canvas_items with aspect "expand", so a smaller window doesn't crop — it
@@ -147,11 +187,75 @@ func _parse_resolution(text: String) -> Vector2i:
 	return Vector2i(int(parts[0]), int(parts[1]))
 
 
-## Applies every current setting to the engine (audio buses).
+## Applies every current setting to the engine (audio buses, render quality).
 func apply_all() -> void:
 	AudioManager.set_master_volume(get_master_volume())
 	AudioManager.set_music_volume(get_music_volume())
 	AudioManager.set_sfx_volume(get_sfx_volume())
+	apply_graphics_quality()
+
+
+func get_graphics_quality() -> int:
+	return clampi(int(_settings["graphics_quality"]), QUALITY_LOW, QUALITY_HIGH)
+
+
+func get_graphics_quality_name() -> String:
+	return QUALITY_NAMES[get_graphics_quality()]
+
+
+## The preset dictionary for the active tier. Scenes read this to configure
+## anything the RenderingServer can't set globally — grass density, volumetric
+## fog — since those live on nodes, not on the renderer (see
+## [method apply_scene_quality]).
+func get_quality_preset() -> Dictionary:
+	return QUALITY_PRESETS[get_graphics_quality()]
+
+
+func set_graphics_quality(level: int) -> void:
+	_update_setting("graphics_quality", clampi(level, QUALITY_LOW, QUALITY_HIGH))
+	apply_graphics_quality()
+
+
+## Applies the renderer-wide part of the active tier. The shadow atlas is a
+## project setting that only takes effect through the RenderingServer at
+## runtime, which is why it is set here rather than left in project.godot.
+func apply_graphics_quality() -> void:
+	var p: Dictionary = get_quality_preset()
+	RenderingServer.directional_shadow_atlas_set_size(p["shadow_size"], true)
+
+
+## Applies the per-scene part of the active tier to [param world] — the settings
+## that live on nodes rather than on the renderer. Safe to call on any scene:
+## every node it touches is looked up optionally, so a scene without a sun, a
+## grass layer or an environment simply gets the parts that do apply.
+##
+## Deliberately a plain function taking the scene root, not a signal the scenes
+## subscribe to: quality is applied once when a world is built, and a game that
+## re-reads it every frame would be paying for the lookup forever.
+func apply_scene_quality(world: Node) -> void:
+	if world == null:
+		return
+	var p: Dictionary = get_quality_preset()
+
+	var sun := world.get_node_or_null("Sun") as DirectionalLight3D
+	if sun != null:
+		sun.directional_shadow_max_distance = p["shadow_distance"]
+		sun.directional_shadow_mode = p["shadow_splits"]
+
+	var we := world.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if we != null and we.environment != null:
+		var env: Environment = we.environment
+		env.ssao_enabled = p["ssao"]
+		env.glow_enabled = p["glow"]
+		env.volumetric_fog_enabled = p["volumetric_fog"]
+		if we.camera_attributes is CameraAttributesPractical:
+			(we.camera_attributes as CameraAttributesPractical) \
+					.dof_blur_far_enabled = p["dof"]
+
+	var grass := world.get_node_or_null("HTerrain/GrassLayer")
+	if grass != null:
+		grass.set("view_distance", p["grass_distance"])
+		grass.set("density", p["grass_density"])
 
 
 func get_master_volume() -> float:
