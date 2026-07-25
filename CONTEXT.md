@@ -868,6 +868,40 @@ by design — with no service running the texture is null and the UI falls back 
   *Grass rendering*: an `HTerrainDetailLayer` node (`GrassLayer`) under
   HTerrain — layer 0, density 3, view_distance 115 — plus `ambient_wind 0.15`
   on the terrain node, which is what makes the blades sway.
+  *Sea* (`scenes/open-world/water.gdshader` on the `Sea` MeshInstance3D, a
+  1600 m plane at y 15): swell + chop from a shared analytic sum — `wave_eval`
+  returns height AND slope from the same terms, because displacing vertices
+  without tilting the normal is a wobble the lighting never sees. Colour and
+  opacity come from real scene depth behind the surface (`hint_depth_texture`),
+  which is also what gives the shoreline for free: the swash band is keyed on
+  water depth measured from the DISPLACED surface, so a passing crest thins the
+  water over the sand and throws the foam inland with no separate animation.
+  The band is shaped into a lacy body plus a bright leading edge, and `surf_depth`
+  whitens crests as they shoal — on this island that shoaling, not the foam, is
+  what reads as a shoreline from any distance, because the coasts were sculpted
+  at 25-30° nearly all the way round and a metre of depth buys only ~2 m of
+  visible band. Two shader gotchas: the swash's extra noise fetches are behind a
+  `water_depth < foam_depth` branch (paying for them across 1600 m of open sea
+  cost ~16% of the frame on perf_view's shore leg), and they use `textureLod`,
+  because an implicit-LOD sample inside divergent flow has no derivatives and
+  takes the driver's slow path — which gave back most of what the branch saved.
+  *Whitecaps and specular AA (2026-07-25)*: caps key on wave STEEPNESS as well
+  as height (`whitecap_break`) — a tall glassy swell doesn't break, the face
+  pitching over does — which keeps open water clean and concentrates foam in
+  the surf zone where `surf_depth` amplifies it. Separately, and the more
+  important fix: the sea used to read as a boiling white field from low camera
+  angles. **That was never the whitecaps** — proven by setting `whitecap` to 0
+  and seeing no change at all, then `ripple_strength` to 0 and seeing it vanish
+  completely. It is specular aliasing: a near-mirror `roughness_value` 0.08
+  under a strong ripple normal map, undersampled wherever one pixel spans
+  metres of water. The fix keys on `length(fwidth(world_pos.xz))` — how much
+  sea a pixel covers — rather than on distance, because the same water at the
+  same range aliases when you look ALONG it and is fine when you look down at
+  it, and a distance fade cannot tell those apart. As the ripples fade out
+  (`ripple_aa`) the surface gets rougher by the same amount (`ripple_rough`):
+  sub-pixel normal variation and gloss spread are physically the same thing,
+  and fading without that trade just swaps a field of sparks for one hard sun
+  blob. Costs nothing measurable and improved the 1% lows.
   *Scatter* (`scenes/open-world/world_scatter.gd` + `scatter_meshes.gd`, a
   `WorldScatter` node): deterministic (fixed-seed) jittered-grid placement of
   ~1k trees + boulders into three MultiMeshes (one draw call each, subtle
@@ -880,6 +914,32 @@ by design — with no service running the texture is null and the UI falls back 
   at world y ~64-68 — vegetation bands tuned "sensibly" against sea level
   (13.5) left the first meadow the player ever sees bare; the treeline runs to
   66 and full grass to ~65 for exactly that reason.
+  *Foliage variety (2026-07-25)*: trees come in VARIANTS described as data in
+  `scatter_meshes.gd` (`_CONIFERS` spire/broad fir/umbrella pine/dead snag,
+  `_BROADLEAFS` round/spreading oak/slim birch), one MultiMesh per variant.
+  They differ in SILHOUETTE first — per-instance scale and tint had been in
+  place for months and a hillside still read as one cloned cone, because a
+  scaled clone is just the same tree further away. Which variant grows where is
+  weighted by altitude and drifts (`_conifer_variant`), never banded: a hard
+  band draws a visible line across the mountain, whereas a shifting mix is what
+  a real hillside does. Plus an UNDERSTORY of bushes/scrub/gorse in clumps
+  (`build_shrub`), no colliders (you walk through a bush) and no shadow casting.
+  Two traps worth keeping: (1) understory sizes are set against the GRASS, not
+  against a person — the detail layer's blades stand over a metre at eye level
+  and the first, tidy, knee-high bushes were invisible in every shot; (2) the
+  understory made `MAX_SHRUBS` the first cap that actually BINDS, which exposed
+  a latent bug in the thinning — the transform lists are built in row order, so
+  the old `resize()` did not thin the island, it deleted everything south of a
+  line. `_thin` now drops by stride, and per-tier density is applied to the
+  placement chance instead of as a cap (see below), so the cap stays a rail.
+  Density is `shrub_density` from `settings_manager.gd`'s `QUALITY_PRESETS`
+  (LOW 0 / MEDIUM 0.35 / HIGH 1.0) — the one graphics-preset knob `WorldScatter`
+  PULLS rather than receiving from `apply_scene_quality`, because it decides
+  what gets built rather than mutating a node that already exists. Measured on
+  the reference MX550 with `scenes/tests/perf_view.tscn`: the full layer took
+  the forest leg 51.8 → 44.5 FPS, which is why MEDIUM only gets a third of it;
+  the shipped configuration measures 55.3 vs a 54.2 baseline, i.e. at parity.
+  `tools/probe_scatter.gd` prints per-MultiMesh instance counts and density.
   *The crystal grotto (2026-07-18)*: the walkable cave prototype, built by
   `world_scatter.gd` (`GROTTO_POS` (228, 47.4, −60), mountain's east flank,
   ~195 m west of spawn). Heightmap terrain cannot hold true caves, so it is a

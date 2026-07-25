@@ -22,6 +22,7 @@
 [ext_resource type="Texture2D" uid="uid://24ki2ai83bi4" path="res://assets/textures/terrain/grass_blades.png" id="20_blades"]
 [ext_resource type="Script" uid="uid://can8godn55p3p" path="res://scenes/open-world/world_scatter.gd" id="21_scat"]
 [ext_resource type="Script" uid="uid://bkp2g170kspif" path="res://scenes/open-world/wildlife.gd" id="22_wild"]
+[ext_resource type="Shader" path="res://scenes/open-world/sky.gdshader" id="23_sky"]
 
 [sub_resource type="Resource" id="Resource_xcpkc"]
 script = ExtResource("3_7qf85")
@@ -44,13 +45,20 @@ shader_parameter/shallow_color = Color(0.22, 0.55, 0.58, 1)
 shader_parameter/deep_color = Color(0.03, 0.14, 0.26, 1)
 shader_parameter/foam_color = Color(0.92, 0.96, 0.97, 1)
 shader_parameter/depth_fade = 10.0
-shader_parameter/foam_depth = 0.9
+shader_parameter/foam_depth = 2.4
+shader_parameter/foam_lace = 0.75
+shader_parameter/foam_edge = 0.16
+shader_parameter/surf_depth = 6.0
 shader_parameter/wave_height = 0.45
 shader_parameter/wave_speed = 1.0
 shader_parameter/chop = 1.0
 shader_parameter/whitecap = 0.35
+shader_parameter/whitecap_break = 0.13
+shader_parameter/whitecap_fade = 1.1
 shader_parameter/ripple_scale = 0.05
 shader_parameter/ripple_strength = 0.6
+shader_parameter/ripple_aa = 0.05
+shader_parameter/ripple_rough = 0.42
 shader_parameter/roughness_value = 0.08
 shader_parameter/wave_noise = SubResource("noisetex_sea")
 
@@ -69,14 +77,22 @@ material = SubResource("mat_player")
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_plyr"]
 
-[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
-sky_top_color = Color(0.19, 0.38, 0.66, 1)
-sky_horizon_color = Color(0.68, 0.76, 0.84, 1)
-sky_curve = 0.18
-ground_bottom_color = Color(0.2, 0.24, 0.28, 1)
-ground_horizon_color = Color(0.65, 0.71, 0.76, 1)
-sun_angle_max = 12.0
-sun_curve = 0.08
+[sub_resource type="ShaderMaterial" id="sky_mat"]
+shader = ExtResource("23_sky")
+shader_parameter/sky_top_color = Color(0.17, 0.36, 0.66, 1)
+shader_parameter/sky_horizon_color = Color(0.71, 0.79, 0.86, 1)
+shader_parameter/ground_horizon_color = Color(0.65, 0.71, 0.76, 1)
+shader_parameter/ground_bottom_color = Color(0.2, 0.24, 0.28, 1)
+shader_parameter/sky_curve = 0.16
+shader_parameter/cloud_lit_color = Color(1, 0.99, 0.96, 1)
+shader_parameter/cloud_dark_color = Color(0.52, 0.58, 0.67, 1)
+shader_parameter/cloud_coverage = 0.46
+shader_parameter/cloud_softness = 0.26
+shader_parameter/cloud_scale = 1.7
+shader_parameter/cloud_speed = 0.004
+shader_parameter/cloud_opacity = 1.0
+shader_parameter/sun_glow = 1.0
+shader_parameter/star_opacity = 0.0
 
 [sub_resource type="Sky" id="sky_res"]
 sky_material = SubResource("sky_mat")
@@ -85,9 +101,17 @@ sky_material = SubResource("sky_mat")
 background_mode = 2
 sky = SubResource("sky_res")
 ambient_light_source = 3
-ambient_light_energy = 1.15
-tonemap_mode = 2
-tonemap_white = 1.6
+; Was 1.15, which lit every surface almost as brightly as the sun did and left
+; the world shadowless and flat — the forest shots had no readable tree shadows
+; at all. Ambient is fill, not key: at 0.55 the sun's shading actually shapes
+; the terrain, and day_night_cycle still lerps this down to NIGHT_AMBIENT.
+ambient_light_energy = 0.55
+; Sky-coloured ambient is what makes shadows read as cool blue against warm
+; sunlight rather than as grey. Slightly blue-shifted from pure sky to push it.
+ambient_light_sky_contribution = 1.0
+tonemap_mode = 3
+tonemap_white = 2.2
+tonemap_exposure = 1.05
 ssao_enabled = true
 ssao_radius = 1.4
 ssao_intensity = 1.6
@@ -115,8 +139,11 @@ fog_depth_curve = 1.5
 fog_depth_begin = 70.0
 fog_depth_end = 820.0
 adjustment_enabled = true
-adjustment_contrast = 1.08
-adjustment_saturation = 1.12
+adjustment_contrast = 1.06
+; Was 1.12. The island is overwhelmingly one hue, so boosting saturation made
+; the whole world read as a single slab of green; the variation now comes from
+; the colormap (see tools/paint_terrain.gd) instead of from a global multiplier.
+adjustment_saturation = 1.0
 
 [sub_resource type="CameraAttributesPractical" id="cam_attrs"]
 dof_blur_far_enabled = true
@@ -194,10 +221,9 @@ light_angular_distance = 1.2
 shadow_enabled = true
 shadow_bias = 0.03
 shadow_normal_bias = 1.5
-directional_shadow_split_1 = 0.06
-directional_shadow_split_2 = 0.16
-directional_shadow_split_3 = 0.4
-directional_shadow_blend_splits = true
+directional_shadow_mode = 1
+directional_shadow_split_1 = 0.12
+directional_shadow_blend_splits = false
 directional_shadow_max_distance = 220.0
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=560313841]
@@ -221,11 +247,13 @@ player_path = NodePath("../CharacterBody3D")
 [node name="WorldScatter" type="Node3D" parent="." unique_id=86184369]
 script = ExtResource("21_scat")
 terrain_path = NodePath("../HTerrain")
+spawn_path = NodePath("../SpawnPoint")
 
 [node name="Wildlife" type="Node3D" parent="." unique_id=433222103]
 script = ExtResource("22_wild")
 terrain_path = NodePath("../HTerrain")
 player_path = NodePath("../CharacterBody3D")
+spawn_path = NodePath("../SpawnPoint")
 
 [node name="SpawnPoint" type="Marker3D" parent="." unique_id=905473459]
 transform = Transform3D(-0.0871557, 0, -0.9961947, 0, 1, 0, 0.9961947, 0, -0.0871557, 407.81302, 39.572594, -6.018368)
