@@ -63,6 +63,30 @@ const DIP_PER_IMPACT: float = 0.055
 const DIP_MAX: float = 0.45
 const DIP_RECOVER: float = 6.0
 
+## --- look-ahead --------------------------------------------------------------
+## Turning slides the framing sideways so the player sits off-centre and you see
+## further round the corner you are actually walking into. Metres of lateral
+## offset per radian/sec of turn, capped so a fast spin can't fling the frame.
+const LOOK_AHEAD: float = 1.5
+const LOOK_AHEAD_MAX: float = 1.1
+## How fast the measured turn rate settles. Low on purpose: the raw derivative of
+## a webcam-driven heading is noisy, and feeding that straight into the framing
+## makes the whole view twitch.
+const TURN_SMOOTH: float = 4.0
+
+## --- vista mode --------------------------------------------------------------
+## Standing still for a moment eases the camera back and lets the world open up.
+## This is the one moment the game is not asking anything of the player, so it is
+## worth making the view the reward for stopping.
+const VISTA_DELAY: float = 1.6
+const VISTA_EASE: float = 2.8
+const VISTA_PULLBACK: float = 2.2
+const VISTA_RISE: float = 0.7
+## A very slow orbital drift while parked, so a still frame still breathes.
+## Radians of swing, and how fast it swings.
+const IDLE_DRIFT: float = 0.09
+const IDLE_DRIFT_SPEED: float = 0.22
+
 var _target: Node3D
 ## Smoothed stand-in for the target's origin; the arm hangs off this, not off the
 ## target directly, which is what turns raw motion into camera motion.
@@ -73,6 +97,14 @@ var _yaw: float = 0.0
 var _arm: float = 0.0
 ## Live downward offset from a landing, eased back to 0.
 var _dip: float = 0.0
+## Smoothed turn rate (rad/s) of the target, driving the look-ahead offset.
+var _turn_rate: float = 0.0
+## The target's yaw last frame, for that derivative.
+var _last_yaw: float = 0.0
+## Seconds the player has been essentially stationary, driving vista mode.
+var _still: float = 0.0
+## Free-running clock for the idle drift.
+var _drift_t: float = 0.0
 ## The target's own collider, excluded from the arm's ray (it is what we orbit).
 var _exclude: Array[RID] = []
 
@@ -108,7 +140,22 @@ func _process(delta: float) -> void:
 
 	# Swing the arm toward the target's facing. lerp_angle (not lerpf) so crossing
 	# ±PI takes the short way round instead of unwinding the long way.
-	_yaw = lerp_angle(_yaw, _target.global_rotation.y, 1.0 - exp(-look_speed * delta))
+	var target_yaw: float = _target.global_rotation.y
+	_yaw = lerp_angle(_yaw, target_yaw, 1.0 - exp(-look_speed * delta))
+
+	# Turn rate, measured with angle_difference so a ±PI wrap reads as a small
+	# turn rather than a full spin. Smoothed hard — see TURN_SMOOTH.
+	if delta > 0.0:
+		var raw: float = angle_difference(_last_yaw, target_yaw) / delta
+		_turn_rate = lerpf(_turn_rate, raw, 1.0 - exp(-TURN_SMOOTH * delta))
+	_last_yaw = target_yaw
+
+	# Vista timer: how long since the player last did anything.
+	if run > 0.03:
+		_still = 0.0
+	else:
+		_still += delta
+	_drift_t += delta
 
 	_dip = move_toward(_dip, 0.0, DIP_RECOVER * delta * maxf(_dip, 0.1))
 
@@ -120,11 +167,26 @@ func _process(delta: float) -> void:
 ## at the look point. [param delta] < 0 means "no easing" — used by
 ## [method snap_to_target] to establish the pose in one shot.
 func _apply_pose(run: float, delta: float) -> void:
+	# How far into "parked at a viewpoint" we are, 0..1.
+	var vista: float = smoothstep(VISTA_DELAY, VISTA_DELAY + VISTA_EASE, _still)
+
 	var pivot: Vector3 = _anchor + Vector3.UP * look_height
+	# Look-ahead: slide the framing sideways while turning so the player moves
+	# off-centre and the inside of the turn opens up. Applied to the pivot (what
+	# the camera orbits AND aims at), so the whole frame shifts rather than the
+	# camera merely swivelling and losing the player off the edge.
+	var lateral: float = clampf(_turn_rate * LOOK_AHEAD, -LOOK_AHEAD_MAX, LOOK_AHEAD_MAX)
+	var right: Vector3 = Basis(Vector3.UP, _yaw) * Vector3(1.0, 0.0, 0.0)
+	pivot += right * lateral
+
 	# Where the arm wants to reach: behind (+Z of the target's yaw) and above.
-	var back: Vector3 = Basis(Vector3.UP, _yaw) * Vector3(0.0, 0.0, 1.0)
-	var reach: float = follow_distance + sprint_pullback * run
-	var desired: Vector3 = pivot + back * reach + Vector3.UP * (follow_height - look_height)
+	# Parked, the arm eases back and lifts for a wider, calmer composition, with
+	# a very slow orbit so the frame is never dead.
+	var arm_yaw: float = _yaw + sin(_drift_t * IDLE_DRIFT_SPEED) * IDLE_DRIFT * vista
+	var back: Vector3 = Basis(Vector3.UP, arm_yaw) * Vector3(0.0, 0.0, 1.0)
+	var reach: float = follow_distance + sprint_pullback * run + VISTA_PULLBACK * vista
+	var lift: float = follow_height - look_height + VISTA_RISE * vista
+	var desired: Vector3 = pivot + back * reach + Vector3.UP * lift
 
 	var dir: Vector3 = (desired - pivot).normalized()
 	var want_len: float = pivot.distance_to(desired)
@@ -181,6 +243,13 @@ func snap_to_target() -> void:
 		return
 	_anchor = _target.global_position
 	_yaw = _target.global_rotation.y
+	_last_yaw = _yaw
+	_turn_rate = 0.0
+	# Snapping means "frame this cleanly right now", so start from the neutral
+	# composition: no vista pull-back, no drift, no landing dip. Leaving _still
+	# high here would open a fresh scene on a drifting, pulled-back camera.
+	_still = 0.0
+	_drift_t = 0.0
 	_dip = 0.0
 	fov = base_fov
 	_apply_pose(0.0, -1.0)  # negative delta: establish the pose without easing
