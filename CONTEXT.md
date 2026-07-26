@@ -546,9 +546,12 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
   and **bilateral knee flexion** — a squat bends both knees, a march bends one, a
   lean bends neither. Measuring it in image space instead made a forward lean
   foreshorten the torso and read as a squat; see the `CROUCH_*` constants in
-  `pose_server.py`. Still suppressed while marching (`CROUCH_MARCH_SPEED`, keyed
-  off the raw fused speed rather than the crouch-vetoed `forward`), so it is NOT
-  reachable mid-run — that's what `duck` is for.
+  `pose_server.py`. Crouch still vetoes the march (a squat isn't walking), but
+  there is **no longer a veto in the other direction** — the knee gate makes it
+  unnecessary, and every form of it either strangled real squats or deadlocked.
+  So crouch IS now reachable mid-run; `duck` remains the easier mid-run gesture.
+  Verified against `datasets/exercises` (36 clips): false crouch on march/jog/
+  jumping-jacks 18.5/8.0/5.0% → 0.0%, squat peak 0.74 → 0.78.
 - `duck` 0..1    — forward bow of the torso ("lean down"), from world-landmark
   torso pitch. Legs play no part, so it stays live while running in place — the
   runner's slide reads `max(duck, crouch)`. `MotionManager.get_duck()`.

@@ -283,10 +283,19 @@ CROUCH_STAND_BLIND_HZ = 0.05  # ...but with no knee evidence to say when we're
                             # ratchet: nothing gets re-based by a one-frame spike.
 CROUCH_START = 0.12       # leg-extension drop (torso fraction) where crouch begins
 CROUCH_FULL = 0.45        # ...and where it reaches a full (1.0) crouch
-CROUCH_KNEE_START = 30.0  # less-flexed knee past this many degrees opens the gate.
-                          # Comfortably above the ~15-25 degrees the support knee
-                          # bends at the bottom of a marching step.
-CROUCH_KNEE_FULL = 65.0   # ...and past this the gate is fully open
+CROUCH_KNEE_START = 40.0  # less-flexed knee past this many degrees opens the gate
+CROUCH_KNEE_FULL = 70.0   # ...and past this the gate is fully open.
+                          # Measured on datasets/exercises (36 clips, both knees
+                          # resolvable in 93-100% of frames): marching and jogging
+                          # top out at 42 / 43 degrees while squatting sits at a
+                          # median of 58 and reaches 135, so the populations barely
+                          # overlap. Swept against those clips, 40/70 was the most
+                          # sensitive setting that still gave ZERO false positives
+                          # on march, jog and jumping jacks; opening earlier (30/65)
+                          # bought ~1pt of squat sensitivity for 0.7% false jacks.
+                          # Note the margin against a march's deepest frames lives
+                          # in the DEPTH term (march never exceeds 0.10 of it), not
+                          # here -- that is what "both must agree" is for.
 # ...but these fixed drops assume an "average" squat. People squat to very
 # different depths (flexibility, limb proportions), so a fixed CROUCH_FULL makes a
 # shallow squatter never reach 1.0 and a deep one saturate early. A ~10s
@@ -345,32 +354,28 @@ CROUCH_GRACE_SEC = 0.25   # neither ankles nor knees usable: decay crouch out th
 # half of the rep is covered too, not just the deep bottom).
 CROUCH_MARCH_GATE = 0.15  # crouch depth above which motion is read as squatting
 SQUAT_MARCH_HOLD = 0.4    # keep suppressing the march this long after crouch eases
-# The mirror of the above: a march's hip-bob folds the planted leg enough to nudge
-# the crouch depth, so while clearly marching we suppress crouch. Kept as a second
-# line of defence behind the bilateral-knee gate (which a march can't open in the
-# first place), and as the only defence on the degraded path where the model
-# returns no world landmarks.
 #
-# It is now driven by the RAW fused channel speed, not by `forward`. That matters:
-# `forward` is itself zeroed by the crouch veto above, so the two rules used to
-# DEADLOCK -- a false crouch killed `forward`, which meant `forward` could never
-# cross this gate, which meant the correction that would have cleared the false
-# crouch could never fire. The phantom squat latched until the standing reference
-# drifted out from under it, which is precisely how a march turned into a stuck
-# squat. Reading the pre-veto evidence breaks the loop.
-CROUCH_MARCH_SPEED = 0.20   # fused channel speed (torso-lengths/s) that means
-                            # marching. Same trip point as the old forward > 0.20:
-                            # (0.20 - FORWARD_THRESHOLD) * FORWARD_GAIN == 0.20.
-MARCH_CROUCH_HOLD = 0.3     # keep suppressing crouch this long after marching -- a
-                            # march's crouch spikes fall in the between-step dips
-                            # where the fused speed momentarily drops, so a hold
-                            # bridges them.
+# There is deliberately NO rule in the other direction any more. There used to be
+# one (clear crouch while `forward` says we're marching), and it was load-bearing
+# only because it read the ALREADY-VETOED `forward`: a real squat won the veto
+# above, `forward` fell to ~0, and the squat therefore escaped its own suppression.
+# Reading the raw fused speed instead looks like it fixes a deadlock and actually
+# destroys crouch, because a squat's down-and-up leg sweep produces exactly the
+# fused speed a march does -- on the recorded clips that alone cut squat detection
+# from 38% of frames to 4%. Keeping the vetoed reading brings the deadlock back:
+# a false crouch zeroes `forward`, which stops the correction that would clear it.
+#
+# The bilateral-knee gate removes the need for the rule entirely. Measured over
+# datasets/exercises: marching and jogging never move the crouch DEPTH term off
+# 0.00/0.10 at all once the standing reference stopped ratcheting, and their knee
+# flexion never opens the gate. Nothing is left for a march-side veto to catch.
 
 # --- Duck (bow/lean forward) --------------------------------------------------
-# The squat-based crouch proved near-unusable mid-run: the march gate above
-# suppresses it while the fused speed is past CROUCH_MARCH_SPEED, so a player running in place
-# had to fully stop, wait out the hold, THEN squat deep -- far too slow for an
-# oncoming bar. Duck is the alternative: bow the torso forward (lean down) while
+# The squat-based crouch proved near-unusable mid-run: the march gate above used
+# to suppress it whenever `forward` was up, so a player running in place had to
+# fully stop, wait out the hold, THEN squat deep -- far too slow for an oncoming
+# bar. (That veto is gone now, but a deep squat mid-run is still a slow, awkward
+# move.) Duck is the alternative: bow the torso forward (lean down) while
 # still running. It is measured as torso pitch from MediaPipe's METRIC world
 # landmarks -- the hip->shoulder line tipping toward the camera (z) versus its
 # vertical rise -- so it is distance-invariant, needs no calibration, and shares
@@ -1024,9 +1029,9 @@ class ControlState:
         # While this is in the future the player is squatting (or just was), so the
         # march signal is suppressed -- a squat's leg sweep mustn't read as walking.
         self.squat_active_until = -1e9
-        # ...and its mirror: while marching (or just were), crouch is suppressed so
-        # the march's hip-bob doesn't fake a squat.
-        self.march_active_until = -1e9
+        # (There is no mirror of this. The bilateral-knee gate stops a march
+        # reading as a squat; see the CROUCH_MARCH_GATE block for why a
+        # march->crouch veto cannot be written safely.)
         self.active_label = "none"  # which channel groups are tracking, for the HUD
         # Per-channel dropout bookkeeping: when a joint was last confidently seen
         # and whether it is currently contributing. A channel that dips below the
@@ -1045,7 +1050,6 @@ class ControlState:
         self.duck_lp.reset()
         self.lean_lp.reset()
         self.squat_active_until = -1e9
-        self.march_active_until = -1e9
         self.active_label = "none"
         self.last_seen = {name: -1e9 for name in self.last_seen}
         self.channel_active = {name: False for name in self.channel_active}
@@ -2027,16 +2031,11 @@ def _compute_controls(
                     and steps.side_ready(side, now):
                 steps.add(now, side)
 
-    # Mirror of the squat->march veto: a march's hip-bob folds the planted leg
-    # enough to nudge crouch, so once we're clearly marching, clear crouch (with a
-    # hold, since the spikes sit in the between-step dips where the speed momentarily
-    # drops). Read from the RAW fused speed, not from `forward`: `forward` is zeroed
-    # by the crouch veto above, so keying off it let a false crouch starve the very
-    # correction that would have cleared it, and the phantom squat latched.
-    if fused_speed > CROUCH_MARCH_SPEED:
-        state.march_active_until = now + MARCH_CROUCH_HOLD
-    if now < state.march_active_until:
-        crouch = 0.0
+    # No march->crouch veto here on purpose -- see the CROUCH_MARCH_GATE block.
+    # The bilateral-knee gate already keeps a march from reading as a squat, and
+    # every way of writing this veto either strangles real squats (raw fused speed,
+    # which a squat produces too) or deadlocks (vetoed `forward`, which a false
+    # crouch zeroes).
 
     legs = any(visible.get(n) for n in ("l_ankle", "r_ankle", "l_knee", "r_knee"))
     arms = visible.get("l_wrist") or visible.get("r_wrist")

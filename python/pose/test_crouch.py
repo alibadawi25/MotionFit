@@ -14,6 +14,15 @@ landmarks are the orthographic (x, y) projection of the same body -- dropping z
 is what makes a forward lean foreshorten the torso on screen, which is the
 specific illusion that used to read as a squat.
 
+These scenarios catch structural regressions (a ratchet, a discontinuous
+fallback, a latch) but they are an IDEALISED body -- do not trust them alone for
+threshold tuning. They once passed green on a change that cut real squat
+detection from 38% of frames to 4%, because a synthetic squat doesn't produce
+the leg-channel speed a real one does. The honest check is replaying
+`datasets/exercises/**/*.mp4` through `_compute_controls` and comparing the
+false-positive rate on march/jog/jumping_jacks against the true-positive rate on
+squat; that is where CROUCH_KNEE_START/FULL were tuned.
+
 Run:  python python/pose/test_crouch.py       (exit 0 = pass)
 """
 from __future__ import annotations
