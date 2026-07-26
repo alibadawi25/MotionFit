@@ -540,9 +540,15 @@ pose). Python is the sender; Godot's `MotionManager` binds and reads.
 - `forward` 0..1  — marching-in-place intensity (drives forward speed).
 - `turn` -1..1   — torso lean (drives turning).
 - `jump` bool    — true on the single frame a vertical leap launches (edge event).
-- `crouch` 0..1  — squat depth (0 = upright), from the planted foot folding up.
-  Suppressed while marching (`CROUCH_FORWARD_GATE`), so it is NOT reachable
-  mid-run — that's what `duck` is for.
+- `crouch` 0..1  — squat depth (0 = upright). The product of two world-landmark
+  measures that must agree: how far the planted foot has folded toward the hip
+  (against a standing reference that only moves while the knees confirm a stand),
+  and **bilateral knee flexion** — a squat bends both knees, a march bends one, a
+  lean bends neither. Measuring it in image space instead made a forward lean
+  foreshorten the torso and read as a squat; see the `CROUCH_*` constants in
+  `pose_server.py`. Still suppressed while marching (`CROUCH_MARCH_SPEED`, keyed
+  off the raw fused speed rather than the crouch-vetoed `forward`), so it is NOT
+  reachable mid-run — that's what `duck` is for.
 - `duck` 0..1    — forward bow of the torso ("lean down"), from world-landmark
   torso pitch. Legs play no part, so it stays live while running in place — the
   runner's slide reads `max(duck, crouch)`. `MotionManager.get_duck()`.

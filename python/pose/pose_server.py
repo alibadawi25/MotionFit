@@ -240,18 +240,53 @@ JUMP_MIN_INTERVAL = 0.45  # ignore jumps closer together than this (debounce, s)
 JUMP_BASELINE_HZ = 0.5    # how fast the resting-height baseline adapts
 
 # Crouch: squatting folds the legs, so the planted foot sits closer to the hip
-# than when you stand tall. We measure hip-to-planted-foot distance along the
-# body axis (torso-normalised) and compare it to a self-calibrating "standing"
-# reference -- peak-followed, so it snaps up to your tallest recent stance and
-# decays slowly, needing no setup pose. The PLANTED (lower) foot is used so a
-# marching high-knee, which lifts the swing foot, is not mistaken for a crouch.
-CROUCH_STAND_HZ = 0.05    # how slowly the standing reference drifts back down.
-                          # Slow on purpose: leg_ext is already torso-normalised
-                          # (so distance from the camera needs no re-calibration),
-                          # and a slow drift lets a HELD squat keep registering
-                          # instead of the reference chasing it down to zero.
+# than when you stand tall. Two independent measures have to AGREE before we call
+# it a squat, because either one alone is fooled by something players do all the
+# time:
+#
+#   depth -- hip-to-planted-foot distance, torso-normalised, against a "standing"
+#            reference. Taken from the METRIC WORLD landmarks: the image-space
+#            version divided by the PROJECTED torso length, which foreshortens the
+#            moment you lean, so a ~25-degree lean (torso ~10% shorter on screen)
+#            moved this by more than the entire crouch-onset threshold. Leaning
+#            read as squatting -- and a real squat's own forward lean partly
+#            cancelled its hip drop, blunting the thing we wanted to measure.
+#   gate  -- BILATERAL knee flexion, also from the world landmarks. A squat bends
+#            BOTH knees; a march bends one and leaves the planted leg near
+#            straight; a lean or a bow bends neither. Taking the LESS flexed knee
+#            and requiring it past CROUCH_KNEE_START is what stops marching (and
+#            leaning, and bowing) reading as a crouch -- structurally, instead of
+#            by suppressing crouch whenever we think we can see a march.
+#
+# crouch = depth * gate, so both have to be convinced. Failing closed is the safe
+# direction: a mis-tracked leg zeroes the gate and we MISS a squat rather than
+# inventing one out of a lean.
+CROUCH_STAND_HZ = 0.3     # how fast the standing reference tracks the player. It
+                          # only moves while the knees agree we are actually
+                          # STANDING (see STAND_KNEE_FLEX_MAX), so it can afford to
+                          # be quick -- posture and distance drift are followed
+                          # within a second, and a squat, lean or march can no
+                          # longer drag it. The previous peak-follower snapped UP
+                          # instantly and released over ~3s, so ANY one-frame spike
+                          # in leg extension (a lean, a landmark glitch) re-based
+                          # "standing" and left a phantom crouch behind it when you
+                          # returned to normal. Instant attack / slow release was
+                          # exactly backwards for a baseline.
+STAND_KNEE_FLEX_MAX = 20.0  # knees straighter than this (degrees of flexion) means
+                            # standing -- the only state in which the reference moves
+CROUCH_STAND_BLIND_HZ = 0.05  # ...but with no knee evidence to say when we're
+                            # standing (the model returned no world landmarks) the
+                            # reference has to move all the time, so it moves
+                            # slowly instead -- a held squat still reads for a few
+                            # seconds before the baseline catches up. Symmetric,
+                            # unlike the old peak-follower, so there is still no
+                            # ratchet: nothing gets re-based by a one-frame spike.
 CROUCH_START = 0.12       # leg-extension drop (torso fraction) where crouch begins
 CROUCH_FULL = 0.45        # ...and where it reaches a full (1.0) crouch
+CROUCH_KNEE_START = 30.0  # less-flexed knee past this many degrees opens the gate.
+                          # Comfortably above the ~15-25 degrees the support knee
+                          # bends at the bottom of a marching step.
+CROUCH_KNEE_FULL = 65.0   # ...and past this the gate is fully open
 # ...but these fixed drops assume an "average" squat. People squat to very
 # different depths (flexibility, limb proportions), so a fixed CROUCH_FULL makes a
 # shallow squatter never reach 1.0 and a deep one saturate early. A ~10s
@@ -259,9 +294,12 @@ CROUCH_FULL = 0.45        # ...and where it reaches a full (1.0) crouch
 # leg extension and maps crouch across their real range instead: crouch starts
 # once they're this fraction of the way down and hits 1.0 at this fraction, so a
 # full squat reads 1.0 for everyone. Falls back to the fixed drops above when
-# uncalibrated. Calibration also SEEDS the standing reference (no slow warm-up)
-# and the hip resting height, replacing the self-calibrating baselines that were
-# shown today to drift and get contaminated.
+# uncalibrated. Calibration also SEEDS the standing reference so crouch is correct
+# from the first frame instead of after a warm-up. The seed is only a starting
+# point now -- the reference re-learns itself whenever the player is standing --
+# so a calibration captured before the world-landmark switch still works: what it
+# really contributes is the RANGE, a difference between two values measured the
+# same way, which survives the change of measurement almost intact.
 CROUCH_START_FRAC = 0.15  # crouch begins this fraction into the player's squat range
 CROUCH_FULL_FRAC = 0.85   # ...and reaches 1.0 at this fraction (near, not at, the floor)
 CALIB_MIN_RANGE = 0.15    # a squat must fold the leg at least this much (torso frac) to
@@ -286,6 +324,19 @@ CALIB_PATH = Path(__file__).resolve().parent / "calibration.json"
 # begun soon after a jump still registers.
 JUMP_CROUCH_HOLD = 0.7    # blank crouch / block march for this long after a jump edge
 
+# Leg extension needs the ANKLES. The old code silently substituted the KNEES the
+# moment either ankle dipped below the visibility threshold -- but hip->knee is
+# roughly half of hip->ankle, so that swap dropped leg_ext by ~0.8 torso against a
+# CROUCH_FULL of 0.45: one flickering ankle produced an instant, saturated,
+# entirely phantom crouch, with no continuity at all between the two branches.
+# Marching is the single best way to cause that flicker -- the swing ankle
+# occludes behind the other leg or leaves the bottom of the frame. The fallback is
+# kept (players in loose trousers really do lose the ankles) but each source now
+# carries its OWN standing reference, so a switch compares like with like. A
+# source with no reference yet reads 0 until the player has stood still long
+# enough to learn one, which is the safe way round.
+CROUCH_GRACE_SEC = 0.25   # neither ankles nor knees usable: decay crouch out this fast
+
 # Squat vs march: a squat's down-and-up sweep moves the legs relative to the hip
 # just like a march does, so it leaks into `forward` and the step counter. You
 # can't march and squat at the same time, and a squat's large hip drop makes
@@ -294,21 +345,30 @@ JUMP_CROUCH_HOLD = 0.7    # blank crouch / block march for this long after a jum
 # half of the rep is covered too, not just the deep bottom).
 CROUCH_MARCH_GATE = 0.15  # crouch depth above which motion is read as squatting
 SQUAT_MARCH_HOLD = 0.4    # keep suppressing the march this long after crouch eases
-# The mirror of the above: a march's hip-bob folds the planted leg enough to fake
-# a crouch, so while clearly marching we suppress crouch. It's stable against the
-# squat rule because a real squat has its forward gated to ~0 (crouch blocks the
-# march), so only genuine locomotion trips this and a squat keeps its crouch.
-CROUCH_FORWARD_GATE = 0.20  # forward above which we're marching (crouch suppressed)
+# The mirror of the above: a march's hip-bob folds the planted leg enough to nudge
+# the crouch depth, so while clearly marching we suppress crouch. Kept as a second
+# line of defence behind the bilateral-knee gate (which a march can't open in the
+# first place), and as the only defence on the degraded path where the model
+# returns no world landmarks.
+#
+# It is now driven by the RAW fused channel speed, not by `forward`. That matters:
+# `forward` is itself zeroed by the crouch veto above, so the two rules used to
+# DEADLOCK -- a false crouch killed `forward`, which meant `forward` could never
+# cross this gate, which meant the correction that would have cleared the false
+# crouch could never fire. The phantom squat latched until the standing reference
+# drifted out from under it, which is precisely how a march turned into a stuck
+# squat. Reading the pre-veto evidence breaks the loop.
+CROUCH_MARCH_SPEED = 0.20   # fused channel speed (torso-lengths/s) that means
+                            # marching. Same trip point as the old forward > 0.20:
+                            # (0.20 - FORWARD_THRESHOLD) * FORWARD_GAIN == 0.20.
 MARCH_CROUCH_HOLD = 0.3     # keep suppressing crouch this long after marching -- a
                             # march's crouch spikes fall in the between-step dips
-                            # where forward momentarily drops, so a hold bridges them.
-                            # 0.3 is the knee of the tradeoff on the recorded clips:
-                            # it nearly halves the march->crouch leak (33%->19%) for
-                            # only a ~4pt dip in a real squat's crouch (45%->41%).
+                            # where the fused speed momentarily drops, so a hold
+                            # bridges them.
 
 # --- Duck (bow/lean forward) --------------------------------------------------
 # The squat-based crouch proved near-unusable mid-run: the march gate above
-# suppresses it while forward > CROUCH_FORWARD_GATE, so a player running in place
+# suppresses it while the fused speed is past CROUCH_MARCH_SPEED, so a player running in place
 # had to fully stop, wait out the hold, THEN squat deep -- far too slow for an
 # oncoming bar. Duck is the alternative: bow the torso forward (lean down) while
 # still running. It is measured as torso pitch from MediaPipe's METRIC world
@@ -670,19 +730,128 @@ class _Oscillator:
         self.speed = 0.0
 
 
+class _LegGeometry:
+    """One frame's leg measurements, as read by `_leg_geometry`.
+
+    ext       -- hip centre -> planted foot, torso-normalised.
+    source    -- which landmark the "foot" came from: "ankle" or "knee". The two
+                 measure lengths that differ by ~0.8 torso, so each carries its own
+                 standing reference and they are never compared to each other.
+    knee_flex -- degrees of flexion in the LESS bent knee, or None when both knees
+                 couldn't be measured. One bent knee is a march and two is a squat,
+                 so a single leg can't tell them apart and doesn't get a vote.
+    """
+
+    __slots__ = ("ext", "source", "knee_flex")
+
+    def __init__(self, ext: float, source: str, knee_flex: float | None) -> None:
+        self.ext = ext
+        self.source = source
+        self.knee_flex = knee_flex
+
+
+def _knee_flex_deg(pts, hip_i: int, knee_i: int, ankle_i: int) -> float:
+    """Knee flexion in degrees: 0 = leg straight, ~110 at the bottom of a deep squat.
+
+    The thigh/shank angle at the knee, in metric 3D -- so it doesn't care how far
+    the player stands from the camera, how the camera is tilted, or how far the
+    torso is leaning. That independence is the entire point: it is the one squat
+    signal a lean, a hip-bob or a change of distance cannot fake.
+    """
+    tx = pts[hip_i].x - pts[knee_i].x
+    ty = pts[hip_i].y - pts[knee_i].y
+    tz = pts[hip_i].z - pts[knee_i].z
+    sx = pts[ankle_i].x - pts[knee_i].x
+    sy = pts[ankle_i].y - pts[knee_i].y
+    sz = pts[ankle_i].z - pts[knee_i].z
+    t_len = math.sqrt(tx * tx + ty * ty + tz * tz)
+    s_len = math.sqrt(sx * sx + sy * sy + sz * sz)
+    if t_len < 1e-6 or s_len < 1e-6:
+        return 0.0
+    cos = _clamp((tx * sx + ty * sy + tz * sz) / (t_len * s_len), -1.0, 1.0)
+    return 180.0 - math.degrees(math.acos(cos))
+
+
+def _leg_geometry(lm, wlm, visible: dict, hip_cy: float,
+                  torso_len: float) -> "_LegGeometry | None":
+    """This frame's leg fold, measured in metric world space where possible.
+
+    `ext` is hip centre -> planted foot, torso-normalised. Taken from the world
+    landmarks, both the numerator and the torso-length denominator are true 3D
+    lengths, so leaning no longer foreshortens the denominator and inflates the
+    ratio -- the failure that made a bow read as a squat and blunted real squats.
+    Image landmarks are the fallback if the model returned no world frame.
+
+    The PLANTED (lower) foot defines the fold, so a marching high knee -- which
+    lifts the swing foot -- isn't read as a crouch. Ankles are preferred; knees are
+    a distinct, separately-referenced fallback for when trousers or framing hide
+    the feet. Returns None when neither is usable, so the caller can decay crouch
+    out instead of guessing.
+    """
+    l_ank = bool(visible.get("l_ankle"))
+    r_ank = bool(visible.get("r_ankle"))
+    l_kne = bool(visible.get("l_knee"))
+    r_kne = bool(visible.get("r_knee"))
+
+    if wlm is not None:
+        pts = wlm
+        hip_y = (wlm[L_HIP].y + wlm[R_HIP].y) * 0.5
+        sh_x = (wlm[L_SHOULDER].x + wlm[R_SHOULDER].x) * 0.5
+        sh_y = (wlm[L_SHOULDER].y + wlm[R_SHOULDER].y) * 0.5
+        sh_z = (wlm[L_SHOULDER].z + wlm[R_SHOULDER].z) * 0.5
+        hip_x = (wlm[L_HIP].x + wlm[R_HIP].x) * 0.5
+        hip_z = (wlm[L_HIP].z + wlm[R_HIP].z) * 0.5
+        torso = math.sqrt((sh_x - hip_x) ** 2 + (sh_y - hip_y) ** 2 + (sh_z - hip_z) ** 2)
+    else:
+        pts = lm
+        hip_y = hip_cy
+        torso = torso_len
+    if torso < 1e-6:
+        return None
+
+    # Planted = lower on screen; image AND world y both grow DOWNWARD.
+    if l_ank and r_ank:
+        foot_y, source = max(pts[L_ANKLE].y, pts[R_ANKLE].y), "ankle"
+    elif l_ank:
+        foot_y, source = pts[L_ANKLE].y, "ankle"
+    elif r_ank:
+        foot_y, source = pts[R_ANKLE].y, "ankle"
+    elif l_kne and r_kne:
+        foot_y, source = max(pts[L_KNEE].y, pts[R_KNEE].y), "knee"
+    else:
+        return None
+
+    # The squat gate needs BOTH legs: one bent knee is a march, two is a squat.
+    knee_flex = None
+    if wlm is not None and l_ank and r_ank and l_kne and r_kne:
+        knee_flex = min(_knee_flex_deg(wlm, L_HIP, L_KNEE, L_ANKLE),
+                        _knee_flex_deg(wlm, R_HIP, R_KNEE, R_ANKLE))
+
+    return _LegGeometry((foot_y - hip_y) / torso, source, knee_flex)
+
+
 class _VerticalMotion:
     """Detects jumps (edge events) and crouches (continuous) from body height.
 
-    Both are measured in torso-length units, so they don't care how far you
-    stand from the camera, and both run against self-calibrating baselines, so
-    there's no setup pose. `update` returns True on the single frame a jump
-    launches; `crouch` holds the current squat depth, 0.0 (upright) .. 1.0.
+    Both are measured in torso-length units, so they don't care how far you stand
+    from the camera. `update` returns True on the single frame a jump launches;
+    `crouch` holds the current squat depth, 0.0 (upright) .. 1.0.
+
+    Crouch is the product of a depth term (how far the legs have folded, against a
+    standing reference) and a bilateral knee-flexion gate -- see the CROUCH_*
+    constants for why one without the other reads every lean and every march as a
+    squat. The standing reference moves only while the knee gate says the player is
+    genuinely standing, which is what keeps a squat, a lean or a march from
+    dragging the very baseline they are being measured against.
     """
 
     def __init__(self) -> None:
         self._rest = _LowPass()                # slow baseline of hip height (up+)
         self._prev_hip_up: float | None = None
-        self._stand_ext: float | None = None   # peak-followed standing leg extension
+        # Standing leg extension, one per measurement source ("ankle"/"knee"), so
+        # falling back to the knees compares like with like instead of reading the
+        # gap between the two measurements as an instant, full-depth squat.
+        self._stand_ext: dict[str, float] = {}
         # Crouch mapping (leg-fold drop, torso frac). Defaults to the fixed
         # constants; apply_calibration() personalises them to the player's range.
         self._crouch_start = CROUCH_START
@@ -691,16 +860,17 @@ class _VerticalMotion:
         self._last_air_time = -1000.0          # last airborne/jump instant (crouch hold)
         self._work = _LowPass()                # smoothed |leg-fold speed| (effort)
         self._prev_leg_ext: float | None = None
+        self._prev_leg_src: str | None = None
         self.crouch = 0.0
         self.rise = 0.0        # hip height above its resting baseline (torso frac)
         self.in_jump = False   # within the hold window of a detected jump -- blocks the march
         self.work_speed = 0.0  # torso-lengths/s of leg folding -- squat effort
         self.last_jump_time = -1000.0
 
-    def update(self, hip_up: float, leg_ext: float, torso_len: float,
+    def update(self, hip_up: float, leg: "_LegGeometry | None", torso_len: float,
                dt: float, now: float) -> bool:
         """hip_up: hip-centre height, up = positive, in normalized image units.
-        leg_ext: hip-to-planted-foot distance along the body axis, torso-normalised.
+        leg: this frame's leg geometry, or None when the legs aren't usable.
         Returns True on the frame a jump launches."""
         if dt <= 0.0 or torso_len < 1e-3:
             return False
@@ -721,28 +891,20 @@ class _VerticalMotion:
         if jumped:
             self.last_jump_time = now
 
-        # --- Crouch: legs fold below the standing reference -------------------
-        if self._stand_ext is None or leg_ext > self._stand_ext:
-            self._stand_ext = leg_ext  # snap straight up to a taller stance
-        else:
-            self._stand_ext += _BandPass._alpha(CROUCH_STAND_HZ, dt) * (
-                leg_ext - self._stand_ext
-            )  # ...but sink back only slowly, so a squat still reads as a drop
-        drop = self._stand_ext - leg_ext
-        self.crouch = _clamp(
-            (drop - self._crouch_start) / (self._crouch_full - self._crouch_start), 0.0, 1.0
-        )
-
-        # --- Jump window: blank crouch & mark in_jump around a detected jump ---
+        # --- Jump window: mark in_jump around a detected jump ------------------
         # Driven by the speed-gated `jumped` edge (the only jump signal that a
         # squat's stand-up doesn't fake). The hold spans the flight, the landing
         # knee-bend, and the next hop in a repeated bout -- so a knee-tuck jump
         # never reads as a crouch, and the caller can block the march too via
         # `in_jump` (a jump mustn't read as walking any more than a squat does). A
         # squat clear of a jump is untouched: its ascent doesn't fire `jumped`.
+        # Resolved BEFORE crouch so the standing reference knows not to learn from
+        # a frame the player spent in the air.
         if jumped:
             self._last_air_time = now
         self.in_jump = (now - self._last_air_time) < JUMP_CROUCH_HOLD
+
+        self._update_crouch(leg, dt)
         if self.in_jump:
             self.crouch = 0.0
 
@@ -750,24 +912,81 @@ class _VerticalMotion:
         # Slow, deep squats sit below the stepping band, so cadence and forward
         # both read ~0 for them; the smoothed |d(leg_ext)/dt| captures that work
         # for the effort estimate. Clipped so a landmark glitch can't spike it.
-        if self._prev_leg_ext is not None:
-            fold_speed = min(abs(leg_ext - self._prev_leg_ext) / dt, 3.0)
-            self.work_speed = self._work(
-                fold_speed, _BandPass._alpha(SQUAT_SPEED_SMOOTH_HZ, dt)
-            )
-        self._prev_leg_ext = leg_ext
+        # A gap in the geometry, or a switch between the ankle and knee sources,
+        # breaks the difference (the two sources are ~0.8 torso apart), so the
+        # previous sample is dropped rather than differenced across the seam.
+        if leg is None:
+            self._prev_leg_ext = None
+            self._prev_leg_src = None
+        else:
+            if self._prev_leg_ext is not None and self._prev_leg_src == leg.source:
+                fold_speed = min(abs(leg.ext - self._prev_leg_ext) / dt, 3.0)
+                self.work_speed = self._work(
+                    fold_speed, _BandPass._alpha(SQUAT_SPEED_SMOOTH_HZ, dt)
+                )
+            self._prev_leg_ext = leg.ext
+            self._prev_leg_src = leg.source
         return jumped
+
+    def _update_crouch(self, leg: "_LegGeometry | None", dt: float) -> None:
+        """Squat depth = how far the legs have folded * how bent both knees are."""
+        if leg is None:
+            # No usable leg geometry at all. Decay out rather than holding a stale
+            # crouch or substituting a different measurement, and touch no baseline
+            # -- nothing should be learned from a frame we couldn't see.
+            self.crouch *= math.exp(-dt / CROUCH_GRACE_SEC)
+            return
+
+        # The squat gate. `None` means we couldn't measure both knees (no world
+        # landmarks, or a leg out of view), which leaves the gate open: degraded,
+        # but the depth term and the march suppression still apply.
+        if leg.knee_flex is None:
+            gate = 1.0
+            standing = None
+        else:
+            gate = _clamp(
+                (leg.knee_flex - CROUCH_KNEE_START)
+                / (CROUCH_KNEE_FULL - CROUCH_KNEE_START), 0.0, 1.0
+            )
+            standing = leg.knee_flex < STAND_KNEE_FLEX_MAX
+
+        # The standing reference tracks the player ONLY while the knees confirm a
+        # stand (and never mid-jump), so a squat, a lean or a march can't drag the
+        # baseline they're measured against. With no knee evidence there's nothing
+        # to gate on, so it tracks continuously but slowly instead -- gating it on
+        # "crouch is currently 0" would let a false crouch freeze the very baseline
+        # whose recovery would clear it, which is the latch this whole change is
+        # about removing.
+        ref = self._stand_ext.get(leg.source)
+        if ref is None:
+            ref = leg.ext          # first sample from this source seeds it
+            self._stand_ext[leg.source] = ref
+        elif not self.in_jump and (standing is None or standing):
+            hz = CROUCH_STAND_HZ if standing is not None else CROUCH_STAND_BLIND_HZ
+            ref += _BandPass._alpha(hz, dt) * (leg.ext - ref)
+            self._stand_ext[leg.source] = ref
+
+        drop = ref - leg.ext
+        depth = _clamp(
+            (drop - self._crouch_start) / (self._crouch_full - self._crouch_start),
+            0.0, 1.0
+        )
+        self.crouch = depth * gate
 
     def reset(self) -> None:
         self._rest.reset()
         self._prev_hip_up = None
-        # Re-seed the standing reference from calibration if we have one, so a
-        # tracking blink / camera re-open doesn't force a slow re-acquire; only an
-        # uncalibrated session starts the peak-follower from scratch.
-        self._stand_ext = self._calib_stand_ext
+        # Re-seed the ankle-source standing reference from calibration if we have
+        # one, so a tracking blink / camera re-open doesn't force a re-acquire; an
+        # uncalibrated session (and the knee source either way) relearns from the
+        # first standing frame.
+        self._stand_ext = {}
+        if self._calib_stand_ext is not None:
+            self._stand_ext["ankle"] = self._calib_stand_ext
         self._last_air_time = -1000.0
         self._work.reset()
         self._prev_leg_ext = None
+        self._prev_leg_src = None
         self.crouch = 0.0
         self.rise = 0.0
         self.in_jump = False
@@ -776,14 +995,15 @@ class _VerticalMotion:
     def apply_calibration(self, standing_ext: float, squat_ext: float) -> None:
         """Personalise crouch to this player's measured range and seed the standing
         reference. standing_ext / squat_ext are torso-normalised hip->foot leg
-        extensions at a full stand and the deepest squat (so distance-invariant)."""
+        extensions at a full stand and the deepest squat (so distance-invariant).
+        Captured with the ankles in view, hence the "ankle" source."""
         rng = standing_ext - squat_ext
         if rng < CALIB_MIN_RANGE:
             return  # too shallow to trust; keep the fixed defaults
         self._crouch_start = CROUCH_START_FRAC * rng
         self._crouch_full = CROUCH_FULL_FRAC * rng
         self._calib_stand_ext = standing_ext
-        self._stand_ext = standing_ext  # correct crouch from the first frame
+        self._stand_ext["ankle"] = standing_ext  # correct crouch from the first frame
 
     def clear_calibration(self) -> None:
         """Drops a personalised calibration, reverting to the fixed default crouch
@@ -1481,7 +1701,10 @@ def main(args: argparse.Namespace | None = None) -> None:
                 # are already in this frame's snapshot (both torso-normalised, so
                 # the capture is distance-invariant). On completion, personalise
                 # crouch + seed the standing reference, and persist for next time.
-                if calibrator.active:
+                # Frames with no usable leg geometry are skipped rather than fed a
+                # 0.0 placeholder, which would drag the standing median down and
+                # hand the squat phase an unbeatable minimum.
+                if calibrator.active and state.feature_snapshot.get("leg_ok"):
                     snap = state.feature_snapshot
                     calibrator.update(snap.get("leg_ext", 0.0),
                                       snap.get("fused_speed", 0.0), dt)
@@ -1582,7 +1805,8 @@ def main(args: argparse.Namespace | None = None) -> None:
                           fps_avg, infer_ms_avg,
                           punch_side=last_punch, punch_power=last_punch_power,
                           punch_age=now - last_punch_time, hands_up=hands_up,
-                          punch_kind=last_punch_kind, guard=guard, lean=lean)
+                          punch_kind=last_punch_kind, guard=guard, lean=lean,
+                          knee_flex=state.feature_snapshot.get("knee_flex"))
                 if hands_up:  # confirm the ready gesture registered, on-camera
                     _put_label(frame, "READY - HANDS UP", (frame.shape[1] // 2 - 130, 40),
                                0.7, (0, 220, 0))
@@ -1756,19 +1980,13 @@ def _compute_controls(
         }
     fused_speed = (num / den) if den > 0.0 else 0.0
 
-    # --- Jump & crouch: from hip height and the planted foot -------------------
+    # --- Jump & crouch: from hip height and the legs ---------------------------
     # Computed BEFORE forward/steps because a squat (or a jump) has to be able to
     # veto them: a squat's down-up sweep and a jump's knee-tuck both move the legs
     # relative to the hip the way a march does, so they'd otherwise leak into
-    # `forward`. The planted (lower on screen = larger y) foot defines standing
-    # height; use ankles when visible, else knees. hip_up is negated because image
-    # y grows downward, so up is negative.
-    if visible.get("l_ankle") and visible.get("r_ankle"):
-        foot_y = max(lm[L_ANKLE].y, lm[R_ANKLE].y)
-    else:
-        foot_y = max(lm[L_KNEE].y, lm[R_KNEE].y)
-    leg_ext = (foot_y - hip_cy) / torso_len
-    jumped = state.vertical.update(-hip_cy, leg_ext, torso_len, dt, now)
+    # `forward`. hip_up is negated because image y grows downward, so up is negative.
+    leg = _leg_geometry(lm, wlm, visible, hip_cy, torso_len)
+    jumped = state.vertical.update(-hip_cy, leg, torso_len, dt, now)
     crouch = state.vertical.crouch
 
     # A squat is not a march. While crouching -- with a short hold that also covers
@@ -1810,11 +2028,12 @@ def _compute_controls(
                 steps.add(now, side)
 
     # Mirror of the squat->march veto: a march's hip-bob folds the planted leg
-    # enough to fake a crouch, so once we're clearly marching, clear crouch (with a
-    # hold, since the crouch spikes sit in the between-step dips where forward
-    # drops). Stable against the squat rule -- a real squat has its forward gated to
-    # ~0 above, so only true locomotion trips this while a held squat keeps crouch.
-    if forward > CROUCH_FORWARD_GATE:
+    # enough to nudge crouch, so once we're clearly marching, clear crouch (with a
+    # hold, since the spikes sit in the between-step dips where the speed momentarily
+    # drops). Read from the RAW fused speed, not from `forward`: `forward` is zeroed
+    # by the crouch veto above, so keying off it let a false crouch starve the very
+    # correction that would have cleared it, and the phantom squat latched.
+    if fused_speed > CROUCH_MARCH_SPEED:
         state.march_active_until = now + MARCH_CROUCH_HOLD
     if now < state.march_active_until:
         crouch = 0.0
@@ -1861,9 +2080,15 @@ def _compute_controls(
     # --- Feature snapshot for the recording harness ---------------------------
     # A flat, model-ready view of this frame's motion (see recording.py's
     # FEATURE_NAMES). Empty when not recording costs nothing; here it's cheap.
+    # leg_ok tells consumers (the calibrator) that leg_ext is a real measurement
+    # this frame, not the 0.0 placeholder for "couldn't see the legs". knee_flex is
+    # extra diagnostic detail; it is not in recording.SCALAR_FEATURES, so the
+    # recorded feature-vector schema (and any dataset already captured) is unchanged.
     state.feature_snapshot = {
         "fused_speed": round(fused_speed, 4),
-        "leg_ext": round(leg_ext, 4),
+        "leg_ext": round(leg.ext, 4) if leg is not None else 0.0,
+        "leg_ok": leg is not None,
+        "knee_flex": round(leg.knee_flex, 2) if (leg and leg.knee_flex is not None) else None,
         "crouch": round(crouch, 4),
         "duck": round(duck, 4),
         "forward": round(forward, 4),
@@ -2237,12 +2462,12 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
               punch_side: str = "", punch_power: float = 0.0,
               punch_age: float = 1e9, hands_up: bool = False,
               punch_kind: str = "straight", guard: bool = False,
-              lean: float = 0.0) -> None:
+              lean: float = 0.0, knee_flex: float | None = None) -> None:
     # A translucent dark panel behind the text gives the labels a consistent
     # backdrop, so they read cleanly even when the camera is pointed at a bright
     # window or a white wall.
     panel = frame.copy()
-    cv2.rectangle(panel, (6, 8), (392, 332), (0, 0, 0), -1)
+    cv2.rectangle(panel, (6, 8), (392, 356), (0, 0, 0), -1)
     cv2.addWeighted(panel, 0.4, frame, 0.6, 0, frame)
 
     _put_label(frame, status_text, (12, 28), 0.62, status_color)
@@ -2255,14 +2480,27 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
     duck_color = (0, 200, 255) if duck > 0.2 else (255, 255, 255)
     _put_label(frame, f"crouch  {crouch:.2f}", (12, 128), 0.6, crouch_color)
     _put_label(frame, f"duck {duck:.2f}", (190, 128), 0.6, duck_color)
-    _put_label(frame, f"steps   {steps}", (12, 152), 0.6, (255, 255, 255))
-    _put_label(frame, f"cadence {cadence:.0f}/min", (12, 176), 0.6, (255, 255, 255))
-    _put_label(frame, f"effort  {met:.1f} MET", (12, 200), 0.6, (120, 255, 120))
-    _put_label(frame, f"tracking {sources}", (12, 224), 0.5, (200, 200, 200))
+    # The squat gate behind `crouch`: flexion of the LESS bent knee, and how far
+    # open that leaves the gate. Squat and this should climb together; marching or
+    # leaning should leave it at 0 no matter what the legs appear to be doing. Any
+    # disagreement between this row and the crouch row above is the thing to tune
+    # (CROUCH_KNEE_START / CROUCH_KNEE_FULL). "--" means no world landmarks or a
+    # leg out of view, so there's no bilateral evidence and the gate is left open.
+    if knee_flex is None:
+        _put_label(frame, "knees   --     gate open", (12, 152), 0.55, (200, 200, 200))
+    else:
+        gate = _clamp((knee_flex - CROUCH_KNEE_START)
+                      / (CROUCH_KNEE_FULL - CROUCH_KNEE_START), 0.0, 1.0)
+        _put_label(frame, f"knees   {knee_flex:3.0f}deg  gate {gate:.2f}", (12, 152),
+                   0.55, (0, 200, 255) if gate > 0.0 else (200, 200, 200))
+    _put_label(frame, f"steps   {steps}", (12, 176), 0.6, (255, 255, 255))
+    _put_label(frame, f"cadence {cadence:.0f}/min", (12, 200), 0.6, (255, 255, 255))
+    _put_label(frame, f"effort  {met:.1f} MET", (12, 224), 0.6, (120, 255, 120))
+    _put_label(frame, f"tracking {sources}", (12, 248), 0.5, (200, 200, 200))
     # Loop rate + model inference time. Below ~15 fps control gets noticeably
     # laggy -- that's the cue to relaunch with --model lite.
     perf_color = (200, 200, 200) if fps >= 15.0 else (0, 200, 255)
-    _put_label(frame, f"{fps:.0f} fps  ({infer_ms:.0f} ms pose)", (12, 248),
+    _put_label(frame, f"{fps:.0f} fps  ({infer_ms:.0f} ms pose)", (12, 272),
                0.5, perf_color)
 
     # --- Boxing drivers ------------------------------------------------------
@@ -2277,9 +2515,9 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
         _put_label(frame,
                    f"punch   {punch_side.upper()} {punch_kind.upper()}"
                    f"  pow {punch_power:.2f}",
-                   (12, 274), 0.55, col)
+                   (12, 298), 0.55, col)
     else:
-        _put_label(frame, "punch   -  (straight / hook / uppercut)", (12, 274),
+        _put_label(frame, "punch   -  (straight / hook / uppercut)", (12, 298),
                    0.5, (200, 200, 200))
     # Defence: the gloves-up block and the waist slip, drawn as a little
     # left/right meter so a lean is easy to check against the pose on camera.
@@ -2287,9 +2525,9 @@ def _draw_hud(frame, forward: float, turn: float, jump: bool, crouch: float,
     slot = int(round(_clamp(lean, -1.0, 1.0) * 4))
     meter = "".join("#" if i == slot else "-" for i in range(-4, 5))
     _put_label(frame, f"guard {'UP' if guard else '--'}   lean [{meter}] {lean:+.2f}",
-               (12, 298), 0.55, g_color)
+               (12, 322), 0.55, g_color)
     hu_color = (0, 220, 0) if hands_up else (255, 255, 255)
-    _put_label(frame, f"hands-up {'YES' if hands_up else 'no'}", (12, 322), 0.6,
+    _put_label(frame, f"hands-up {'YES' if hands_up else 'no'}", (12, 346), 0.6,
                hu_color)
 
 
